@@ -13,10 +13,15 @@ export type CommandResult<T = void> = {
   Message: string
 } & (T extends void ? Record<never, never> : { Data: T })
 
+// 必须与后端 Server/Core/Models/SysEnums.cs 的 SystemPerMode 数值一致:
+// BalanceMode=0, PerformanceMode=1, QuietMode=2(勿改顺序, 上下桥均为裸数字)。
+// 历史坑: 上游曾把此处顺序写成 PerformanceMode=0/QuietMode=1/BalanceMode=2,
+// 再在页面里用错位名称补偿 —— 现已对齐后端, 页面命名恢复与枚举一致。
 export enum SystemPerMode {
-  PerformanceMode = 0,
-  QuietMode = 1,
-  BalanceMode = 2,
+  BalanceMode = 0,
+  PerformanceMode = 1,
+  QuietMode = 2,
+  // 仅前端占位(后端枚举无此值, 不会发送); 后端自定义模式走独立的 SetCustomMode
   CustomMode = 3,
 }
 

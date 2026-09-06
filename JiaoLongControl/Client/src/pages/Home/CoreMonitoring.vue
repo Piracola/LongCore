@@ -6,6 +6,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { chartTheme } from '@/theme/theme'
+import { tempChartColor } from '@/utils/temperature'
 
 use([CanvasRenderer, PieChart, GridComponent, TooltipComponent])
 
@@ -21,6 +22,7 @@ const getRingOption = (
   colorStart: string,
   colorEnd: string,
   suffix: string = '%',
+  labelColor?: string,
 ) => ({
   series: [
     {
@@ -34,7 +36,7 @@ const getRingOption = (
         formatter: () => `${value}${suffix}`,
         fontSize: 24,
         fontWeight: 'bold',
-        color: chartTheme.value.label,
+        color: labelColor ?? chartTheme.value.label,
       },
       data: [
         {
@@ -65,12 +67,32 @@ const getRingOption = (
 
 const cpuUsageOption = computed(() => getRingOption(props.cpuUsage || 0, '#3B82F6', '#8A2BE2'))
 const gpuUsageOption = computed(() => getRingOption(props.gpuUsage || 0, '#10B981', '#3B82F6'))
-const cpuTempOption = computed(() => getRingOption(props.cpuTemp || 0, '#3B82F6', '#3B82F6', '°C'))
-const gpuTempOption = computed(() => getRingOption(props.gpuTemp || 0, '#8A2BE2', '#8A2BE2', '°C'))
+// 温度环: 色随语义色阶(≤70 蓝 / 70-80 青 / 80-90 橙 / >90 红), 中心数值同色
+const cpuTempColor = computed(() => tempChartColor(props.cpuTemp || 0))
+const gpuTempColor = computed(() => tempChartColor(props.gpuTemp || 0))
+const cpuTempOption = computed(() =>
+  getRingOption(
+    props.cpuTemp || 0,
+    cpuTempColor.value,
+    cpuTempColor.value,
+    '°C',
+    cpuTempColor.value,
+  ),
+)
+const gpuTempOption = computed(() =>
+  getRingOption(
+    props.gpuTemp || 0,
+    gpuTempColor.value,
+    gpuTempColor.value,
+    '°C',
+    gpuTempColor.value,
+  ),
+)
 </script>
 
 <template>
-  <div class="col-span-7 glass-card p-6 flex flex-col">
+  <!-- 性能模式胶囊已上移至状态条, 监控环占满整行 -->
+  <div class="col-span-12 glass-card p-6 flex flex-col">
     <h2 class="text-[15px] font-medium text-ink/90 mb-2">核心监控</h2>
     <div class="flex-1 flex justify-around items-center px-4">
       <!-- CPU 使用率 -->

@@ -15,24 +15,20 @@ import imgFan from '@/assets/icon/iconFan.png'
 import iconQuiet from '@/assets/icon/iconQuiet.png'
 import iconBalanced from '@/assets/icon/iconBalanced.png'
 import iconPerformance from '@/assets/icon/iconPerformance.png'
-import PerformanceModeComp from './Home/PerformanceMode.vue'
 import CoreMonitoringComp from './Home/CoreMonitoring.vue'
-import WelcomeBannerComp from './Home/WelcomeBanner.vue'
+import StatusBannerComp from './Home/StatusBanner.vue'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
 const systemInfoStore = useSystemInfoStore()
 const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
 
+// 命名与枚举一一对应(SystemPerMode 已对齐后端 SysEnums, 见 bridge.ts 注释)
 const performanceModes = ref([
-  { id: SystemPerMode.QuietMode, name: '高性能', icon: iconPerformance, active: false },
-  { id: SystemPerMode.PerformanceMode, name: '平衡', icon: iconQuiet, active: false },
-  { id: SystemPerMode.BalanceMode, name: '静音', icon: iconBalanced, active: false },
+  { id: SystemPerMode.PerformanceMode, name: '高性能', icon: iconPerformance, active: false },
+  { id: SystemPerMode.BalanceMode, name: '平衡', icon: iconBalanced, active: false },
+  { id: SystemPerMode.QuietMode, name: '静音', icon: iconQuiet, active: false },
 ])
-
-const activeMode = computed(
-  () => performanceModes.value.find((m) => m.active) || { name: '高性能', icon: iconPerformance },
-)
 
 async function fetchPerformanceMode() {
   try {
@@ -225,17 +221,16 @@ const lineChartOption = computed(() => ({
 
 <template>
   <div class="p-6 h-full overflow-y-auto space-y-6 text-ink no-scrollbar">
-    <!-- Row 1: 顶部 Banner -->
-    <WelcomeBannerComp
+    <!-- Row 1: 一行状态条(品牌 + 温度速读 + 模式胶囊) -->
+    <StatusBannerComp
       :cpu-temp="cpuTemp"
       :gpu-temp="gpuTemp"
-      :active-mode-name="activeMode.name"
-      :active-mode-icon="activeMode.icon"
+      :modes="performanceModes"
+      @change-mode="setMode"
     />
 
-    <!-- Row 2: 模式 & 监控 -->
+    <!-- Row 2: 核心监控(性能模式已上移至状态条, 整行让给监控环) -->
     <div class="grid grid-cols-12 gap-3 h-[250px]">
-      <PerformanceModeComp :modes="performanceModes" @change-mode="setMode" />
       <CoreMonitoringComp
         :cpu-usage="cpuUsage"
         :gpu-usage="gpuUsage"
