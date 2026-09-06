@@ -15,7 +15,7 @@ namespace JiaoLongControl.Server
         protected override void OnStartup(StartupEventArgs e)
         {
             XmlConfigurator.Configure();
-            const string appName = "JiaoLongControl_Main_Instance";
+            const string appName = "LongCore_Main_Instance";
             bool createdNew;
             _mutex = new Mutex(true, appName, out createdNew);
             if (!createdNew)

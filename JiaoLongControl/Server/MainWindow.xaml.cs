@@ -574,7 +574,7 @@ namespace JiaoLongControl.Server
                 Icon = System.Drawing.Icon.ExtractAssociatedIcon(
                     System.Reflection.Assembly.GetEntryAssembly()!.Location
                 ),
-                ToolTipText = "JiaoLong Control"
+                ToolTipText = "LongCore 龙核"
             };
 
             _taskbarIcon.TrayMouseDoubleClick += (_, _) => ShowMainWindow();

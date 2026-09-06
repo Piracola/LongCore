@@ -10,13 +10,13 @@ public class AutoStartController
 {
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
-    private const string AppName = "JiaoLongControl";
+    private const string AppName = "LongCore";
 
     public CommandResult Enable()
     {
         using var ts = new TaskService();
         var td = ts.NewTask();
-        td.RegistrationInfo.Description = "JiaoLongControl AutoStart";
+        td.RegistrationInfo.Description = "LongCore AutoStart";
         td.Triggers.Add(new LogonTrigger
         {
             Delay = TimeSpan.FromSeconds(10)
