@@ -52,6 +52,13 @@ function resolve(mode: ThemeMode): 'light' | 'dark' {
 function applyResolved(resolved: 'light' | 'dark') {
   resolvedTheme.value = resolved
   document.documentElement.dataset.theme = resolved
+  // Arco Design 组件(switch/select/modal 等)跟随主题: 暗色挂 arco-theme 属性,
+  // 浅色移除(Arco 默认即浅色); 配合 Global.scss 中的 Arco 变量对齐块
+  if (resolved === 'dark') {
+    document.body.setAttribute('arco-theme', 'dark')
+  } else {
+    document.body.removeAttribute('arco-theme')
+  }
   try {
     localStorage.setItem(THEME_STORAGE_KEY, resolved)
   } catch {

@@ -62,6 +62,15 @@
   --radius-xl: 20px;
   --radius-pill: 999px;
 
+  /* 字阶令牌(4px 网格): 页面文字统一从此取阶, 不再随手写 px */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+
   /* 温度语义色阶: ≤70° 蓝 → 70–80° 青 → 80–90° 橙 → >90° 红(升温=红)。
    * 值与 src/utils/temperature.ts 的 TEMP_CHART_COLORS 保持一致 */
   --temp-cool: #60a5fa;
@@ -125,6 +134,30 @@
   --jl-green-400: #16a34a;
   --jl-emerald-400: #059669;
   --jl-amber-400: #d97706;
+}
+
+/* ============================================================
+ * Arco Design 变量对齐(theme.ts 同步 body[arco-theme])
+ * 让 Arco 组件(switch/select/modal/message)融入 LongCore 配色,
+ * 深色由 Arco 自带 dark 变量打底, 此处仅覆盖与品牌相关的关键项
+ * ============================================================ */
+body[arco-theme='dark'] {
+  --color-bg-1: #0d0e15;
+  --color-bg-2: #12141d;
+  --color-bg-3: #17192a;
+  --color-bg-4: #1a1c23;
+  --color-bg-popup: #17192a;
+  --color-text-1: #ffffff;
+  --color-text-2: #a0aec0;
+  --color-text-3: #7b86a0;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-2: rgba(255, 255, 255, 0.12);
+  --color-fill-1: rgba(255, 255, 255, 0.04);
+  --color-fill-2: rgba(255, 255, 255, 0.08);
+  --color-fill-3: rgba(255, 255, 255, 0.12);
+  --color-primary-light-1: rgba(59, 130, 246, 0.9);
+  --color-primary-light-2: rgba(59, 130, 246, 0.8);
+  --color-primary-light-3: rgba(59, 130, 246, 0.6);
 }
 
 * {
