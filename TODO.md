@@ -5,12 +5,19 @@
 
 ## M0 · 立项与基线
 
-- [ ] GitHub 上 fork `GaoXanSheng/JiaolongControl` 到个人账号
-- [ ] 本地 `upstream/JiaolongControl` 关联双 remote：`origin` = 我的 fork，`upstream` = 原作者（取修复用）
-- [ ] 本机装 .NET 8 SDK（当前只有 runtime）+ Node 20/22，跑通上游构建（前端 `npm run build`，后端 `dotnet publish`）
+- [x] GitHub 上 fork `GaoXanSheng/JiaolongControl` 到个人账号（→ 用户自建空仓库 Piracola/LongCore，由本地推送完整历史，分支规范为 `main`）
+- [x] 本地 `LongCore/` 关联双 remote：`origin` = Piracola/LongCore，`upstream` = GaoXanSheng/JiaolongControl
+- [x] 本机装 .NET 8 SDK（用户级 `C:\Users\NullCola\.dotnet`，8.0.424）+ Node/npm（托管 22.22.2 + npm 10.9.7）
+- [x] 前端构建通过：`npm install` + `npm run build` → `bin/publish/WebRoot/`
+- [ ] 后端构建：**在本工作目录内无法完成**（宿主进程环境缺陷，见下）→ 用 `LongCore\build-and-push.cmd` 在用户自己的终端执行
+- [ ] 首次推送 main 到 Piracola/LongCore（build-and-push.cmd 第 2 步，会弹 GitHub 登录）
 - [ ] 本机试运行上游：与官方控制中心**二选一**；加载 JiaoLongDriver64.sys 需先处理内存完整性拦截
 - [ ] 用 `probe/` 实测数据对照验证上游读数正确性（风扇/温度/模式/适配器）
 - [x] 项目定名：**LongCore 龙核**
+
+> **环境坑（2026-09-06）**：WorkBuddy 宿主进程树缺失 SystemRoot/PROGRAMDATA 等核心变量，且 `SHGetKnownFolderPath` 全树失效（0x80070002）→ NuGet `path1 null`，会话内无法修复（winenv.sh + NUGET_COMMON_APPLICATION_DATA + 无沙箱均无效）。`dotnet build` 必须在用户自己的终端跑。npm/vite 不受影响。
+> 环境修复脚本：`C:\Users\NullCola\.workbuddy\winenv.sh`（治标）。
+> GitHub 设备码登录三次失败：`/login/oauth/*` 端点被网络重置 → 推送改走用户终端的 Git Credential Manager 浏览器弹窗。
 
 ## M1 · UI 重设计（核心目标）
 
