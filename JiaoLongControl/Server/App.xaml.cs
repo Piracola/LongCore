@@ -63,6 +63,10 @@ namespace JiaoLongControl.Server
 
             base.OnStartup(e);
 
+            // EC 护栏: 若上次运行硬崩溃时手动风扇模式仍接管 EC, 尽早恢复自动模式。
+            // Bridge.Instance 首次访问会构造驱动实例, 放后台线程避免阻塞窗口启动。
+            Task.Run(() => Core.Services.EcGuard.RecoverIfNeeded());
+
             Task.Run(async () =>
             {
                 var updater = new InnoUpdater(version);
@@ -90,6 +94,7 @@ namespace JiaoLongControl.Server
         {
             try
             {
+                Core.Services.EcGuard.MarkProcessExiting();
                 Bridge.Instance.Fan.RemoveFanSpeed();
                 Bridge.Instance.Dispose();
             }

@@ -38,6 +38,44 @@ public class Blding64 : IDisposable
         return SetBLDPortVal(portAddr, value, 1);
     }
 
+    // ── EC 直写安全护栏 ─────────────────────────────────────────────
+    // 允许写入的 EC 地址白名单(读操作不限制)。任何白名单外的写入直接拒绝:
+    // EC 覆盖键盘灯/电源策略等关键寄存器, 写错地址可能导致硬件异常。
+    private static readonly HashSet<ushort> WritableAddresses = new()
+    {
+        ECMemoryTable.Fan1_RPM_SET, // 0xC83C CPU 风扇转速
+        ECMemoryTable.Fan2_RPM_SET, // 0xC83D GPU 风扇转速
+        0xB20,                      // 风扇手动/自动模式掩码
+        0x1060,                     // EC_init 索引协议使能位
+    };
+
+    // 同地址同值的重复写入在窗口内直接跳过(节流), 避免控制环高频重写 EC
+    private const int ThrottleWindowMs = 300;
+    private readonly Dictionary<ushort, (byte Value, DateTime At)> _lastWrites = new();
+
+    private bool ThrottledWrite(ushort address, byte data)
+    {
+        if (!WritableAddresses.Contains(address))
+        {
+            log4net.LogManager.GetLogger(typeof(Blding64))
+                .Error($"EC 护栏: 拒绝白名单外写入 0x{address:X4}={data:X2}");
+            return false;
+        }
+
+        lock (_lastWrites)
+        {
+            if (_lastWrites.TryGetValue(address, out var last) &&
+                last.Value == data &&
+                (DateTime.UtcNow - last.At).TotalMilliseconds < ThrottleWindowMs)
+            {
+                return true; // 已是目标值, 视为成功
+            }
+            _lastWrites[address] = (data, DateTime.UtcNow);
+        }
+
+        return EC_RAM_WRITE(address, data);
+    }
+
     public Blding64()
     {
         try
@@ -81,23 +119,24 @@ public class Blding64 : IDisposable
 
     public void CpuFanSetSpeed(byte speed)
     {
-        EC_RAM_WRITE(ECMemoryTable.Fan1_RPM_SET, speed);
-        var mask = EC_RAM_READ(0xB20) | 0x02;
-        EC_RAM_WRITE(0xB20, (byte)mask);
+        ThrottledWrite(ECMemoryTable.Fan1_RPM_SET, speed);
+        ThrottledWrite(0xB20, (byte)(EC_RAM_READ(0xB20) | 0x02));
+        Core.Services.EcGuard.NoteEngaged();
     }
 
     public void GpuFanSetSpeed(byte speed)
     {
-        EC_RAM_WRITE(ECMemoryTable.Fan2_RPM_SET, speed);
-        var mask = EC_RAM_READ(0xB20) | 0x08;
-        EC_RAM_WRITE(0xB20, (byte)mask);
+        ThrottledWrite(ECMemoryTable.Fan2_RPM_SET, speed);
+        ThrottledWrite(0xB20, (byte)(EC_RAM_READ(0xB20) | 0x08));
+        Core.Services.EcGuard.NoteEngaged();
     }
 
     public void RemoveFanSpeed()
     {
         GpuFanSetSpeed(0);
         CpuFanSetSpeed(0);
-        EC_RAM_WRITE(0xB20, 0x00);
+        ThrottledWrite(0xB20, 0x00);
+        Core.Services.EcGuard.NoteReleased();
     }
 
     private bool EC_RAM_WRITE(ushort iIndex, byte data)
