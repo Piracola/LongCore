@@ -14,7 +14,8 @@
         <Configurations>Debug;Release</Configurations>
         <Platforms>x64</Platforms>
         <SatelliteResourceLanguages>zh-CN</SatelliteResourceLanguages>
-        <AppVersion>10.13.25</AppVersion>
+        <!-- 独立起版: fork 后与上游 10.x 版本线脱钩, 从 0.1.0 重新计数 -->
+        <AppVersion>0.1.0</AppVersion>
     </PropertyGroup>
 
     <ItemGroup>

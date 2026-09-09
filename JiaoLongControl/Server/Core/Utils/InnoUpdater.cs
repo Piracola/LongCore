@@ -10,7 +10,9 @@ namespace JiaoLongControl.Server.Core.Utils
     {
         private readonly ILog Logger= LogManager.GetLogger(typeof(InnoUpdater));
         private readonly string _currentVersion;
-        private const string RepoApiUrl = "https://api.github.com/repos/GaoXanSheng/JiaolongControl/releases/latest";
+        // 独立 fork 后指向本仓库 releases: 未发布 release 时 404 → 静默跳过,
+        // 避免被上游 GaoXanSheng/JiaolongControl 的 10.x 版本号诱导弹更新提示
+        private const string RepoApiUrl = "https://api.github.com/repos/Piracola/LongCore/releases/latest";
 
         public InnoUpdater(string currentVersion)
         {
