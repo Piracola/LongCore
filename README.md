@@ -1,9 +1,16 @@
-﻿<h1 align="center">JiaoLongControl</h1>
+﻿<h1 align="center">LongCore</h1>
 
 <p align="center">
   <strong>蛟龙 16 PRO 笔记本硬件控制中心</strong><br>
   <em>基于 7945HX + RTX 4060 版本开发，理论兼容其他 16 PRO [2023] 版本</em>
 </p>
+
+> [!IMPORTANT]
+> **本仓库是 JiaolongControl 的独立 fork（LongCore）**：UI 重设计、EC 直写安全护栏、
+> Fn 热键接管、电源计划联动，版本自 0.1.0 独立起版（与上游 10.x 脱钩）。
+> 机型声明见 [docs/SUPPORTED_HARDWARE.md](docs/SUPPORTED_HARDWARE.md) ·
+> [免责声明](docs/DISCLAIMER.md) · [已知问题](docs/KNOWN_ISSUES.md) ·
+> English: [README_EN.md](README_EN.md)
 
 <p align="center">
   <img src="Doc/Main.png" alt="主界面" width="800" />
