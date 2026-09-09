@@ -16,6 +16,7 @@ export interface AppSectionType {
   BootSetRyzenSumCurveOptimizerAll: boolean
   BootKeyboardGradient: boolean
   Theme: ThemeMode
+  SyncWindowsPowerPlan: boolean
 }
 
 export interface CpuProfileDataType {

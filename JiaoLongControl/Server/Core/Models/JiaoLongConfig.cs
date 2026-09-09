@@ -34,6 +34,9 @@ public class AppSection
 
     [ConfigComment("界面主题: light / dark / system (默认跟随系统)")]
     public string Theme { get; set; } = "system";
+
+    [ConfigComment("切换性能模式时联动 Windows 电源计划(powercfg): 静音→节电 平衡→平衡 高性能→高性能")]
+    public bool SyncWindowsPowerPlan { get; set; } = true;
 }
 
 public class CpuSection

@@ -5,11 +5,11 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { PerformanceMode, SystemInfo, SystemPerMode } from '@/utils/bridge'
+import { PerformanceMode, SystemInfo, SystemPerMode, CPU } from '@/utils/bridge'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
 import { storeToRefs } from 'pinia'
-import { Cpu, Fan, MonitorCog, Scale, Volume1, Zap } from 'lucide-vue-next'
+import { Cpu, Fan, MonitorCog, Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
 import CoreMonitoringComp from './Home/CoreMonitoring.vue'
 import StatusBannerComp from './Home/StatusBanner.vue'
 
@@ -19,11 +19,13 @@ const systemInfoStore = useSystemInfoStore()
 const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
 
 // 命名与枚举一一对应(SystemPerMode 已对齐后端 SysEnums, 见 bridge.ts 注释)
-// 隐喻约定: 高性能=Zap, 平衡=Scale, 静音=Volume1
+// 隐喻约定: 高性能=Zap, 平衡=Scale, 静音=Volume1, 自定义=SlidersHorizontal
+// CustomMode 为本地逻辑态: EC 档位不变, 打开命令 23 自定义功耗子状态(数值在 CPU 页调)
 const performanceModes = ref([
   { id: SystemPerMode.PerformanceMode, name: '高性能', icon: markRaw(Zap), active: false },
   { id: SystemPerMode.BalanceMode, name: '平衡', icon: markRaw(Scale), active: false },
   { id: SystemPerMode.QuietMode, name: '静音', icon: markRaw(Volume1), active: false },
+  { id: SystemPerMode.CustomMode, name: '自定义', icon: markRaw(SlidersHorizontal), active: false },
 ])
 
 async function fetchPerformanceMode() {
@@ -42,10 +44,12 @@ async function fetchPerformanceMode() {
 function setMode(id: SystemPerMode) {
   performanceModes.value.forEach((m) => {
     m.active = m.id === id
-    if (id !== SystemPerMode.CustomMode) {
-      PerformanceMode.Set(id)
-    }
   })
+  if (id === SystemPerMode.CustomMode) {
+    void CPU.SetCustomMode(true)
+  } else {
+    void PerformanceMode.Set(id)
+  }
 }
 
 const cpuUsage = computed(() => systemInfoStore.cpuStats?.Usage ?? 0)

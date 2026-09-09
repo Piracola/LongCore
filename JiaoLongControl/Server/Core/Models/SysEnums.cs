@@ -85,6 +85,9 @@
         BalanceMode,
         PerformanceMode,
         QuietMode,
+        // 仅本地逻辑态(命令 8 无此值): 表示"自定义功耗子状态(命令23)开启",
+        // Get 时叠加呈现, Set 时走命令 23 开子状态而非写入命令 8
+        CustomMode = 3,
         Unknow = 255
     }
 }
