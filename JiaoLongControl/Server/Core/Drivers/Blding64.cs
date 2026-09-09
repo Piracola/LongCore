@@ -70,10 +70,17 @@ public class Blding64 : IDisposable
             {
                 return true; // 已是目标值, 视为成功
             }
-            _lastWrites[address] = (data, DateTime.UtcNow);
         }
 
-        return EC_RAM_WRITE(address, data);
+        // 只有底层写成功才记入节流缓存, 避免失败写入被后续调用误判为已完成
+        if (!EC_RAM_WRITE(address, data))
+            return false;
+
+        lock (_lastWrites)
+        {
+            _lastWrites[address] = (data, DateTime.UtcNow);
+        }
+        return true;
     }
 
     public Blding64()
@@ -120,22 +127,38 @@ public class Blding64 : IDisposable
     public void CpuFanSetSpeed(byte speed)
     {
         ThrottledWrite(ECMemoryTable.Fan1_RPM_SET, speed);
-        ThrottledWrite(0xB20, (byte)(EC_RAM_READ(0xB20) | 0x02));
+        SetManualMask(0x02);
         Core.Services.EcGuard.NoteEngaged();
     }
 
     public void GpuFanSetSpeed(byte speed)
     {
         ThrottledWrite(ECMemoryTable.Fan2_RPM_SET, speed);
-        ThrottledWrite(0xB20, (byte)(EC_RAM_READ(0xB20) | 0x08));
+        SetManualMask(0x08);
         Core.Services.EcGuard.NoteEngaged();
+    }
+
+    /// <summary>0xB20 读改写整段持锁, 防止双风扇路径并发丢位; 位已置则跳过写。</summary>
+    private void SetManualMask(byte bit)
+    {
+        lock (_ioLock)
+        {
+            byte mask = EC_RAM_READ(0xB20);
+            if ((mask & bit) != 0)
+                return;
+            EC_RAM_WRITE(0xB20, (byte)(mask | bit));
+        }
     }
 
     public void RemoveFanSpeed()
     {
-        GpuFanSetSpeed(0);
-        CpuFanSetSpeed(0);
-        ThrottledWrite(0xB20, 0x00);
+        // 恢复自动: 先停手动转速再清掩码。不经 SetSpeed, 避免再次置位 0xB20 / NoteEngaged。
+        lock (_ioLock)
+        {
+            EC_RAM_WRITE(ECMemoryTable.Fan1_RPM_SET, 0);
+            EC_RAM_WRITE(ECMemoryTable.Fan2_RPM_SET, 0);
+            EC_RAM_WRITE(0xB20, 0x00);
+        }
         Core.Services.EcGuard.NoteReleased();
     }
 

@@ -40,7 +40,8 @@ public class HotkeyController : IDisposable
                 return new CommandResult(true, "热键监听已运行中");
             try
             {
-                _watcher = new ManagementEventWatcher(new WqlEventQuery("SELECT * FROM HID_EVENT20"));
+                // HID_EVENT20 注册在 root\WMI(非默认 root\cimv2), 见 decompiled/main.cs
+                _watcher = new ManagementEventWatcher("root\\WMI", "SELECT * FROM HID_EVENT20");
                 _watcher.EventArrived += OnEventArrived;
                 _watcher.Start();
                 _running = true;

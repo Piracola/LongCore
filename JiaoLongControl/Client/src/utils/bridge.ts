@@ -21,7 +21,8 @@ export enum SystemPerMode {
   BalanceMode = 0,
   PerformanceMode = 1,
   QuietMode = 2,
-  // 仅前端占位(后端枚举无此值, 不会发送); 后端自定义模式走独立的 SetCustomMode
+  // 本地逻辑态(后端 SysEnums.CustomMode=3): UI 选自定义时走 CPU.SetCustomMode,
+  // 不经 PerformanceMode.Set; 后端 PerformanceMode.Set(CustomMode) 亦可走命令 23
   CustomMode = 3,
 }
 

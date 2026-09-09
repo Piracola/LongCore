@@ -26,6 +26,16 @@ public static class EcGuard
     private static bool _engaged;
     private static bool _exiting;
 
+    /// <summary>是否仍处于手动风扇接管状态(退出时据此决定是否写 EC 恢复)。</summary>
+    public static bool IsEngaged
+    {
+        get
+        {
+            lock (Lock)
+                return _engaged;
+        }
+    }
+
     /// <summary>心跳写入周期。</summary>
     private const int HeartbeatIntervalMs = 5000;
 

@@ -78,10 +78,10 @@ Check("恰好 8 字节 → 通过", ProtocolCodec.ValidateResponse(getMode, boun
 
 // ── 载荷解码(黄金样本) ────────────────────────────────────
 Console.WriteLine("== 载荷解码 ==");
-// 真机样本: CPUGPUFanSpeed Get → 00 80 00 0D B7 0D 7F 0D ... (GPU=0x0DB7 CPU=0x0D7F)
+// 真机样本: CPUGPUFanSpeed Get → 00 80 00 0D B7 0D 7F 0D ... (CPU=0x0DB7=3511, GPU=0x0D7F=3455)
 var goldenFan = Hex("00 80 00 0D B7 0D 7F 0D 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00");
 var fanPair = ProtocolCodec.DecodeUInt16Pair(goldenFan);
-Check($"风扇转速 u16 对 = (3511, 3455)  实际 {fanPair.Item1}/{fanPair.Item2}",
+Check($"风扇转速 u16 对 = (CPU 3511, GPU 3455)  实际 {fanPair.Item1}/{fanPair.Item2}",
     fanPair.Item1 == 3511 && fanPair.Item2 == 3455);
 
 // 真机样本: CPUThermometer Get → b4 = 0x4B = 75°C

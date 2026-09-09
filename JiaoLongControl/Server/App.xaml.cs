@@ -98,7 +98,9 @@ namespace JiaoLongControl.Server
             try
             {
                 Core.Services.EcGuard.MarkProcessExiting();
-                Bridge.Instance.Fan.RemoveFanSpeed();
+                // 仅在手动风扇仍接管 EC 时恢复自动模式, 避免每次退出都无谓写 EC
+                if (Core.Services.EcGuard.IsEngaged)
+                    Bridge.Instance.Fan.RemoveFanSpeed();
                 Bridge.Instance.Dispose();
             }
             catch (Exception ex)

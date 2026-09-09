@@ -44,6 +44,12 @@ const toggleCards = [
       '接管键盘上的性能模式切换 Fn 键：按下后循环 高性能 → 平衡 → 静音，并在屏幕上方显示 OSD 提示；关闭后保持该键的固件默认行为',
     configPath: 'App.HotkeyEnabled',
   },
+  {
+    title: '联动 Windows 电源计划',
+    description:
+      '切换性能模式时同步系统电源计划：静音→节电、平衡→平衡、高性能→高性能；关闭后仅改硬件档位，不动 powercfg',
+    configPath: 'App.SyncWindowsPowerPlan',
+  },
 ]
 </script>
 
@@ -53,7 +59,7 @@ const toggleCards = [
     <div class="max-w-[1000px] mx-auto">
       <h1 class="text-2xl font-bold tracking-wider">系统设置</h1>
       <p class="text-[13px] text-gray-500 mt-1.5">
-        管理 JiaoLongControl 的全局参数、自启动行为及显示偏好。
+        管理 LongCore 的全局参数、自启动行为及显示偏好。
       </p>
     </div>
 

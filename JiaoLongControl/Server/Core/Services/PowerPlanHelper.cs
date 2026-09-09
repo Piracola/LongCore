@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using JiaoLongControl.Server.Core.Models;
+using log4net;
 
 namespace JiaoLongControl.Server.Core.Services
 {
@@ -10,6 +11,8 @@ namespace JiaoLongControl.Server.Core.Services
     /// </summary>
     public static class PowerPlanHelper
     {
+        private static readonly ILog Logger = LogManager.GetLogger(typeof(PowerPlanHelper));
+
         private const string BalancedGuid = "381b4222-f694-41f0-9685-ff5bb260df2e";
         private const string HighPerformanceGuid = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c";
         private const string PowerSaverGuid = "a1841308-3541-4fab-bc81-f71556f20b4a";
@@ -33,10 +36,16 @@ namespace JiaoLongControl.Server.Core.Services
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 });
+                if (proc == null)
+                    return;
+                proc.WaitForExit(3000);
+                // OEM 机上「高性能」等计划 GUID 常不存在, 退出码非 0 仅记日志
+                if (proc.HasExited && proc.ExitCode != 0)
+                    Logger.Debug($"powercfg /setactive {guid} 退出码 {proc.ExitCode} (计划可能不存在)");
             }
-            catch
+            catch (Exception ex)
             {
-                // 忽略: 计划不存在/权限不足时不影响硬件模式已生效
+                Logger.Debug($"powercfg 联动失败: {ex.Message}");
             }
         }
     }
