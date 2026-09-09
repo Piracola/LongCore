@@ -37,6 +37,9 @@ public class AppSection
 
     [ConfigComment("切换性能模式时联动 Windows 电源计划(powercfg): 静音→节电 平衡→平衡 高性能→高性能")]
     public bool SyncWindowsPowerPlan { get; set; } = true;
+
+    [ConfigComment("接管 Fn 性能模式热键(HID_EVENT20 事件15): 循环 高性能→平衡→静音 并显示 OSD")]
+    public bool HotkeyEnabled { get; set; } = true;
 }
 
 public class CpuSection

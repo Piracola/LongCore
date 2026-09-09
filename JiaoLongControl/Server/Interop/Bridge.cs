@@ -92,12 +92,27 @@ namespace JiaoLongControl.Server.Interop
         public NvidiaGpuController NvidiaGpu { get; } = new();
         public RyzenSmuController RyzenSmu { get; } = new();
         public SystemInfoController SystemInfo { get; } = new();
+        public HotkeyController Hotkey { get; } = new();
+
+        /// <summary>向前端推送 WebView 消息(如 mode-changed)。浏览器直连/未就绪时静默跳过。</summary>
+        internal void NotifyWeb(string json)
+        {
+            try
+            {
+                _webView?.PostWebMessageAsJson(json);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Web 通知失败: {ex.Message}");
+            }
+        }
 
         public void Dispose()
         {
             _saveTimer?.Dispose();
             _saveTimer = null;
             FlushIfDirty();
+            Hotkey.Dispose();
             CPU.Dispose();
             Fan.Dispose();
             AutoFan.Dispose();

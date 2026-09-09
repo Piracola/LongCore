@@ -52,6 +52,26 @@ function setMode(id: SystemPerMode) {
   }
 }
 
+// Fn 热键切换模式时后端推送 {type:'mode-changed', mode:N}, 同步胶囊高亮
+function handleModeChanged(e: MessageEvent) {
+  try {
+    const data: unknown = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
+    if (
+      data &&
+      typeof data === 'object' &&
+      (data as { type?: string }).type === 'mode-changed' &&
+      typeof (data as { mode?: unknown }).mode === 'number'
+    ) {
+      const mode = (data as { mode: number }).mode as SystemPerMode
+      performanceModes.value.forEach((m) => {
+        m.active = m.id === mode
+      })
+    }
+  } catch {
+    /* 非 JSON 消息忽略 */
+  }
+}
+
 const cpuUsage = computed(() => systemInfoStore.cpuStats?.Usage ?? 0)
 const gpuUsage = computed(() => parseInt(gpuStats.value?.GpuUtilization || '0', 10))
 // 无噪音传感器: 以风扇转速查表估算 (标定: 3000 RPM≈25 dBA, 4800 RPM≈40 dBA)
@@ -161,11 +181,21 @@ onMounted(() => {
   fetchPerformanceMode()
   startTimers()
   document.addEventListener('visibilitychange', handleVisibilityChange)
+  try {
+    window.chrome?.webview?.addEventListener('message', handleModeChanged)
+  } catch {
+    /* 浏览器预览环境无 WebView 桥 */
+  }
 })
 
 onUnmounted(() => {
   stopTimers()
   document.removeEventListener('visibilitychange', handleVisibilityChange)
+  try {
+    window.chrome?.webview?.removeEventListener('message', handleModeChanged)
+  } catch {
+    /* 浏览器预览环境无 WebView 桥 */
+  }
 })
 
 // 2. 温度曲线 - 折线图

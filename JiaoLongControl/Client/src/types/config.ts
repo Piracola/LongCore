@@ -17,6 +17,7 @@ export interface AppSectionType {
   BootKeyboardGradient: boolean
   Theme: ThemeMode
   SyncWindowsPowerPlan: boolean
+  HotkeyEnabled: boolean
 }
 
 export interface CpuProfileDataType {

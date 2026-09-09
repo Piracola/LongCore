@@ -67,6 +67,9 @@ namespace JiaoLongControl.Server
             // Bridge.Instance 首次访问会构造驱动实例, 放后台线程避免阻塞窗口启动。
             Task.Run(() => Core.Services.EcGuard.RecoverIfNeeded());
 
+            // Fn 热键监听(HID_EVENT20): 接管性能模式切换键, 其余键保持固件默认
+            Bridge.Instance.Hotkey.Start();
+
             Task.Run(async () =>
             {
                 var updater = new InnoUpdater(version);

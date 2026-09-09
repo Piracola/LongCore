@@ -38,6 +38,12 @@ const toggleCards = [
     description: '启用后，开机及睡眠唤醒时自动开启键盘渐变（以启动时键盘当前颜色为锚点循环渐变）',
     configPath: 'App.BootKeyboardGradient',
   },
+  {
+    title: 'Fn 性能模式热键',
+    description:
+      '接管键盘上的性能模式切换 Fn 键：按下后循环 高性能 → 平衡 → 静音，并在屏幕上方显示 OSD 提示；关闭后保持该键的固件默认行为',
+    configPath: 'App.HotkeyEnabled',
+  },
 ]
 </script>
 
