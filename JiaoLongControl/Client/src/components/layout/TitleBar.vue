@@ -11,7 +11,7 @@ function handleMouseDown(e: MouseEvent) {
 <template>
   <div class="title-bar">
     <div class="drag-region" @mousedown="handleMouseDown">
-      <img src="@/assets/icon/icon.png" class="logo" alt="logo" />
+      <img src="@/assets/logo.svg" class="logo" alt="LongCore" />
       <span class="title">JiaoLong Control</span>
     </div>
     <div class="window-actions">

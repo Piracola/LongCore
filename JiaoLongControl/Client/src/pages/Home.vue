@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -9,12 +9,7 @@ import { PerformanceMode, SystemInfo, SystemPerMode } from '@/utils/bridge'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
 import { storeToRefs } from 'pinia'
-import imgCPU from '@/assets/icon/iconCPU.png'
-import imgGPU from '@/assets/icon/gpu2.png'
-import imgFan from '@/assets/icon/iconFan.png'
-import iconQuiet from '@/assets/icon/iconQuiet.png'
-import iconBalanced from '@/assets/icon/iconBalanced.png'
-import iconPerformance from '@/assets/icon/iconPerformance.png'
+import { Cpu, Fan, MonitorCog, Scale, Volume1, Zap } from 'lucide-vue-next'
 import CoreMonitoringComp from './Home/CoreMonitoring.vue'
 import StatusBannerComp from './Home/StatusBanner.vue'
 
@@ -24,10 +19,11 @@ const systemInfoStore = useSystemInfoStore()
 const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
 
 // 命名与枚举一一对应(SystemPerMode 已对齐后端 SysEnums, 见 bridge.ts 注释)
+// 隐喻约定: 高性能=Zap, 平衡=Scale, 静音=Volume1
 const performanceModes = ref([
-  { id: SystemPerMode.PerformanceMode, name: '高性能', icon: iconPerformance, active: false },
-  { id: SystemPerMode.BalanceMode, name: '平衡', icon: iconBalanced, active: false },
-  { id: SystemPerMode.QuietMode, name: '静音', icon: iconQuiet, active: false },
+  { id: SystemPerMode.PerformanceMode, name: '高性能', icon: markRaw(Zap), active: false },
+  { id: SystemPerMode.BalanceMode, name: '平衡', icon: markRaw(Scale), active: false },
+  { id: SystemPerMode.QuietMode, name: '静音', icon: markRaw(Volume1), active: false },
 ])
 
 async function fetchPerformanceMode() {
@@ -249,10 +245,7 @@ const lineChartOption = computed(() => ({
             <div
               class="badge-blue w-8 h-8 rounded-full flex items-center justify-center text-blue-500"
             >
-              <span
-                class="icon-mask icon-tint-blue w-4 h-4"
-                :style="{ WebkitMaskImage: `url(${imgCPU})`, maskImage: `url(${imgCPU})` }"
-              ></span>
+              <Cpu class="w-4 h-4" :stroke-width="1.75" />
             </div>
             <div>
               <div class="text-xs text-ink/90">CPU</div>
@@ -263,10 +256,7 @@ const lineChartOption = computed(() => ({
             <div
               class="badge-green w-8 h-8 rounded-full flex items-center justify-center text-green-500"
             >
-              <span
-                class="icon-mask icon-tint-green w-4 h-4"
-                :style="{ WebkitMaskImage: `url(${imgGPU})`, maskImage: `url(${imgGPU})` }"
-              ></span>
+              <MonitorCog class="w-4 h-4" :stroke-width="1.75" />
             </div>
             <div>
               <div class="text-xs text-ink/90">GPU</div>
@@ -306,11 +296,11 @@ const lineChartOption = computed(() => ({
           <div
             class="badge-neutral w-12 h-12 rounded-full flex items-center justify-center overflow-hidden"
           >
-            <span
-              class="icon-mask icon-tint-blue-bright w-7 h-7 animate-spin"
+            <Fan
+              class="w-7 h-7 icon-tint-blue-bright animate-spin"
               style="animation-duration: 3s"
-              :style="{ WebkitMaskImage: `url(${imgFan})`, maskImage: `url(${imgFan})` }"
-            ></span>
+              :stroke-width="1.75"
+            />
           </div>
           <div>
             <div class="flex items-baseline gap-1">

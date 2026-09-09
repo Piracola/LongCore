@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- LongCore 龙核 Logo: 龙鳞环抱核心 -->
+  <defs>
+    <linearGradient id="lc-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3B82F6" />
+      <stop offset="1" stop-color="#8A2BE2" />
+    </linearGradient>
+  </defs>
+  <!-- 八片龙鳞: 向心 chevron 环列 -->
+  <g stroke="url(#lc-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <g transform="rotate(0 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(45 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(90 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(135 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(180 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(225 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(270 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+    <g transform="rotate(315 32 32)"><path d="M25 10 L32 18 L39 10" /></g>
+  </g>
+  <!-- 核心 -->
+  <circle cx="32" cy="32" r="8.5" fill="url(#lc-grad)" />
+  <circle cx="29.2" cy="29.2" r="2.6" fill="#ffffff" opacity="0.85" />
+</svg>

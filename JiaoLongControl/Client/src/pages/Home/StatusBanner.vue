@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
+import { Cpu, MonitorCog } from 'lucide-vue-next'
 import { SystemPerMode } from '@/utils/bridge'
 import { tempBgVar, tempVar } from '@/utils/temperature'
-import imgCPU from '@/assets/icon/iconCPU.png'
-import imgGPU from '@/assets/icon/gpu2.png'
 
 defineProps<{
   cpuTemp: number
@@ -10,7 +10,7 @@ defineProps<{
   modes: Array<{
     id: SystemPerMode
     name: string
-    icon: string
+    icon: Component
     active: boolean
   }>
 }>()
@@ -29,21 +29,15 @@ const emit = defineEmits<{
       <span class="hidden xl:inline text-xs text-gray-400 truncate">龙核 · 掌控每一分潜能</span>
     </div>
 
-    <!-- 温度速读: 底色/文字色随语义色阶变化 -->
+    <!-- 温度速读: 底色/文字色随语义色阶变化, 图标继承 currentColor -->
     <div class="flex items-center gap-2 shrink-0">
       <div class="temp-chip" :style="{ color: tempVar(cpuTemp), background: tempBgVar(cpuTemp) }">
-        <span
-          class="icon-mask w-4 h-4 shrink-0"
-          :style="{ WebkitMaskImage: `url(${imgCPU})`, maskImage: `url(${imgCPU})` }"
-        ></span>
+        <Cpu class="w-4 h-4 shrink-0" :stroke-width="2" />
         <span class="text-sm font-semibold tabular-nums">{{ cpuTemp }}°C</span>
         <span class="text-[11px] opacity-70">CPU</span>
       </div>
       <div class="temp-chip" :style="{ color: tempVar(gpuTemp), background: tempBgVar(gpuTemp) }">
-        <span
-          class="icon-mask w-4 h-4 shrink-0"
-          :style="{ WebkitMaskImage: `url(${imgGPU})`, maskImage: `url(${imgGPU})` }"
-        ></span>
+        <MonitorCog class="w-4 h-4 shrink-0" :stroke-width="2" />
         <span class="text-sm font-semibold tabular-nums">{{ gpuTemp }}°C</span>
         <span class="text-[11px] opacity-70">GPU</span>
       </div>
@@ -59,10 +53,7 @@ const emit = defineEmits<{
         :class="['mode-seg', mode.active ? 'mode-seg-active' : '']"
         @click="emit('change-mode', mode.id)"
       >
-        <span
-          class="icon-mask w-4 h-4 shrink-0"
-          :style="{ WebkitMaskImage: `url(${mode.icon})`, maskImage: `url(${mode.icon})` }"
-        ></span>
+        <component :is="mode.icon" class="w-4 h-4 shrink-0" :stroke-width="1.75" />
         <span>{{ mode.name }}</span>
       </button>
     </div>

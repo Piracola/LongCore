@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import RightSide from '@/components/layout/RightSide.vue'
 import TitleBar from '@/components/layout/TitleBar.vue'
+import { Settings } from 'lucide-vue-next'
 import useStore, { HomeCardType } from '@/stores'
 
+const SettingsIcon = Settings
 const store = useStore()
 
 function onClickMenuItem(key: number) {
@@ -35,29 +37,26 @@ const mainNavItems = HomeCardType.filter((item) => item.num !== 8)
               ]"
               @click="onClickMenuItem(Number(item.num))"
             >
-              <!-- 图标容器 (选中时在容器上做 drop-shadow: 滤镜先于遮罩执行, 放在遮罩元素自身会被裁掉) -->
+              <!-- 图标容器 (选中时在容器上做 drop-shadow) -->
               <div
                 class="w-5 h-5 flex items-center justify-center relative"
                 :class="
                   store.SwitchPages === item.num ? 'drop-shadow-[0_0_6px_rgba(59,130,246,0.9)]' : ''
                 "
               >
-                <!-- 1. 背景氛围炫光 -->
+                <!-- 背景氛围炫光 -->
                 <span
                   v-if="store.SwitchPages === item.num"
                   class="absolute w-5 h-5 bg-blue-500/40 rounded-full blur-[8px] animate-pulse pointer-events-none"
                 ></span>
 
-                <!-- 2. 图标本身 (PNG 以 alpha 遮罩 + currentColor 填色: 深色白 / 浅色黑) -->
-                <span
-                  class="icon-mask icon-silhouette relative z-10 w-full h-full transition-all duration-300"
-                  :class="
-                    store.SwitchPages === item.num
-                      ? 'opacity-100'
-                      : 'opacity-75 group-hover:opacity-100'
-                  "
-                  :style="{ WebkitMaskImage: `url(${item.icon})`, maskImage: `url(${item.icon})` }"
-                ></span>
+                <!-- Lucide 线性图标: currentColor 随按钮状态着色 -->
+                <component
+                  :is="item.icon"
+                  class="relative z-10 w-full h-full transition-all duration-300"
+                  :class="store.SwitchPages === item.num ? 'opacity-100' : 'opacity-75'"
+                  :stroke-width="1.75"
+                />
               </div>
               <span class="font-medium text-[13px] tracking-wide">{{ item.title }}</span>
             </button>
@@ -80,14 +79,15 @@ const mainNavItems = HomeCardType.filter((item) => item.num !== 8)
                     class="absolute w-5 h-5 bg-blue-500/40 rounded-full blur-[8px] animate-pulse pointer-events-none"
                   ></span>
 
-                  <!-- 设置图标轮廓发光 -->
-                  <icon-settings
-                    :class="[
-                      'text-lg relative z-10 transition-all duration-300',
+                  <component
+                    :is="SettingsIcon"
+                    class="text-lg relative z-10 transition-all duration-300"
+                    :class="
                       store.SwitchPages === 8
                         ? 'text-blue-400 drop-shadow-[0_0_6px_rgba(59,130,246,0.9)]'
-                        : '',
-                    ]"
+                        : ''
+                    "
+                    :stroke-width="1.75"
                   />
                 </div>
                 <span class="font-medium text-[13px] tracking-wide">设置</span>
