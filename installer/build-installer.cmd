@@ -25,6 +25,16 @@ echo.
 echo [3/3] Inno Setup compile...
 set ISCC=iscc
 where iscc >nul 2>nul || set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" (
+    echo [HINT] Inno Setup 6 not found. winget install -e --id JRSoftware.InnoSetup --scope user
+    goto :fail
+)
+rem 6.7+ 精简掉了简体中文语言文件, 缺失会导致编译中止
+if not exist "%ISCC%\..\Languages\ChineseSimplified.isl" (
+    echo [WARN] ChineseSimplified.isl missing - installer will build english-only or abort.
+)
 "%ISCC%" installer\LongCore.iss
 if errorlevel 1 goto :fail
 

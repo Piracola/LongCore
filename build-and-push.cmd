@@ -4,6 +4,11 @@ rem Run this from YOUR OWN terminal (double-click also works).
 setlocal
 cd /d "%~dp0"
 
+rem 兜底: 个别宿主环境(无 SystemRoot/PROGRAMDATA)会让 NuGet 恢复直接崩溃
+if not defined SystemRoot set "SystemRoot=C:\Windows"
+if not defined windir set "windir=C:\Windows"
+if not defined PROGRAMDATA set "PROGRAMDATA=C:\ProgramData"
+
 rem Prefer user-level dotnet, fall back to PATH
 set "DOTNET=C:\Users\NullCola\.dotnet\dotnet.exe"
 if not exist "%DOTNET%" set "DOTNET=dotnet"
@@ -47,7 +52,8 @@ echo.
 echo ============================================
 echo  [4/4] Sync remaining upstream branches and tags
 echo ============================================
-git push origin upstream/master:master upstream/future:future "upstream/Linux/X86-64:Linux/X86-64" "upstream/windows/X86-64-v8.9.8:windows/X86-64-v8.9.8" --tags
+rem 注意: 首次推送时远程尚无同名分支, git 无法猜测 refname, 必须用完全限定 refspec
+git push origin refs/remotes/upstream/master:refs/heads/master refs/remotes/upstream/future:refs/heads/future "refs/remotes/upstream/Linux/X86-64:refs/heads/Linux/X86-64" "refs/remotes/upstream/windows/X86-64-v8.9.8:refs/heads/windows/X86-64-v8.9.8" --tags
 
 echo.
 echo ============================================
