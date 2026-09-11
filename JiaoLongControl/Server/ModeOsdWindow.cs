@@ -92,7 +92,6 @@ public class ModeOsdWindow : Window
     private void RestartFadeSequence()
     {
         _hideTimer?.Stop();
-        _hideTimer?.Dispose();
         var fadeIn = new DoubleAnimation(1, TimeSpan.FromMilliseconds(FadeInMs));
         BeginAnimation(OpacityProperty, fadeIn);
 

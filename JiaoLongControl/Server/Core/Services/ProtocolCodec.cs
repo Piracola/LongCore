@@ -1,3 +1,5 @@
+using JiaoLongControl.Server.Core.Models;
+
 namespace JiaoLongControl.Server.Core.Services
 {
     /// <summary>
