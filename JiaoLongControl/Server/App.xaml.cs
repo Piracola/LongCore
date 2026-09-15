@@ -70,6 +70,10 @@ namespace JiaoLongControl.Server
             // Fn 热键监听(HID_EVENT20): 接管性能模式切换键, 其余键保持固件默认
             Bridge.Instance.Hotkey.Start();
 
+            // 过温看门狗(L3 保护): CPU ≥98℃ 持续 10s 强制风扇最大转速, 回落 92℃ 持续 30s 后
+            // 显式交还 EC 自动温控(只拉满不释放会让看门狗自身变成风险源)
+            Core.Services.ThermalWatchdog.Start();
+
             Task.Run(async () =>
             {
                 var updater = new InnoUpdater(version);

@@ -350,8 +350,18 @@ public class RyzenSmuController : PawnIO
     #endregion
 
     #region (Curve Optimizer)
+    /// Curve Optimizer 允许范围: -30(最大降压) ~ 0(不偏移)。
+    /// 负值过大只会导致不稳定(卡顿/WHEA/开不了机), 不损伤硬件;
+    /// 正值是加压, 会推高发热与电迁移风险, 而笔记本受散热与功耗墙限制并无收益 —— 故禁止正值。
+    public const int CurveOptimizerMin = -30;
+    public const int CurveOptimizerMax = 0;
+
     public CommandResult SetCurveOptimizerAll(int value)
     {
+        if (value < CurveOptimizerMin || value > CurveOptimizerMax)
+            return new CommandResult(false,
+                $"核心电压偏移 {value} 超出允许范围 ({CurveOptimizerMin} ~ {CurveOptimizerMax})：仅允许降压，不允许加压");
+
         uint arg = (uint)value & 0xFFFFFu;
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(arg, "Curve Optimizer All", (0x55, true), (0xB1, false)),
@@ -363,6 +373,10 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetCurveOptimizerPerCore(uint coreIdx, int value)
     {
+        if (value < CurveOptimizerMin || value > CurveOptimizerMax)
+            return new CommandResult(false,
+                $"核心 {coreIdx} 电压偏移 {value} 超出允许范围 ({CurveOptimizerMin} ~ {CurveOptimizerMax})：仅允许降压，不允许加压");
+
         uint coValue = (uint)value & 0xFFFFFu;
         uint arg = (coreIdx << 20) | coValue;
         return CurrentFamily switch {

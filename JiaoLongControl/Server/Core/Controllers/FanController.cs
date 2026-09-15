@@ -31,9 +31,16 @@ public class FanController : Blding64
 
         if (IsInitialized)
         {
-            GpuFanSetSpeed(fanSpeed);
-            CpuFanSetSpeed(fanSpeed);
-            return new CommandResult(true, "设置成功");
+            // 两路均可能被安全护栏拒绝(转速 0 / 超出 EC 规格), 必须如实回传,
+            // 否则前端会显示"设置成功"而 EC 实际未变。
+            var okGpu = GpuFanSetSpeed(fanSpeed);
+            var okCpu = CpuFanSetSpeed(fanSpeed);
+
+            if (okCpu && okGpu)
+                return new CommandResult(true, "设置成功");
+
+            return new CommandResult(false,
+                $"设置失败: 转速 {fanSpeed * 100} RPM 被安全护栏拒绝(详见日志)");
         }
 
         return new CommandResult(false, "设置失败");

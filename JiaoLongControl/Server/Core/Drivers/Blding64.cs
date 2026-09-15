@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using JiaoLongControl.Server.Core.Models;
 using JiaoLongControl.Server.Core.Native;
 using JiaoLongControl.Server.Core.Utils;
+using log4net;
 
 namespace JiaoLongControl.Server.Core.Drivers;
 
@@ -124,18 +125,67 @@ public class Blding64 : IDisposable
         }
     }
 
-    public void CpuFanSetSpeed(byte speed)
+    /// <summary>
+    /// EC 风扇转速寄存器单位 100 RPM。
+    /// 上限取 58 (=5800 RPM): 官方客户端 fastestMode_FanSpeed_MaxValue = 58 且默认曲线最高点亦为 5800
+    /// (decompiled/main.cs:738); 68 可能只是寄存器可写范围, 并非厂商允许转速, 故不采用。
+    /// 超出该值的写入在 EC 侧行为未定义, 一律拒绝。
+    /// </summary>
+    private const byte FanSpeedRawMax = 58;
+
+    /// <summary>低于该值(1500 RPM)时记录告警: 手动模式下过低的转速叠加高负载有散热风险。</summary>
+    private const byte FanSpeedLowWarn = 15;
+
+    /// <summary>
+    /// 转速合法性校验。这是全项目唯一"软件可造成物理损伤"的通路 ——
+    /// 手动模式(0xB20 置位)下转速被钉死会绕开 EC 自身的温控风扇曲线,
+    /// 转速 0 即意味着满载时散热彻底失效。因此 0 必须硬性拒绝。
+    /// </summary>
+    private static bool ValidateFanSpeed(byte speed, string which)
     {
+        if (speed == 0)
+        {
+            LogManager.GetLogger(typeof(Blding64))
+                .Error($"EC 护栏: 拒绝将{which}风扇设为 0 —— 手动模式下风扇停转会导致散热失效, 该写入已拦截");
+            return false;
+        }
+
+        if (speed > FanSpeedRawMax)
+        {
+            LogManager.GetLogger(typeof(Blding64))
+                .Warn($"EC 护栏: 拒绝{which}风扇转速 {speed}(={speed * 100} RPM), 超出 EC 规格上限 {FanSpeedRawMax}(={FanSpeedRawMax * 100} RPM)");
+            return false;
+        }
+
+        if (speed < FanSpeedLowWarn)
+        {
+            LogManager.GetLogger(typeof(Blding64))
+                .Warn($"EC 护栏: {which}风扇转速 {speed}(={speed * 100} RPM) 偏低, 手动模式下高负载有散热风险");
+        }
+
+        return true;
+    }
+
+    public bool CpuFanSetSpeed(byte speed)
+    {
+        if (!ValidateFanSpeed(speed, "CPU"))
+            return false;
+
         ThrottledWrite(ECMemoryTable.Fan1_RPM_SET, speed);
         SetManualMask(0x02);
         Core.Services.EcGuard.NoteEngaged();
+        return true;
     }
 
-    public void GpuFanSetSpeed(byte speed)
+    public bool GpuFanSetSpeed(byte speed)
     {
+        if (!ValidateFanSpeed(speed, "GPU"))
+            return false;
+
         ThrottledWrite(ECMemoryTable.Fan2_RPM_SET, speed);
         SetManualMask(0x08);
         Core.Services.EcGuard.NoteEngaged();
+        return true;
     }
 
     /// <summary>0xB20 读改写整段持锁, 防止双风扇路径并发丢位; 位已置则跳过写。</summary>

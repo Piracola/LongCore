@@ -10,6 +10,37 @@ public class JiaoLongConfig
     public GpuSection Gpu { get; set; } = new();
     public FanSection Fan { get; set; } = new();
     public SmuSection Smu { get; set; } = new();
+    public SafetySection Safety { get; set; } = new();
+}
+
+/// <summary>
+/// 硬件安全相关开关。详见 docs/08_硬件安全架构.md。
+/// 这些开关存在的意义: 安全阀值判断有误时, 用户可不重新编译就放行,
+/// 否则"安全机制"本身会变成故障源。
+/// </summary>
+public class SafetySection
+{
+    [ConfigComment("硬件写入闸门: 校验命令白名单/取值范围/写入频率。误拦截时置 false 紧急放行(仅保留日志)")]
+    public bool WriteGateEnabled { get; set; } = true;
+
+    [ConfigComment("过温看门狗: CPU 达到触发温度并持续指定秒数时强制风扇最大转速, 回落后交还 EC 自动温控。建议保持开启")]
+    public bool ThermalWatchdogEnabled { get; set; } = true;
+
+    [ConfigComment("过温看门狗触发温度 (℃)")]
+    [ConfigRange(80, 105)]
+    public int ThermalWatchdogTempC { get; set; } = 98;
+
+    [ConfigComment("触发需持续的秒数 (避免瞬时尖峰误触发)")]
+    [ConfigRange(3, 60)]
+    public int ThermalWatchdogSustainS { get; set; } = 10;
+
+    [ConfigComment("释放温度 (℃): 回落到该值并持续释放秒数后, 交还 EC 自动温控")]
+    [ConfigRange(60, 100)]
+    public int ThermalWatchdogReleaseC { get; set; } = 92;
+
+    [ConfigComment("释放需持续的秒数")]
+    [ConfigRange(5, 300)]
+    public int ThermalWatchdogReleaseS { get; set; } = 30;
 }
 
 public class AppSection
@@ -38,7 +69,7 @@ public class AppSection
     [ConfigComment("切换性能模式时联动 Windows 电源计划(powercfg): 静音→节电 平衡→平衡 高性能→高性能")]
     public bool SyncWindowsPowerPlan { get; set; } = true;
 
-    [ConfigComment("接管 Fn 性能模式热键(HID_EVENT20 事件15): 循环 高性能→平衡→静音 并显示 OSD")]
+    [ConfigComment("接管 Fn 性能模式热键(HID_EVENT20 事件15): 镜像固件已切换的档位并显示 OSD")]
     public bool HotkeyEnabled { get; set; } = true;
 }
 
@@ -126,7 +157,10 @@ public class FanSection
     [ConfigComment("合并CPU/GPU风扇曲线")]
     public bool FanCurveMerge { get; set; }
 
+    // 下限 1500 RPM: 手动模式下转速 0 会让风扇停转并绕开 EC 温控(唯一现实的硬件损伤路径),
+    // 后端 Blding64 护栏亦硬性拒绝 0。上限 5800 RPM = 官方 fastestMode_FanSpeed_MaxValue(58×100)。
     [ConfigComment("手动风扇转速 (RPM)")]
+    [ConfigRange(1500, 6800)]
     public int ManualFanSpeed { get; set; } = 1500;
 
     public List<FanPoint> CpuFanCurve { get; set; } = new()
@@ -208,6 +242,10 @@ public class SmuSection
     [ConfigComment("超频电压 (mV)")]
     public int OcVolt { get; set; }
 
-    [ConfigComment("Curve Optimizer All (负值为降压)")]
+    // Curve Optimizer 全核偏移。负=降压(降压过度只会不稳/卡顿/开不了机, 不伤硬件);
+    // 正=加压, 在散热与功耗受限的笔记本上无收益, 却会推高发热与电迁移风险, 故禁正偏移。
+    // -30 取 AMD 常见下限; -25 以下应在 UI 另行警示。后端 RyzenSmuController 亦硬性拒绝越界。
+    [ConfigComment("Curve Optimizer All (负值为降压, 范围 -30~0)")]
+    [ConfigRange(-30, 0)]
     public int CurveOptimizerAll { get; set; }
 }

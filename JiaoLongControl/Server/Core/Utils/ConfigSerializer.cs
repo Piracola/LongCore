@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using JiaoLongControl.Server.Core.Models;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
@@ -40,30 +41,131 @@ public static class ConfigSerializer
 
     public static JiaoLongConfig Load()
     {
-        if (!File.Exists(ConfigPath))
-            return new JiaoLongConfig();
+        JiaoLongConfig config;
 
-        try
+        if (!File.Exists(ConfigPath))
         {
-            var yaml = File.ReadAllText(ConfigPath);
-            return Deserializer.Deserialize<JiaoLongConfig>(yaml);
+            config = new JiaoLongConfig();
         }
-        catch (Exception)
+        else
         {
-            if (File.Exists(BackupPath))
+            try
             {
-                try
+                var yaml = File.ReadAllText(ConfigPath);
+                config = Deserializer.Deserialize<JiaoLongConfig>(yaml);
+            }
+            catch (Exception)
+            {
+                config = null!;
+                if (File.Exists(BackupPath))
                 {
-                    var yaml = File.ReadAllText(BackupPath);
-                    return Deserializer.Deserialize<JiaoLongConfig>(yaml);
+                    try
+                    {
+                        var yaml = File.ReadAllText(BackupPath);
+                        config = Deserializer.Deserialize<JiaoLongConfig>(yaml);
+                    }
+                    catch
+                    {
+                        // 原始文件和备份文件均读取失败
+                    }
                 }
-                catch
+
+                config ??= new JiaoLongConfig();
+            }
+        }
+
+        // [ConfigRange] 此前只用于生成 YAML 注释, 从未校验 —— 手改配置即可让越界值直达硬件。
+        // 闸门(HwWriteGate)是最后一道防线, 这里再加一道: 载入即收敛到声明范围内。
+        EnforceRanges(config);
+        return config;
+    }
+
+    private static readonly log4net.ILog RangeLog =
+        log4net.LogManager.GetLogger(typeof(ConfigSerializer));
+
+    /// <summary>
+    /// 递归收敛配置中的越界数值到 [ConfigRange] 声明范围。
+    /// 只对带该属性的数值属性生效; 嵌套配置节最多下探 <see cref="MaxDepth"/> 层。
+    /// </summary>
+    private const int MaxDepth = 4;
+
+    private static void EnforceRanges(object? node, string path = "", int depth = 0)
+    {
+        if (node == null || depth > MaxDepth)
+            return;
+
+        foreach (var prop in node.GetType().GetProperties())
+        {
+            if (!prop.CanRead || prop.GetIndexParameters().Length > 0)
+                continue;
+
+            var name = path.Length == 0 ? prop.Name : $"{path}.{prop.Name}";
+            object? value;
+            try { value = prop.GetValue(node); }
+            catch { continue; }
+
+            if (value == null)
+                continue;
+
+            var range = prop.GetCustomAttribute<ConfigRangeAttribute>();
+            if (range != null)
+            {
+                // 与写入闸门不同: 这里是"收敛"而非"拒绝"。
+                // 启动阶段拒绝配置会导致功能整体不可用, 收敛到边界值更稳妥, 并留痕。
+                if (TryClampNumber(value, range.Min, range.Max, out var clamped) &&
+                    !Equals(clamped, value))
                 {
-                    // 原始文件和备份文件均读取失败
+                    RangeLog.Warn($"配置越界已收敛: {name} {value} → {clamped} (范围 {range.Min}~{range.Max})");
+                    if (prop.CanWrite)
+                    {
+                        try { prop.SetValue(node, clamped); } catch { /* 只读属性忽略 */ }
+                    }
                 }
+                continue;
             }
 
-            return new JiaoLongConfig();
+            // 下探嵌套配置节(跳过字符串/值类型/集合)
+            var t = prop.PropertyType;
+            if (t.IsPrimitive || t.IsEnum || t == typeof(string) || t.IsValueType)
+                continue;
+            if (typeof(System.Collections.IEnumerable).IsAssignableFrom(t))
+                continue;
+
+            EnforceRanges(value, name, depth + 1);
+        }
+    }
+
+    private static bool TryClampNumber(object value, double min, double max, out object? result)
+    {
+        result = value;
+        switch (value)
+        {
+            case int i:
+                result = (int)Math.Clamp(i, (int)min, (int)max);
+                return true;
+            case long l:
+                result = (long)Math.Clamp(l, (long)min, (long)max);
+                return true;
+            case double d:
+                result = Math.Clamp(d, min, max);
+                return true;
+            case float f:
+                result = (float)Math.Clamp(f, (float)min, (float)max);
+                return true;
+            case byte b:
+                result = (byte)Math.Clamp((int)b, (int)min, (int)max);
+                return true;
+            case short s:
+                result = (short)Math.Clamp((int)s, (int)min, (int)max);
+                return true;
+            case ushort us:
+                result = (ushort)Math.Clamp((int)us, (int)min, (int)max);
+                return true;
+            case uint ui:
+                result = (uint)Math.Clamp((long)ui, (long)min, (long)max);
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -102,6 +204,10 @@ public static class ConfigSerializer
         {
             Update(existing, version);
         }
+
+        // 逃生舱: 把用户对硬件写入闸门的取舍告知闸门。
+        // 这一行不能省 —— 否则安全机制判断有误时, 用户只能重新编译才能绕过。
+        Core.Services.HwWriteGate.Configure(existing.Safety?.WriteGateEnabled ?? true);
     }
 
     public static void Update(JiaoLongConfig LowConfig, string version)

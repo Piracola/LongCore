@@ -23,8 +23,11 @@ public class AutoFanControl : IDisposable
     private const int IntervalMs = 1000;
     
     private const int RPM_UNIT_DIVISOR = 100; // 1 unit = 100 RPM
-    private const int MAX_FAN_BYTE = 68;      // 68 * 100 = 6800 RPM
-    private const int MIN_FAN_BYTE = 0;       // 0 RPM
+    private const int MAX_FAN_BYTE = 58;      // 58 * 100 = 5800 RPM (官方 fastestMode 上限)
+    // 下限不再是 0: 手动模式下风扇停转会绕开 EC 自身温控, Blding64 护栏会硬性拒绝 0,
+    // 曲线若算出 0 只会静默失败。统一以 1500 RPM 为全应用手动转速下限
+    // (与默认曲线最低点、配置 ManualFanSpeed 默认值一致)。
+    private const int MIN_FAN_BYTE = 15;       // 15 * 100 = 1500 RPM
     
     private const float AlphaUp = 0.35f;   
     private const float AlphaDown = 0.05f; 
