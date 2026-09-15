@@ -9,7 +9,8 @@ namespace JiaoLongControl.Server.Core.Controllers;
 
 /// <summary>
 /// Fn 热键监听: 订阅 root\WMI 的 HID_EVENT20 事件(协议见 docs/02_协议手册.md §7)。
-/// 当前仅接管"性能模式切换"键(事件 15): 循环 高性能→平衡→静音 并弹 OSD;
+/// 当前仅接管"性能模式切换"键(事件 15): 固件自行完成档位切换并把目标档位放在 EventDetail[2],
+/// 本类只做镜像(弹 OSD + 通知前端), 绝不回写档位 —— 详见 MirrorPerformanceMode。
 /// 其余 Fn 键不拦截, 保持固件默认行为。
 /// 配置开关 App.HotkeyEnabled(默认开)。
 /// </summary>
@@ -26,6 +27,11 @@ public class HotkeyController : IDisposable
     private ManagementEventWatcher? _watcher;
     private volatile bool _running;
     private readonly object _startLock = new();
+
+    // 热键事件去重: 同一次按键可能被 WMI 重复投递, 同一档位窗口内只处理一次
+    private const int MirrorDedupMs = 400;
+    private byte _lastMirrorMode = 0xFF;
+    private DateTime _lastMirrorUtc = DateTime.MinValue;
 
     public CommandResult IsRunning()
     {
@@ -94,14 +100,16 @@ public class HotkeyController : IDisposable
                 return;
 
             byte name = detail[1];
-            // detail[2] 为数值(亮度档位等), 当前接管的事件均不需要
             if (name != EventPerformanceModeKey)
                 return; // 其余 Fn 键保持固件默认行为
 
             if (!IsHotkeyEnabled())
                 return;
 
-            CyclePerformanceMode();
+            // detail[2] = 固件已经切换到的目标档位。
+            // 协议事实(见 decompiled/main.cs:2177 官方实现): 按热键时固件"自己"就把档位切好了,
+            // 事件只是把结果回传。客户端必须只镜像该值。
+            MirrorPerformanceMode(detail[2]);
         }
         catch (Exception ex)
         {
@@ -122,45 +130,45 @@ public class HotkeyController : IDisposable
     }
 
     /// <summary>
-    /// 标准三档循环: 高性能(1) → 平衡(0) → 静音(2) → 高性能。
-    /// 当前处于自定义(3)时, 从高性能重新开始循环。
+    /// 镜像固件已完成的档位切换 —— 只更新本进程的表现层, 绝不回写 EC 档位。
+    ///
+    /// 为什么不能回写: 档位由固件持有, 每次档位变化固件都会抛出 HID_EVENT20 事件 15。
+    /// 旧实现收到事件后调用 PerformanceMode.Set(next) 去写命令 8, 该写入又让固件再抛一次事件,
+    /// 于是形成 事件 → Set → 事件 的自激循环 —— 这就是"按一次连切十几次"的恶性 bug 根因。
+    ///
+    /// 旧实现还完全忽略了 detail[2] 携带的目标档位(自行从当前档推算下一档),
+    /// 而官方实现正是以该值为准(见 decompiled/main.cs:2177)。
     /// </summary>
-    private void CyclePerformanceMode()
+    /// <param name="mode">事件 detail[2] 携带的目标档位(命令 8 语义: 0 平衡 / 1 高性能 / 2 静音)。</param>
+    private void MirrorPerformanceMode(byte mode)
     {
-        var order = new[]
+        // 命令 8 只有三档; 3=自定义 是本项目的本地逻辑态, 固件不会回传
+        if (mode != (byte)SystemPerMode.BalanceMode &&
+            mode != (byte)SystemPerMode.PerformanceMode &&
+            mode != (byte)SystemPerMode.QuietMode)
         {
-            SystemPerMode.PerformanceMode,
-            SystemPerMode.BalanceMode,
-            SystemPerMode.QuietMode,
-        };
-
-        byte current;
-        try
-        {
-            var res = Bridge.Instance.PerformanceMode.Get();
-            current = res.Success && res.Data is SystemPerMode m
-                ? (byte)m
-                : (byte)SystemPerMode.PerformanceMode;
-        }
-        catch
-        {
-            current = (byte)SystemPerMode.PerformanceMode;
+            Logger.Warn($"热键事件携带未知档位 {mode}, 已忽略");
+            return;
         }
 
-        // 自定义/未知档 → IndexOf = -1 → +1 = 0 → 归位高性能
-        var idx = Array.IndexOf(order, (SystemPerMode)current);
-        var next = order[(idx + 1) % order.Length];
+        // 去重: 同一次按键可能被 WMI 重复投递, 同一档位窗口内只处理一次, 避免 OSD 闪烁
+        var now = DateTime.UtcNow;
+        if (mode == _lastMirrorMode && (now - _lastMirrorUtc).TotalMilliseconds < MirrorDedupMs)
+            return;
+        _lastMirrorMode = mode;
+        _lastMirrorUtc = now;
 
-        var setRes = Bridge.Instance.PerformanceMode.Set(next);
-        Logger.Info($"热键切换性能模式: {current} → {next} ({(setRes.Success ? "成功" : setRes.Message)})");
+        var target = (SystemPerMode)mode;
 
-        if (setRes.Success)
-        {
-            ShowOsd(ModeName(next));
-            // 通知前端同步模式胶囊(浏览器直连无 WebView 时静默跳过)
-            Bridge.Instance.NotifyWeb(
-                "{\"type\":\"mode-changed\",\"mode\":" + (byte)next + "}");
-        }
+        // 收敛自定义功耗子状态(只写命令 23, 不写命令 8 —— 见方法注释)并联动 Windows 电源计划
+        Bridge.Instance.PerformanceMode.ApplyMirrored(target);
+
+        ShowOsd(ModeName(target));
+        // 通知前端同步模式胶囊(浏览器直连无 WebView 时静默跳过)
+        Bridge.Instance.NotifyWeb(
+            "{\"type\":\"mode-changed\",\"mode\":" + mode + "}");
+
+        Logger.Info($"热键镜像性能模式: → {target}");
     }
 
     private static string ModeName(SystemPerMode mode) => mode switch

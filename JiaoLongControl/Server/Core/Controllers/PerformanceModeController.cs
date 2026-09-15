@@ -58,6 +58,32 @@ namespace JiaoLongControl.Server.Core.Controllers
             return new CommandResult(res, res ? "设置成功" : "设置失败");
         }
 
+        /// <summary>
+        /// 镜像固件已完成的档位切换(供 Fn 热键使用)。
+        ///
+        /// 与 <see cref="Set"/> 的关键区别: <b>不写命令 8</b>。
+        /// 固件在档位变化时会抛出 HID_EVENT20 事件 15; 若在事件处理里再写命令 8,
+        /// 就会触发下一次事件, 形成 事件 → Set → 事件 的自激循环(按一次连切十几次)。
+        /// 因此这里只做两件安全的事: 收敛自定义功耗子状态(命令 23) + 联动 Windows 电源计划。
+        /// </summary>
+        public void ApplyMirrored(SystemPerMode mode)
+        {
+            try
+            {
+                // 自定义功耗子状态会覆盖标准档的 SPL/SPPT 语义, 镜像到标准档时关闭它。
+                // 命令 23 不会触发事件 15(官方也在同一事件处理里写命令 23, 见 decompiled/main.cs:2182), 故安全。
+                var custom = MethodServices.GetValue<CPUPower>(MethodName.CPUPower);
+                if (custom == CPUPower.OpenState)
+                    MethodServices.SetValue(MethodName.CPUPower, CPUPower.CloseState);
+            }
+            catch
+            {
+                // 子状态收敛失败不阻塞镜像
+            }
+
+            SyncPowerPlan(mode);
+        }
+
         private static void SyncPowerPlan(SystemPerMode mode)
         {
             try
