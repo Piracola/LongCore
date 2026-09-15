@@ -34,6 +34,7 @@ desktop.ini
 # ===== 工作区内部目录 =====
 .workbuddy/
 .commandcode/
+.nuget-packages/
 
 # ===== LongCore 应用仓库（独立 git 仓库，不入库；见 docs/04_上游审计.md）=====
 /LongCore/
