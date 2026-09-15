@@ -6,9 +6,10 @@ defineProps<{
 </script>
 
 <template>
-  <div
-    class="glass-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 hover:border-cyber-purple/30 hover:shadow-[0_0_20px_rgba(138,43,226,0.15)] bg-cyber-card/40"
-  >
+  <!-- 容器本身不是可点元素, 因此对 hover 完全无响应:
+   * 原有 hover:border/hover:shadow 会暗示"可点"= 误导, 且是紫辉光(AI 味)。
+   * 也去掉 transition-all(无界属性动画)。 -->
+  <div class="glass-card p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-cyber-card/40">
     <div class="space-y-1">
       <h3 class="text-[15px] font-semibold text-ink tracking-wide flex items-center gap-2">
         {{ title }}

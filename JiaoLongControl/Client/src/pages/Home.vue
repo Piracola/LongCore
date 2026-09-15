@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue'
+import { computed, markRaw, onMounted, onUnmounted, ref, watch } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -8,6 +8,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import { PerformanceMode, SystemInfo, SystemPerMode, CPU } from '@/utils/bridge'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
+import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
 import { storeToRefs } from 'pinia'
 import { Cpu, Fan, MonitorCog, Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
 import CoreMonitoringComp from './Home/CoreMonitoring.vue'
@@ -17,6 +18,18 @@ use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent
 
 const systemInfoStore = useSystemInfoStore()
 const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
+
+// 温度语义档位: 在顶层统一判定并带滞回, 供状态条胶囊与监控环共用。
+// 放在顶层是为了保证"同屏同色"——两处各自判定会在阈值附近出现颜色不一致;
+// 带滞回则避免温度在 70/80/90 附近抖动时底色持续闪烁。
+const cpuTempLevel = ref<TempLevel>(tempLevel(cpuTemp.value))
+const gpuTempLevel = ref<TempLevel>(tempLevel(gpuTemp.value))
+watch(cpuTemp, (t) => {
+  cpuTempLevel.value = tempLevelHys(t, cpuTempLevel.value)
+})
+watch(gpuTemp, (t) => {
+  gpuTempLevel.value = tempLevelHys(t, gpuTempLevel.value)
+})
 
 // 命名与枚举一一对应(SystemPerMode 已对齐后端 SysEnums, 见 bridge.ts 注释)
 // 隐喻约定: 高性能=Zap, 平衡=Scale, 静音=Volume1, 自定义=SlidersHorizontal
@@ -200,6 +213,10 @@ onUnmounted(() => {
 
 // 2. 温度曲线 - 折线图
 const lineChartOption = computed(() => ({
+  // 折线每 2s 推入一个点。保留 ECharts 默认入场/更新补间会让曲线永远处于
+  // "追赶"状态; 实时折线必须数据驱动、瞬时重绘。
+  animation: false,
+  animationDurationUpdate: 0,
   grid: { top: 30, bottom: 20, left: 35, right: 10 },
   legend: {
     data: ['CPU', 'GPU'],
@@ -255,6 +272,8 @@ const lineChartOption = computed(() => ({
     <StatusBannerComp
       :cpu-temp="cpuTemp"
       :gpu-temp="gpuTemp"
+      :cpu-temp-level="cpuTempLevel"
+      :gpu-temp-level="gpuTempLevel"
       :modes="performanceModes"
       @change-mode="setMode"
     />
@@ -266,6 +285,8 @@ const lineChartOption = computed(() => ({
         :gpu-usage="gpuUsage"
         :cpu-temp="cpuTemp"
         :gpu-temp="gpuTemp"
+        :cpu-temp-level="cpuTempLevel"
+        :gpu-temp-level="gpuTempLevel"
       />
     </div>
 
@@ -330,11 +351,8 @@ const lineChartOption = computed(() => ({
           <div
             class="badge-neutral w-12 h-12 rounded-full flex items-center justify-center overflow-hidden"
           >
-            <Fan
-              class="w-7 h-7 icon-tint-blue-bright animate-spin"
-              style="animation-duration: 3s"
-              :stroke-width="1.75"
-            />
+            <!-- 风扇图标保持静态: 原为 animate-spin 3s 无限旋转, 属纯装饰动效 -->
+            <Fan class="w-7 h-7 icon-tint-blue-bright" :stroke-width="1.75" />
           </div>
           <div>
             <div class="flex items-baseline gap-1">

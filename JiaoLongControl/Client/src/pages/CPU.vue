@@ -71,23 +71,36 @@ function selectProfile(profile: string) {
 async function handleApplyAll() {
   if (!CPUData.value || !activeProfile.value) return
   loading.value = true
+  let smuWarning: string | null = null
   try {
-    // 1. 设置长时功耗限制 (PL1)
+    // 0. 必须先打开自定义功耗子状态(命令 23 = OpenState), 再下发 SPL/SPPT/温度墙。
+    //    协议要求: 只有 CPUPower=OpenState 时这三个值才会被 EC 接受并生效,
+    //    官方把三个写入严格包在 if (m == OpenState) 内(decompiled/main.cs:2386 SetSP_CustomMode)。
+    //    注意 PerformanceMode.Set 切换标准档时会写 CloseState, 之后这三个写入会全部失效,
+    //    所以这里必须无条件先开 —— 四个档位一视同仁, 否则非自定义档必然失败。
+    //    代价: 应用后首页胶囊会呈现"自定义"(功耗值确实已是自定义值, 属诚实反馈)。
+    const customRes = await CPU.SetCustomMode(true)
+    if (!customRes.Success) {
+      Message.error(customRes.Message || '进入自定义功耗模式失败')
+      return
+    }
+
+    // 1. 设置温度墙 (官方顺序: OpenState → 温度墙(4) → SPL(2) → SPPT(3))
+    const tempWallRes = await CPU.SetCPUTempWall(activeProfile.value.CpuTempWall)
+    if (!tempWallRes.Success) {
+      Message.error(tempWallRes.Message || '温度墙设置失败')
+      return
+    }
+    // 2. 设置长时功耗限制 SPL (PL1)
     const longPowerRes = await CPU.SetCpuLongPower(activeProfile.value.CpuLongPower)
     if (!longPowerRes.Success) {
       Message.error(longPowerRes.Message || '长时功耗限制设置失败')
       return
     }
-    // 2. 设置短时功耗限制 (PL2)
+    // 3. 设置短时功耗限制 SPPT (PL2)
     const shortPowerRes = await CPU.SetCpuShortPower(activeProfile.value.CpuShortPower)
     if (!shortPowerRes.Success) {
       Message.error(shortPowerRes.Message || '短时功耗限制设置失败')
-      return
-    }
-    // 3. 设置温度墙
-    const tempWallRes = await CPU.SetCPUTempWall(activeProfile.value.CpuTempWall)
-    if (!tempWallRes.Success) {
-      Message.error(tempWallRes.Message || '温度墙设置失败')
       return
     }
     // 4. 设置最大频率
@@ -111,20 +124,28 @@ async function handleApplyAll() {
       }
     }
     // 6. 设置核心电压偏移 (Curve Optimizer All)
-    if (configStore.config?.Smu) {
-      const curveRes = await RyzenSmu.SetCurveOptimizerAll(configStore.config.Smu.CurveOptimizerAll)
+    //    CO=0 的语义是"不偏移", 属无操作 —— 直接跳过。
+    //    这样可避免在未安装 PawnIO 内核驱动的机器上因驱动缺失而误报失败
+    //    (SMU 读写依赖 PawnIO, 是用户可选安装的组件)。
+    //    即便确有偏移要写而失败, 也不中止前面已生效的功耗/频率设置, 只做提示。
+    const coValue = configStore.config?.Smu?.CurveOptimizerAll ?? 0
+    if (coValue !== 0) {
+      const curveRes = await RyzenSmu.SetCurveOptimizerAll(coValue)
       if (!curveRes.Success) {
-        Message.error(curveRes.Message || '核心电压偏移设置失败')
-        return
+        smuWarning = curveRes.Message || '核心电压偏移设置失败'
       }
     }
 
     // 7. 保存主配置（含当前档位块参数与选中档位，供开机自启等使用）
     const saveRes = await configStore.saveConfig()
-    if (saveRes?.Success) {
-      Message.success('设置应用成功')
-    } else {
+    if (!saveRes?.Success) {
       Message.error(saveRes?.Message || '设置保存失败')
+      return
+    }
+    if (smuWarning) {
+      Message.warning(`功耗与频率设置已生效；核心电压偏移未应用：${smuWarning}`)
+    } else {
+      Message.success('设置应用成功')
     }
   } catch {
     Message.error('应用设置失败，请检查桥接服务。')
@@ -179,9 +200,9 @@ async function handleCancel() {
               v-for="p in profiles"
               :key="p.key"
               :class="[
-                'border rounded-xl p-4 cursor-pointer transition-all duration-300 flex flex-col justify-between h-[96px]',
+                'pf-card border rounded-xl p-4 cursor-pointer flex flex-col justify-between h-[96px]',
                 selectedProfile === p.key
-                  ? 'profile-active border-cyber-purple bg-panel-active shadow-[0_0_15px_rgba(138,43,226,0.25)]'
+                  ? 'profile-active border-cyber-purple bg-panel-active'
                   : 'border-ink/[0.05] bg-panel hover:border-ink/10',
               ]"
               @click="selectProfile(p.key)"
@@ -207,7 +228,7 @@ async function handleCancel() {
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >功耗限制 (PL1)
+                  >长时功耗限制 (PL1)
                   <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
                     >ⓘ</span
                   ></span
@@ -216,14 +237,14 @@ async function handleCancel() {
                   >{{ activeProfile.CpuLongPower }} W</span
                 >
               </div>
-              <a-slider v-model="activeProfile.CpuLongPower" :min="30" :max="255" class="w-full" />
+              <a-slider v-model="activeProfile.CpuLongPower" :min="30" :max="120" class="w-full" />
             </div>
 
             <!-- 长时功耗限制 (PL2) -->
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >长时功耗限制 (PL2)
+                  >短时功耗限制 (PL2)
                   <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
                     >ⓘ</span
                   ></span
@@ -232,7 +253,7 @@ async function handleCancel() {
                   >{{ activeProfile.CpuShortPower }} W</span
                 >
               </div>
-              <a-slider v-model="activeProfile.CpuShortPower" :min="30" :max="255" class="w-full" />
+              <a-slider v-model="activeProfile.CpuShortPower" :min="30" :max="150" class="w-full" />
             </div>
 
             <!-- 核心电压偏移 (Curve Optimizer) -->
@@ -251,8 +272,8 @@ async function handleCancel() {
               <a-slider
                 v-if="SmuData"
                 v-model="SmuData.CurveOptimizerAll"
-                :min="-50"
-                :max="50"
+                :min="-30"
+                :max="0"
                 class="w-full"
               />
             </div>
@@ -288,7 +309,7 @@ async function handleCancel() {
               </div>
               <a-slider
                 v-model="activeProfile.CpuMaxFrequency"
-                :min="1000"
+                :min="2000"
                 :max="5400"
                 :step="100"
                 class="w-full"
@@ -323,7 +344,7 @@ async function handleCancel() {
             </button>
             <button
               :disabled="loading"
-              class="text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)]"
+              class="tok-apply text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
               @click="handleApplyAll"
             >
               {{ loading ? '应用中...' : '应用' }}
@@ -380,9 +401,9 @@ async function handleCancel() {
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-cyber-purple"
+                  class="bar-fill h-full bg-cyber-purple"
                   :style="{
-                    width: `${Math.min(((cpuStats?.FrequencyMhz || 0) / (activeProfile.CpuMaxFrequency || 5000)) * 100, 100)}%`,
+                    transform: `scaleX(${Math.min((cpuStats?.FrequencyMhz || 0) / (activeProfile.CpuMaxFrequency || 5000), 1)})`,
                   }"
                 ></div>
               </div>
@@ -398,8 +419,8 @@ async function handleCancel() {
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-cyber-purple"
-                  :style="{ width: `${Math.min(((cpuStats?.Voltage || 0) / 1.5) * 100, 100)}%` }"
+                  class="bar-fill h-full bg-cyber-purple"
+                  :style="{ transform: `scaleX(${Math.min((cpuStats?.Voltage || 0) / 1.5, 1)})` }"
                 ></div>
               </div>
             </div>
@@ -412,8 +433,8 @@ async function handleCancel() {
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-[#3B82F6]"
-                  :style="{ width: `${cpuStats?.Usage || 0}%` }"
+                  class="bar-fill h-full bg-[#3B82F6]"
+                  :style="{ transform: `scaleX(${Math.min((cpuStats?.Usage || 0) / 100, 1)})` }"
                 ></div>
               </div>
             </div>
@@ -428,8 +449,10 @@ async function handleCancel() {
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
-                  class="h-full bg-cyber-purple"
-                  :style="{ width: `${Math.min(cpuStats?.Temperature || 0, 100)}%` }"
+                  class="bar-fill h-full bg-cyber-purple"
+                  :style="{
+                    transform: `scaleX(${Math.min((cpuStats?.Temperature || 0) / 100, 1)})`,
+                  }"
                 ></div>
               </div>
             </div>
@@ -533,5 +556,28 @@ async function handleCancel() {
   color: var(--color-text-main) !important;
   border-radius: 8px !important;
   height: 32px !important;
+}
+
+/* ===== 动效令牌驱动的局部过渡 (替代原 transition-all duration-300) ===== */
+/* 配置档卡片: 只过渡颜色/边框/底色(原 transition-all 无界) */
+.pf-card {
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+/* 应用按钮: 只过渡底色。原带 shadow-[0_0_15px_紫] 辉光, 按"去 AI 味"定案移除 */
+.tok-apply {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 四个实时条(频率/电压/使用率/温度):
+ * 用 transform:scaleX 而非 width —— width 是非合成属性, 会触发布局;
+ * 填充层自身不带 border-radius, 圆角由父层 rounded-full + overflow-hidden 裁剪,
+ * 因此 scaleX 不会把圆角拉伸变形。轮询周期 5s, 250ms 过渡占空比约 5%。 */
+.bar-fill {
+  transform-origin: left;
+  transition: transform var(--dur-slow) var(--ease-out);
 }
 </style>

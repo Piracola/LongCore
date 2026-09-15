@@ -92,10 +92,13 @@ async function handleRemoveFanClick() {
             </div>
 
             <!-- 自定义发光滑块 -->
+            <!-- 范围对齐 EC 规格: 单位 100RPM, 硬件上限 68(6800 RPM);
+                 下限 1500 RPM —— 手动模式下转速为 0 会让风扇停转并绕开 EC 温控,
+                 后端安全护栏也会硬性拒绝, 故此处不提供 0 档。 -->
             <a-slider
               v-model="FanPageStore.ManualFanSpeed"
-              :min="0"
-              :max="8000"
+              :min="1500"
+              :max="5800"
               :step="100"
               class="w-full"
             />
@@ -104,13 +107,13 @@ async function handleRemoveFanClick() {
             <div class="grid grid-cols-2 gap-4 mt-2">
               <button
                 :disabled="loading"
-                class="text-xs font-semibold text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)]"
+                class="tok-apply text-xs font-semibold text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 py-2.5 rounded-lg"
                 @click="handleClick"
               >
                 {{ loading ? '应用中...' : '应用设定' }}
               </button>
               <button
-                class="text-xs font-semibold text-gray-300 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] py-2.5 rounded-lg transition-all"
+                class="tok-btn text-xs font-semibold text-gray-300 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] py-2.5 rounded-lg"
                 @click="handleRemoveFanClick"
               >
                 移除限制
@@ -179,6 +182,20 @@ async function handleRemoveFanClick() {
 
 /* 高发光 Slider 拖拽钮及轨道重写 */
 
+
+/* ===== 动效令牌驱动的局部过渡 (替代原 transition-all) ===== */
+/* 应用按钮: 原带 shadow-[0_0_15px_紫] 辉光, 按"去 AI 味"定案移除 */
+.tok-apply {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 次要按钮: 只过渡底色/字色/边框 */
+.tok-btn {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
 
 /* 重构 Arco Modal 的深色磨砂遮罩及按钮样式 */
 :deep(.arco-modal) {

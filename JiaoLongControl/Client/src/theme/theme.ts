@@ -31,6 +31,30 @@ export const chartTheme = computed(() =>
 let mediaQuery: MediaQueryList | null = null
 let currentMode: ThemeMode = 'dark'
 
+// 主题切换过渡: 只在 <html> 根层做一次 background-color/color 过渡。
+// 严禁对子孙元素批量加 transition —— 那才是"全站级联闪烁"的来源。
+// 另一个坑: transition 若只设不撤, 会永久污染 <html> 的内联样式,
+// 因此过渡结束(或兜底超时)后必须清空。
+let themeTransitionTimer: number | null = null
+
+function runThemeTransition() {
+  const root = document.documentElement
+  root.style.transition = 'background-color var(--dur-fast) ease, color var(--dur-fast) ease'
+  // 强制一次样式重算, 确保 transition 属性已进入 before-change style
+  void root.offsetHeight
+  if (themeTransitionTimer !== null) window.clearTimeout(themeTransitionTimer)
+  const clear = () => {
+    root.style.transition = ''
+    if (themeTransitionTimer !== null) {
+      window.clearTimeout(themeTransitionTimer)
+      themeTransitionTimer = null
+    }
+  }
+  root.addEventListener('transitionend', clear, { once: true })
+  // 兜底: 若背景不参与过渡(如 Mica 接管窗口背景)导致 transitionend 不触发
+  themeTransitionTimer = window.setTimeout(clear, 300)
+}
+
 function readStoredTheme(): 'light' | 'dark' | null {
   try {
     const v = localStorage.getItem(THEME_STORAGE_KEY)
@@ -49,7 +73,8 @@ function resolve(mode: ThemeMode): 'light' | 'dark' {
   return systemPrefersDark() ? 'dark' : 'light'
 }
 
-function applyResolved(resolved: 'light' | 'dark') {
+function applyResolved(resolved: 'light' | 'dark', animated = false) {
+  if (animated) runThemeTransition()
   resolvedTheme.value = resolved
   document.documentElement.dataset.theme = resolved
   // Arco Design 组件(switch/select/modal 等)跟随主题: 暗色挂 arco-theme 属性,
@@ -68,12 +93,13 @@ function applyResolved(resolved: 'light' | 'dark') {
 
 function onSystemChange() {
   if (currentMode === 'system') {
-    applyResolved(resolve('system'))
+    applyResolved(resolve('system'), true)
   }
 }
 
 // 模块加载时先用缓存恢复一次(与 index.html 内联脚本设置的 data-theme 保持一致),
-// 无缓存时跟随系统深浅色; 保证 canvas 绘图等 JS 逻辑在首帧前就能拿到正确的主题
+// 无缓存时跟随系统深浅色; 保证 canvas 绘图等 JS 逻辑在首帧前就能拿到正确的主题。
+// 注意: 首帧恢复不加过渡(否则启动瞬间会看到一次整屏渐变)。
 applyResolved(readStoredTheme() ?? resolve('system'))
 
 export function applyTheme(mode: ThemeMode) {
@@ -83,7 +109,7 @@ export function applyTheme(mode: ThemeMode) {
     mediaQuery?.addEventListener('change', onSystemChange)
   }
   const resolved = resolve(mode)
-  applyResolved(resolved)
+  applyResolved(resolved, true)
   // 通知 WPF 侧同步窗口背景 / WebView2 底色(浏览器开发环境无 webview 时静默跳过)
   window.chrome?.webview?.postMessage(`theme-changed:${resolved}`)
 }

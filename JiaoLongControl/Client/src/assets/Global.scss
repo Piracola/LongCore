@@ -36,6 +36,16 @@
   --glow-purple-soft: rgba(180, 60, 255, 0.1);
   --glow-center: rgba(0, 80, 255, 0.15);
 
+  /* ===== 动效令牌 (Fluent 对齐, 仅此几档, 不得自造) ===== */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --dur-press: 120ms; /* 按压 / 焦点反馈 */
+  --dur-fast: 150ms; /* 短时态变: 主题 / 模式切换 / 菜单项 */
+  --dur-base: 200ms; /* 常态色变: 温度语义 */
+  --dur-slow: 250ms; /* 长尾上限, 不得再大 */
+
   /* Tailwind 默认灰阶的主题化取值(深色 = 原生灰阶, 零回归) */
   --jl-gray-200: #e5e7eb;
   --jl-gray-300: #d1d5db;
@@ -55,11 +65,13 @@
   --jl-emerald-400: #34d399;
   --jl-amber-400: #fbbf24;
 
-  /* 圆角令牌 */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  /* 圆角令牌 (Fluent 对齐: sm4 / md8 / lg8 / xl8, 卡片 8px)
+   * 注意: 本 :root 是无层(unlayered)声明, 层叠上优先于 Tailwind 的 @layer theme,
+   * 因此全站 rounded-* 工具类实际读取的就是这里的值, 改这一处即全站生效 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
   --radius-pill: 999px;
 
   /* 字阶令牌(4px 网格): 页面文字统一从此取阶, 不再随手写 px */
@@ -165,14 +177,15 @@ body[arco-theme='dark'] {
   box-sizing: border-box;
 }
 
-/* 桌面应用风格: 去除点击后按钮/链接获得的系统聚焦框 */
-button:focus,
-button:focus-visible,
-a:focus,
-a:focus-visible,
-[role='button']:focus,
-[role='button']:focus-visible {
+/* 桌面应用风格: 鼠标点击不显示焦点框, 键盘导航必须可见。
+ * 用 :where() 降特异度至 (0,1,0), 避免顶掉 Arco 组件自带的焦点样式 */
+:where(button, a, [role='button']):focus {
   outline: none;
+}
+
+:where(button, a, [role='button']):focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
 }
 
 html,
@@ -198,47 +211,11 @@ body {
   border-radius: 10px;
 }
 
-.glowing-card {
-  background: var(--color-card-bg);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-line-soft);
-  border-radius: 24px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-
-  &:hover {
-    border-color: rgba(138, 43, 226, 0.3);
-    box-shadow: 0 0 20px var(--color-glow-purple);
-    transform: translateY(-2px);
-  }
-}
-
-.active-glow {
-  border-color: var(--color-accent-purple) !important;
-  box-shadow: 0 0 15px var(--color-glow-purple);
-  background: rgba(138, 43, 226, 0.1) !important;
-}
-
-.cyber-button {
-  background: var(--color-overlay);
-  border: 1px solid var(--color-line-soft);
-  border-radius: 12px;
-  padding: 12px 24px;
-  color: var(--color-text-muted);
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    background: var(--color-overlay-strong);
-    color: var(--color-text-main);
-  }
-
-  &.active {
-    border-color: var(--color-accent-purple);
-    color: var(--color-text-main);
-    box-shadow: 0 0 10px var(--color-glow-purple);
-  }
-}
+/* 已移除的死代码 (全库模板引用数 = 0, 09-11 动效/去AI味改造清除):
+ *   .glowing-card   —— transition:all .3s + hover 上浮 translateY(-2px) + 紫辉光
+ *   .active-glow    —— 辉光边框 + 紫底
+ *   .cyber-button   —— transition:all .2s + 选中辉光
+ * 无消费者的样式不留; 将来需要请按令牌重建, 不要恢复原写法。 */
 
 /* 单色剪影图标: 遮罩填色机制(不依赖 filter 反转), 深色白剪影, 浅色黑剪影。
  * 配合 .icon-mask 基类与内联 mask-image 使用 */
@@ -341,4 +318,29 @@ body {
 
 [data-theme='light'] .badge-neutral {
   background: rgba(13, 14, 21, 0.05);
+}
+
+/* ============================================================
+ * 减弱动效: 保留 opacity / 颜色过渡, 关闭位移 / 脉冲 / hue 循环 / 拖拽跟随
+ * —— 「更轻」而非归零。无限动画全关, 但一次性加载反馈仍保留。
+ *
+ * 注意: 下面用 `*` + !important 收窄 transition-property 是钝器。
+ * 往核心交互里加 transform / width 过渡前, 请先确认不会被这里静默改行为。
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  /* 1. 关闭所有无限 / 装饰性动画(Suspense 加载圈豁免, 保留必要加载反馈) */
+  [class*='animate-']:not(.suspense-spinner),
+  .gradient-glow,
+  .status-dot {
+    animation: none !important;
+  }
+
+  /* 2. 仅保留 opacity / 颜色系过渡 */
+  *,
+  *::before,
+  *::after {
+    transition-property:
+      color, background-color, border-color, outline-color, opacity, fill !important;
+    scroll-behavior: auto !important;
+  }
 }

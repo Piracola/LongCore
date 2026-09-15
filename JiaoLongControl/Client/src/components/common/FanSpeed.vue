@@ -167,7 +167,7 @@ onUnmounted(() => {
     <!-- 图表顶栏标题 -->
     <div class="flex justify-between items-center select-none">
       <h2 class="text-[13px] font-semibold text-gray-300 flex items-center gap-1.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
         实时运行状态遥测
       </h2>
       <span class="text-[10px] text-gray-500 font-mono">{{ INTERVAL / 1000 }}s 采样间隔</span>

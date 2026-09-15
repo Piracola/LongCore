@@ -39,6 +39,12 @@ const toggleCards = [
     configPath: 'App.BootKeyboardGradient',
   },
   {
+    title: '过温看门狗',
+    description:
+      'CPU 温度达到 98℃ 并持续 10 秒时，强制风扇以最大转速（5800 RPM）运行；温度回落至 92℃ 并持续 30 秒后，自动交还 EC 温控。这是唯一会在紧急时刻覆盖你手动转速的保护，建议保持开启',
+    configPath: 'Safety.ThermalWatchdogEnabled',
+  },
+  {
     title: 'Fn 性能模式热键',
     description:
       '接管键盘上的性能模式切换 Fn 键：按下后循环 高性能 → 平衡 → 静音，并在屏幕上方显示 OSD 提示；关闭后保持该键的固件默认行为',

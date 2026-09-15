@@ -36,12 +36,8 @@ function select(mode: ThemeMode) {
         <button
           v-for="opt in options"
           :key="opt.value"
-          class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
-          :class="
-            current === opt.value
-              ? 'bg-cyber-purple text-white shadow-[0_0_10px_var(--color-glow-purple)]'
-              : 'text-muted hover:text-ink'
-          "
+          class="theme-opt px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+          :class="current === opt.value ? 'bg-cyber-purple text-white' : 'text-muted hover:text-ink'"
           @click="select(opt.value)"
         >
           {{ opt.label }}
@@ -51,4 +47,11 @@ function select(mode: ThemeMode) {
   </setting-card-component>
 </template>
 
-<style scoped></style>
+<style scoped lang="scss">
+/* 主题选项胶囊: 只过渡底色/字色, 取短档。选中态去辉光(原 shadow-[0_0_10px_紫])。 */
+.theme-opt {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+</style>

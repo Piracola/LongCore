@@ -157,7 +157,7 @@ function handleReset() {
               <span class="text-xs text-gray-400">颜色拾取器:</span>
               <a-color-picker v-model="colorPicker" size="mini" :disabled="gradientRunning">
                 <div
-                  class="w-6 h-6 rounded-md border border-ink/20 cursor-pointer shadow-sm transition-transform hover:scale-105"
+                  class="kb-scale w-6 h-6 rounded-md border border-ink/20 cursor-pointer shadow-sm"
                   :style="{ backgroundColor: colorPicker }"
                 ></div>
               </a-color-picker>
@@ -167,14 +167,16 @@ function handleReset() {
           <!-- 模拟键盘面板 -->
           <div class="w-full flex justify-center py-4">
             <div
-              class="relative w-full max-w-[640px] h-[190px] bg-[#12131e] rounded-xl p-3.5 border border-ink/10 overflow-hidden transition-all duration-300"
+              class="relative w-full max-w-[640px] h-[190px] bg-[#12131e] rounded-xl p-3.5 border border-ink/10 overflow-hidden"
               :style="{
                 boxShadow: `0 10px 30px rgba(0, 0, 0, 0.6), 0 0 ${LightBrightness * 12}px rgba(${color.red}, ${color.green}, ${color.blue}, ${LightBrightness * 0.25})`,
               }"
             >
-              <!-- 灯光溢出画幅 -->
+              <!-- 灯光溢出画幅: 全页唯一一处 hue-rotate 滤镜层。
+                   原实现同时在 52 个按键内层各挂一份 .gradient-glow, 共 53 层
+                   逐帧重算, 是掉帧源 —— 已收敛到这一层。 -->
               <div
-                class="absolute inset-0 pointer-events-none transition-all duration-300"
+                class="absolute inset-0 pointer-events-none"
                 :class="{ 'gradient-glow': gradientRunning }"
                 :style="{
                   background: `radial-gradient(circle at center, rgba(${color.red}, ${color.green}, ${color.blue}, ${LightBrightness * 0.2}) 0%, transparent 85%)`,
@@ -186,11 +188,12 @@ function handleReset() {
                 <div
                   v-for="i in 52"
                   :key="i"
-                  class="bg-[#1a1b2b]/90 border border-ink/[0.06] rounded flex items-center justify-center relative overflow-hidden transition-all duration-300"
+                  class="bg-[#1a1b2b]/90 border border-ink/[0.06] rounded flex items-center justify-center relative overflow-hidden"
                 >
+                  <!-- 亮度由滑块连续拖动产生: 连续值不得挂过渡,
+                       否则 52 个元素各自"追赶"指针 = 滞后 + 逐帧重绘 -->
                   <div
-                    class="absolute inset-0 opacity-40 blur-[3px] transition-all duration-300"
-                    :class="{ 'gradient-glow': gradientRunning }"
+                    class="absolute inset-0 opacity-40 blur-[3px]"
                     :style="{
                       backgroundColor: `rgb(${color.red}, ${color.green}, ${color.blue})`,
                       opacity: LightBrightness > 0 ? (LightBrightness / 3) * 0.6 : 0,
@@ -212,12 +215,12 @@ function handleReset() {
             <div
               v-for="preset in colorPresets"
               :key="preset.name"
-              class="border border-ink/[0.05] hover:border-ink/20 bg-panel hover:bg-panel-active rounded-xl p-3 cursor-pointer transition-all duration-300 flex flex-col items-center gap-2 group"
+              class="kb-preset border border-ink/[0.05] hover:border-ink/20 bg-panel hover:bg-panel-active rounded-xl p-3 cursor-pointer flex flex-col items-center gap-2 group"
               :class="{ 'opacity-40 pointer-events-none': gradientRunning }"
               @click="applyPreset(preset)"
             >
               <div
-                class="w-8 h-8 rounded-full border border-ink/20 shadow-md group-hover:scale-110 transition-transform"
+                class="kb-scale-group w-8 h-8 rounded-full border border-ink/20 shadow-md"
                 :style="{ backgroundColor: preset.hex, boxShadow: `0 0 10px ${preset.hex}66` }"
               ></div>
               <span class="text-xs text-gray-300 group-hover:text-ink font-medium">{{
@@ -243,7 +246,7 @@ function handleReset() {
               >
                 <span
                   class="w-1.5 h-1.5 rounded-full"
-                  :class="gradientRunning ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'"
+                  :class="gradientRunning ? 'bg-emerald-400' : 'bg-gray-600'"
                 ></span>
                 {{ gradientRunning ? '渐变色环循环中' : '未运行' }}
               </span>
@@ -333,7 +336,7 @@ function handleReset() {
 
           <button
             :disabled="loading || gradientRunning"
-            class="text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)]"
+            class="kb-apply text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
             @click="handleApply"
           >
             {{ loading ? '应用中...' : '应用' }}
@@ -349,7 +352,7 @@ function handleReset() {
         >
           <h2 class="text-[13px] font-semibold text-gray-300">当前配色方案</h2>
           <div
-            class="w-full h-24 rounded-xl border border-ink/10 flex flex-col justify-end p-3 transition-all duration-300 shadow-lg relative overflow-hidden"
+            class="kb-swatch w-full h-24 rounded-xl border border-ink/10 flex flex-col justify-end p-3 shadow-lg relative overflow-hidden"
             :style="{ backgroundColor: `rgb(${color.red}, ${color.green}, ${color.blue})` }"
           >
             <div class="absolute inset-0 bg-black/20 backdrop-blur-[1px]"></div>
@@ -431,5 +434,38 @@ function handleReset() {
 }
 .gradient-glow {
   animation: gradient-hue 12s linear infinite;
+}
+
+/* ===== 动效令牌驱动的局部过渡, 替代原先 6 处 transition-all duration-300 ===== */
+.kb-preset {
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.kb-apply {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+/* 当前配色色板: 只过渡底色(原 transition-all 会连带模糊/阴影一起动) */
+.kb-swatch {
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+
+/* hover 动效门禁: 无精确指针的设备(触屏)不响应 hover,
+ * 否则点击后悬停态会粘住不还原 */
+@media (hover: hover) and (pointer: fine) {
+  .kb-scale,
+  .kb-scale-group {
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+
+  .kb-scale:hover {
+    transform: scale(1.05);
+  }
+
+  .group:hover .kb-scale-group {
+    transform: scale(1.1);
+  }
 }
 </style>

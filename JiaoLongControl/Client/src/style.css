@@ -30,7 +30,7 @@
   --color-green-400: var(--jl-green-400);
   --color-emerald-400: var(--jl-emerald-400);
   --color-amber-400: var(--jl-amber-400);
-  --radius-cyber: 32px;
+  --radius-cyber: 8px;
 }
 
 @layer base {
@@ -59,9 +59,9 @@
 }
 
 @layer components {
-  /* 严格对标图中 32px 圆角的卡片 */
+  /* 卡片: Fluent 8px 圆角 (承接 --radius-lg, 见 Global.scss :root) */
   .glass-card {
-    @apply bg-cyber-card/60 backdrop-blur-3xl border border-ink/[0.04] rounded-[32px];
+    @apply bg-cyber-card/60 backdrop-blur-3xl border border-ink/[0.04] rounded-lg;
     box-shadow: 0 20px 50px var(--color-shadow-card);
   }
 

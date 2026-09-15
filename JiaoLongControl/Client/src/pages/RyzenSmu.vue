@@ -418,8 +418,8 @@ onUnmounted(() => {
                 <div class="flex items-center gap-4">
                   <a-slider
                     v-model="smuData.CurveOptimizerAll"
-                    :min="-100"
-                    :max="100"
+                    :min="-30"
+                    :max="0"
                     class="flex-1 slider-orange"
                   />
                   <a-button

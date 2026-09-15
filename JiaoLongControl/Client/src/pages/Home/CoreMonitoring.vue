@@ -6,7 +6,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { chartTheme } from '@/theme/theme'
-import { tempChartColor } from '@/utils/temperature'
+import { tempChartColorByLevel, type TempLevel } from '@/utils/temperature'
 
 use([CanvasRenderer, PieChart, GridComponent, TooltipComponent])
 
@@ -15,6 +15,9 @@ const props = defineProps<{
   gpuUsage: number
   cpuTemp: number
   gpuTemp: number
+  /** 语义档位由上层(Home.vue)统一判定并带滞回, 与状态条胶囊同源同色 */
+  cpuTempLevel: TempLevel
+  gpuTempLevel: TempLevel
 }>()
 
 const getRingOption = (
@@ -24,6 +27,10 @@ const getRingOption = (
   suffix: string = '%',
   labelColor?: string,
 ) => ({
+  // 监控环每 2–5s 刷新一次, 若保留 ECharts 默认入场/更新补间,
+  // 动画会永远处于"追赶"状态 —— 一律关闭, 数据瞬时到位。
+  animation: false,
+  animationDurationUpdate: 0,
   series: [
     {
       type: 'pie',
@@ -67,9 +74,11 @@ const getRingOption = (
 
 const cpuUsageOption = computed(() => getRingOption(props.cpuUsage || 0, '#3B82F6', '#8A2BE2'))
 const gpuUsageOption = computed(() => getRingOption(props.gpuUsage || 0, '#10B981', '#3B82F6'))
-// 温度环: 色随语义色阶(≤70 蓝 / 70-80 青 / 80-90 橙 / >90 红), 中心数值同色
-const cpuTempColor = computed(() => tempChartColor(props.cpuTemp || 0))
-const gpuTempColor = computed(() => tempChartColor(props.gpuTemp || 0))
+// 温度环: 色随语义色阶(≤70 蓝 / 70-80 青 / 80-90 橙 / >90 红), 中心数值同色。
+// 档位取自上层带滞回的判定结果, 与状态条胶囊共用同一色源 ——
+// 否则同一屏会出现"同温不同色"(环走 raw 阈值, 胶囊走滞回档位)。
+const cpuTempColor = computed(() => tempChartColorByLevel(props.cpuTempLevel))
+const gpuTempColor = computed(() => tempChartColorByLevel(props.gpuTempLevel))
 const cpuTempOption = computed(() =>
   getRingOption(
     props.cpuTemp || 0,

@@ -461,7 +461,7 @@ async function handleResetAdvanced() {
             </button>
             <button
               :disabled="loading"
-              class="text-xs font-medium text-ink bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)]"
+              class="tok-apply text-xs font-medium text-ink bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
               @click="handleApplyNormal"
             >
               {{ loading ? '应用中...' : '应用' }}
@@ -781,5 +781,10 @@ async function handleResetAdvanced() {
 
 :deep(.arco-switch-checked) {
   background-color: var(--color-accent-purple) !important;
+}
+
+/* 应用按钮: 只过渡底色。原带 shadow-[0_0_15px_紫] 辉光, 按"去 AI 味"定案移除 */
+.tok-apply {
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 </style>

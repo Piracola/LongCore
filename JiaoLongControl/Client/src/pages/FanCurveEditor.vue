@@ -22,7 +22,7 @@
                 <a-radio value="GPU">GPU 曲线</a-radio>
               </a-radio-group>
               <button
-                class="text-xs font-semibold text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-4 py-1.5 rounded-lg transition-all"
+                class="tok-btn text-xs font-semibold text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-4 py-1.5 rounded-lg"
                 @click="handleRemoveFanClick"
               >
                 移除转速设置
@@ -366,12 +366,12 @@ const {
       border-radius: 50%;
       background-color: #86909c;
       margin-right: 6px;
-      transition: all 0.3s;
+      transition: background-color var(--dur-fast) var(--ease-out);
 
+      /* 静态绿点即够: 颜色已经表达了运行状态。
+       * 原实现是 box-shadow 逐帧重绘的 2s 无限脉冲 —— 纯装饰且不可合成。 */
       &.active {
         background-color: #00b42a;
-        box-shadow: 0 0 6px #00b42a;
-        animation: pulse 2s infinite;
       }
     }
   }
@@ -383,18 +383,6 @@ const {
 
   .sub-info {
     color: color-mix(in srgb, var(--color-text-main) 40%, transparent);
-  }
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(0, 180, 42, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 4px rgba(0, 180, 42, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(0, 180, 42, 0);
   }
 }
 
@@ -432,7 +420,9 @@ const {
     cursor: pointer;
     font-size: 12px;
     color: color-mix(in srgb, var(--color-text-main) 80%, transparent);
-    transition: all 0.2s;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out);
 
     &:hover {
       background: rgba(138, 43, 226, 0.15);
@@ -459,7 +449,9 @@ const {
     border-radius: 6px !important;
     font-weight: 500 !important;
     font-size: 11px !important;
-    transition: all 0.3s !important;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out) !important;
     padding: 0 10px !important;
     height: 24px !important;
     line-height: 24px !important;
@@ -472,7 +464,6 @@ const {
     &.arco-radio-button-checked {
       background-color: var(--color-accent-purple) !important;
       color: #ffffff !important;
-      box-shadow: 0 0 10px rgba(138, 43, 226, 0.3) !important;
     }
   }
 }
@@ -519,5 +510,13 @@ const {
   .arco-modal-footer {
     border-t: 1px solid var(--color-line-soft) !important;
   }
+}
+
+/* ===== 动效令牌驱动的局部过渡 (替代原 transition-all) ===== */
+.tok-btn {
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
 }
 </style>

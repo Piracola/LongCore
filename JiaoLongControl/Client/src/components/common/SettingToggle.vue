@@ -14,6 +14,30 @@ const props = defineProps<{
 const configStore = useConfigStore()
 const loading = ref(false)
 
+/** 保存结果的一次性卡片提示(成功=强调蓝 / 失败=红), null = 无提示 */
+const flash = ref<'success' | 'error' | null>(null)
+let flashTimer: number | null = null
+
+function flashCard(state: 'success' | 'error') {
+  if (flashTimer !== null) window.clearTimeout(flashTimer)
+  flash.value = state
+  // 一次性提示的完整时序: 200ms 渐入 → 持有 400ms → 200ms 渐出, 合计约 800ms。
+  // 只触发一次, 不循环。
+  flashTimer = window.setTimeout(() => {
+    flash.value = null
+    flashTimer = null
+  }, 600)
+}
+
+// 用内联样式而非 CSS 类来给 border-color: 卡片根上的边框色来自 style.css 的
+// .glass-card(@layer components), 类选择器存在被同特异度规则覆盖、导致提示
+// 根本不显示的风险; 内联样式必然生效。
+const flashStyle = computed(() =>
+  flash.value === null
+    ? {}
+    : { borderColor: flash.value === 'success' ? 'var(--color-accent-blue)' : '#e11d48' },
+)
+
 onMounted(() => configStore.fetchConfig())
 
 function readValue(): boolean | undefined {
@@ -46,10 +70,14 @@ async function onChange(next: string | number | boolean) {
     if (!res?.Success) {
       writePath(prev)
       Message.error(res?.Message || '保存失败')
+      flashCard('error')
+    } else {
+      flashCard('success')
     }
   } catch (e) {
     writePath(prev)
     Message.error('保存失败')
+    flashCard('error')
     console.error(e)
   } finally {
     loading.value = false
@@ -58,7 +86,12 @@ async function onChange(next: string | number | boolean) {
 </script>
 
 <template>
-  <setting-card-component :title="title" :description="description">
+  <setting-card-component
+    :title="title"
+    :description="description"
+    class="save-flash"
+    :style="flashStyle"
+  >
     <template #extra>
       <a-switch :model-value="value" :loading="loading" @change="onChange($event)">
         <template #checked-icon>
@@ -71,3 +104,13 @@ async function onChange(next: string | number | boolean) {
     </template>
   </setting-card-component>
 </template>
+
+<style scoped lang="scss">
+/* 保存结果提示: 只过渡 border-color 的颜色成分。
+ * 不动 box-shadow 扩散半径 —— 那是逐帧重绘、且属已定案禁止的发光效果。
+ * 注: 全局 prefers-reduced-motion 块保留颜色类过渡(只关位移/脉冲/hue),
+ * 因此减弱动效下这里仍是 200ms 变色, 不会闪烁。 */
+.save-flash {
+  transition: border-color var(--dur-base) var(--ease-out);
+}
+</style>
