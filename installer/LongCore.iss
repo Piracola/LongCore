@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define MyAppName "LongCore"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "0.1.2"
 #define MyAppPublisher "Piracola"
 #define MyAppExeName "LongCore.exe"
 #define MyAppId "{{D4A7C921-6B3E-4F8A-9C1D-2E5B7A8F0C63}"
@@ -61,8 +61,12 @@ Filename: "{tmp}\windowsdesktop-runtime-8.0-win-x64.exe"; \
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; \
     Parameters: "/silent /install"; \
     StatusMsg: "安装 WebView2 Runtime..."; Flags: skipifdoesntexist runhidden; Check: not WebView2Installed
+; 主程序清单为 requireAdministrator(EC/WMI 需要管理员)。
+; postinstall 条目默认按 runasoriginaluser(降权到发起安装前的普通凭据)执行,
+; 此时 CreateProcess 会以 740(ERROR_ELEVATION_REQUIRED) 失败 —— 安装结束时勾选"运行"必然报错。
+; 必须显式 runascurrentuser: 继承安装器自身的(已提升)凭据, 既不报错也不会多弹一次 UAC。
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; \
-    Flags: nowait postinstall skipifsilent
+    Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
 // .NET 8 Desktop Runtime 检测: 共享框架版本表里存在 8.x 项即视为已安装
