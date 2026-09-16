@@ -8,6 +8,7 @@ import { useConfigStore } from '@/stores/config'
 import type { SmuSectionType } from '@/types/config'
 import { POLL_INTERVAL_SMU } from '@/constants'
 import { buildSparkline, type SparklineResult } from '@/utils/chart'
+import { writeGate } from '@/domain/writeGate'
 
 interface ConfigGroupItem {
   label: string
@@ -121,29 +122,16 @@ watch(
 )
 
 /**
- * 禁止写入 0 的 SMU 限制项。
- * 这些参数在真机上不存在「设为 0」的合法意图；而限制值在读取失败时会被渲染成 0
- * （configStore.config.Smu 全 0），直接下发即是把 0 W / 0 s / 0 mA 写进固件限制。
- * 此处是前端硬闸门；Server 侧写入闸门为第二道。
- * 豁免：CurveOptimizerAll（0 = 不偏移，合法）、OcClk / OcVolt（独立控件，不在本表）。
+ * 写入闸门收口（v4 §8.6）：ZERO_UNWRITABLE 已抽至 domain/writeGate.ts（单一前端闸门），
+ * 本页所有 setter 经 writeGate.smu() 校验；Server 侧 HwWriteGate 为第二道防线。
  */
-const ZERO_UNWRITABLE = new Set([
-  'StapmLimit',
-  'StapmTime',
-  'FastLimit',
-  'SlowLimit',
-  'SlowTime',
-  'PptLimitRsmu',
-  'VrmCurrentMp1',
-  'VrmCurrentRsmu',
-  'EdcLimitMp1',
-  'EdcLimitRsmu',
-  'TempLimitMp1',
-  'TempLimitRsmu',
-])
+
+function smuGate(itemKey: string, value: number | undefined) {
+  return writeGate.smu(itemKey, Number(value))
+}
 
 function isZeroBlocked(itemKey: string, value: number | undefined): boolean {
-  return ZERO_UNWRITABLE.has(itemKey) && (!Number.isFinite(value) || value === 0)
+  return !smuGate(itemKey, value).allowed
 }
 
 /** 把模板里的 loadingMap 键与 applySetting 的 methodName 对齐。
@@ -155,10 +143,12 @@ function setterKey(itemKey: string): string {
 
 const applySetting = async (methodName: keyof typeof RyzenSmu, ...args: number[]) => {
   const itemKey = String(methodName).replace(/^Set/, '')
-  if (ZERO_UNWRITABLE.has(itemKey)) {
-    const v = args[0]
-    if (!Number.isFinite(v) || v === 0) {
-      Message.warning('该值当前为 0（多为读取失败），已阻止写入。请先设定有效数值。')
+
+  // 统一写入闸门（v4 §8.6）：0 值拦截 + 前端一致性值域校验，拒绝原因直接展示
+  if (args.length === 1) {
+    const gate = smuGate(itemKey, args[0])
+    if (!gate.allowed) {
+      Message.warning(gate.reason || '该值已被写入闸门阻止')
       return
     }
   }
