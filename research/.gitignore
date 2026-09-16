@@ -1,19 +1,11 @@
-# ===== 厂商二进制与逆向中间产物（不可公开发布，不入库）=====
-/installed/
-/extract/
-/decompiled/
-/tools/
-*.exe
-*.dll
-*.nupkg
-*.zip
+# 研究层（research/）局部忽略
+#
+# 说明：原独立研究仓的 .gitignore 中，/installed /extract /decompiled /tools
+# 与 /LongCore/ 等规则指向的是"上层容器"或已被合并的旧嵌套仓，
+# 在合并进应用仓后这些路径都已不在本仓库内，故移除。
+# 仓库级规则见根目录 ../.gitignore。
 
-# 例外：probe/ 下的实测脚本与结果文本是第一手资料，保留
-!/probe/*.ps1
-!/probe/*.txt
-!/probe/*.md
-
-# ===== Python =====
+# ===== Python（src/jiaolongctl）=====
 __pycache__/
 *.py[cod]
 .venv/
@@ -22,19 +14,8 @@ venv/
 build/
 dist/
 
-# ===== Node / 前端（未来 UI 用）=====
-node_modules/
-
-# ===== 系统与编辑器 =====
+# ===== 探测缓存 =====
 .DS_Store
 Thumbs.db
 desktop.ini
 *.log
-
-# ===== 工作区内部目录 =====
-.workbuddy/
-.commandcode/
-.nuget-packages/
-
-# ===== LongCore 应用仓库（独立 git 仓库，不入库；见 docs/04_上游审计.md）=====
-/LongCore/
