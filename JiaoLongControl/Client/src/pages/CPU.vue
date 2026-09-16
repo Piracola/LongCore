@@ -13,6 +13,12 @@ const loading = ref(false)
 const configStore = useConfigStore()
 const systemInfoStore = useSystemInfoStore()
 
+// 四态读数裸值（v4 §7）：null = 该通道 error/unavailable，显示「—」；禁止回退 0
+const freqMhz = computed(() => systemInfoStore.cpuFreqValue)
+const voltV = computed(() => systemInfoStore.cpuVoltValue)
+const usagePct = computed(() => systemInfoStore.cpuUsageValue)
+const tempC = computed(() => systemInfoStore.cpuTempValue)
+
 if (!configStore.config) {
   await configStore.fetchConfig()
 }
@@ -26,7 +32,7 @@ if (infoResult.Success) {
 // 使用 computed 来简化对配置项的访问，并确保响应。
 const CPUData = computed(() => configStore.config?.Cpu)
 const SmuData = computed(() => configStore.config?.Smu)
-const cpuStats = computed(() => systemInfoStore.cpuStats)
+
 
 // 页面内部交互状。
 const selectedProfile = ref('default')
@@ -404,7 +410,7 @@ async function handleCancel() {
                 <span class="text-gray-400">频率</span>
                 <span class="text-ink font-mono font-medium"
                   >{{
-                    cpuStats?.FrequencyMhz ? (cpuStats.FrequencyMhz / 1000).toFixed(2) : '0.00'
+                    freqMhz !== null ? (freqMhz / 1000).toFixed(2) : '—'
                   }}
                   GHz</span
                 >
@@ -413,7 +419,7 @@ async function handleCancel() {
                 <div
                   class="bar-fill h-full bg-cyber-purple"
                   :style="{
-                    transform: `scaleX(${Math.min((cpuStats?.FrequencyMhz || 0) / (activeProfile.CpuMaxFrequency || 5000), 1)})`,
+                    transform: `scaleX(${Math.min((freqMhz || 0) / (activeProfile.CpuMaxFrequency || 5000), 1)})`,
                   }"
                 ></div>
               </div>
@@ -424,13 +430,13 @@ async function handleCancel() {
               <div class="flex justify-between text-[11px]">
                 <span class="text-gray-400">电压</span>
                 <span class="text-ink font-mono font-medium"
-                  >{{ cpuStats?.Voltage ? cpuStats.Voltage.toFixed(3) : '0.000' }} V</span
+                  >{{ voltV !== null ? voltV.toFixed(3) : '—' }} V</span
                 >
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
                   class="bar-fill h-full bg-cyber-purple"
-                  :style="{ transform: `scaleX(${Math.min((cpuStats?.Voltage || 0) / 1.5, 1)})` }"
+                  :style="{ transform: `scaleX(${Math.min((voltV || 0) / 1.5, 1)})` }"
                 ></div>
               </div>
             </div>
@@ -439,12 +445,14 @@ async function handleCancel() {
             <div class="space-y-1.5">
               <div class="flex justify-between text-[11px]">
                 <span class="text-muted">使用率</span>
-                <span class="text-ink font-mono font-medium">{{ cpuStats?.Usage || 0 }} %</span>
+                <span class="text-ink font-mono font-medium"
+                  >{{ usagePct !== null ? `${usagePct} %` : '—' }}</span
+                >
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
                   class="bar-fill h-full bg-accent"
-                  :style="{ transform: `scaleX(${Math.min((cpuStats?.Usage || 0) / 100, 1)})` }"
+                  :style="{ transform: `scaleX(${Math.min((usagePct || 0) / 100, 1)})` }"
                 ></div>
               </div>
             </div>
@@ -454,14 +462,14 @@ async function handleCancel() {
               <div class="flex justify-between text-[11px]">
                 <span class="text-gray-400">温度</span>
                 <span class="text-ink font-mono font-medium"
-                  >{{ cpuStats?.Temperature || 0 }} °C</span
+                  >{{ tempC !== null ? `${tempC} °C` : '—' }}</span
                 >
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
                   class="bar-fill h-full bg-cyber-purple"
                   :style="{
-                    transform: `scaleX(${Math.min((cpuStats?.Temperature || 0) / 100, 1)})`,
+                    transform: `scaleX(${Math.min((tempC || 0) / 100, 1)})`,
                   }"
                 ></div>
               </div>

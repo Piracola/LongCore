@@ -26,6 +26,14 @@ const {
   gpuTemp,
   gpuFanSpeed,
 } = storeToRefs(systemInfoStore)
+// 四态读数（v4 §7）：null = 该通道不可显示（error/unavailable），渲染「—」，禁止回退 0
+const num = (v: Ref<number | null>) => computed(() => v.value ?? 0)
+const gpuUtilNum = num(gpuUtilization)
+const gpuMemUtilNum = num(gpuMemoryUtilization)
+const gpuCoreClkNum = num(gpuCoreClock)
+const gpuMemClkNum = num(gpuMemoryClock)
+const gpuTempNum = num(gpuTemp)
+const gpuFanNum = num(gpuFanSpeed)
 const loading = ref(false)
 const showAdvanced = ref(false)
 
@@ -52,20 +60,20 @@ const updateHistory = (history: Ref<number[]>, value: number, divisor = 1) => {
 let unwatch: (() => void) | null = null
 
 onMounted(() => {
-  updateHistory(utilHistory, gpuUtilization.value)
-  updateHistory(memUtilHistory, gpuMemoryUtilization.value)
-  updateHistory(coreClockHistory, gpuCoreClock.value, 100)
-  updateHistory(memClockHistory, gpuMemoryClock.value, 100)
-  updateHistory(tempHistory, gpuTemp.value)
-  updateHistory(fanSpeedHistory, gpuFanSpeed.value, 100)
+  updateHistory(utilHistory, gpuUtilNum.value)
+  updateHistory(memUtilHistory, gpuMemUtilNum.value)
+  updateHistory(coreClockHistory, gpuCoreClkNum.value, 100)
+  updateHistory(memClockHistory, gpuMemClkNum.value, 100)
+  updateHistory(tempHistory, gpuTempNum.value)
+  updateHistory(fanSpeedHistory, gpuFanNum.value, 100)
 
   const stopWatchers = [
-    watch(gpuUtilization, (v) => updateHistory(utilHistory, v)),
-    watch(gpuMemoryUtilization, (v) => updateHistory(memUtilHistory, v)),
-    watch(gpuCoreClock, (v) => updateHistory(coreClockHistory, v, 100)),
-    watch(gpuMemoryClock, (v) => updateHistory(memClockHistory, v, 100)),
-    watch(gpuTemp, (v) => updateHistory(tempHistory, v)),
-    watch(gpuFanSpeed, (v) => updateHistory(fanSpeedHistory, v, 100)),
+    watch(gpuUtilNum, (v) => updateHistory(utilHistory, v)),
+    watch(gpuMemUtilNum, (v) => updateHistory(memUtilHistory, v)),
+    watch(gpuCoreClkNum, (v) => updateHistory(coreClockHistory, v, 100)),
+    watch(gpuMemClkNum, (v) => updateHistory(memClockHistory, v, 100)),
+    watch(gpuTempNum, (v) => updateHistory(tempHistory, v)),
+    watch(gpuFanNum, (v) => updateHistory(fanSpeedHistory, v, 100)),
   ]
   unwatch = () => stopWatchers.forEach((fn) => fn())
 })

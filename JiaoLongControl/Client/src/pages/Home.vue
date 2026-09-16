@@ -15,15 +15,27 @@ import { Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
 const systemInfoStore = useSystemInfoStore()
-const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
+// 四态读数 state（Reading<T>）
+const { cpuTemp: cpuTempReading, fanSpeed: fanSpeedReading } = storeToRefs(systemInfoStore)
+// getter 裸值（number | null；null = error/unavailable）
+const cpuUsageGetter = computed(() => systemInfoStore.cpuUsageValue)
+const gpuUsageGetter = computed(() => systemInfoStore.gpuUtilization)
+const gpuTempGetter = computed(() => systemInfoStore.gpuTemp)
 
-const cpuTempLevel = ref<TempLevel>(tempLevel(cpuTemp.value))
-const gpuTempLevel = ref<TempLevel>(tempLevel(gpuTemp.value))
-watch(cpuTemp, (t) => {
-  cpuTempLevel.value = tempLevelHys(t, cpuTempLevel.value)
+// 四态读数裸值（v4 §7）：null = 该通道 error/unavailable，显示「—」；禁止回退 0
+const cpuTempN = computed(() => cpuTempReading.value.value)
+const gpuTempN = gpuTempGetter
+const cpuUsageN = computed(() => cpuUsageGetter.value ?? 0)
+const gpuUsageN = computed(() => gpuUsageGetter.value ?? 0)
+const fanSpeedN = computed(() => fanSpeedReading.value.value)
+
+const cpuTempLevel = ref<TempLevel>(tempLevel(cpuTempN.value ?? 0))
+const gpuTempLevel = ref<TempLevel>(tempLevel(gpuTempN.value ?? 0))
+watch(cpuTempN, (t) => {
+  cpuTempLevel.value = tempLevelHys(t ?? 0, cpuTempLevel.value)
 })
-watch(gpuTemp, (t) => {
-  gpuTempLevel.value = tempLevelHys(t, gpuTempLevel.value)
+watch(gpuTempN, (t) => {
+  gpuTempLevel.value = tempLevelHys(t ?? 0, gpuTempLevel.value)
 })
 
 const performanceModes = ref([
@@ -76,10 +88,11 @@ function handleModeChanged(e: MessageEvent) {
   }
 }
 
-const cpuUsage = computed(() => systemInfoStore.cpuStats?.Usage ?? 0)
-const gpuUsage = computed(() => parseInt(gpuStats.value?.GpuUtilization || '0', 10))
 const maxFanRpm = computed(() =>
-  Math.max(fanSpeed.value.CPUFanSpeed, fanSpeed.value.GPUFanSpeed),
+  Math.max(fanSpeedN.value?.CPUFanSpeed ?? 0, fanSpeedN.value?.GPUFanSpeed ?? 0),
+)
+const fanAvailable = computed(
+  () => fanSpeedReading.value.state === 'ok' || fanSpeedReading.value.state === 'stale',
 )
 
 const NOISE_CALIBRATION: Array<[rpm: number, dba: number]> = [
@@ -105,7 +118,7 @@ const noiseLevel = computed(() => {
 
 // 包功耗估算: 无直接传感器时按 CPU/GPU 占用粗估, 标注 est.
 const packagePower = computed(() => {
-  return Math.round((cpuUsage.value / 100) * 45 + (gpuUsage.value / 100) * 80)
+  return Math.round((cpuUsageN.value / 100) * 45 + (gpuUsageN.value / 100) * 80)
 })
 
 const sysCpuName = ref('Loading...')
@@ -136,7 +149,7 @@ let historyTimer: ReturnType<typeof setInterval> | null = null
 function startTimers() {
   stopTimers()
   historyTimer = setInterval(() => {
-    tempHistory.value.push({ cpu: cpuTemp.value, gpu: gpuTemp.value })
+    tempHistory.value.push({ cpu: cpuTempN.value, gpu: gpuTempN.value })
     if (tempHistory.value.length > 10) tempHistory.value.shift()
   }, 2000)
 }
@@ -256,12 +269,12 @@ const lineChartOption = computed(() => ({
         </button>
       </div>
       <div class="temp-pair">
-        <div class="temp-chip" :class="cpuTempLevel">
-          <span class="val tnum">{{ cpuTemp }}°C</span>
+        <div class="temp-chip" :class="cpuTempN !== null ? cpuTempLevel : ''">
+          <span class="val tnum">{{ cpuTempN !== null ? `${cpuTempN}°C` : '—' }}</span>
           <span class="tag">CPU</span>
         </div>
-        <div class="temp-chip" :class="gpuTempLevel">
-          <span class="val tnum">{{ gpuTemp }}°C</span>
+        <div class="temp-chip" :class="gpuTempN !== null ? gpuTempLevel : ''">
+          <span class="val tnum">{{ gpuTempN !== null ? `${gpuTempN}°C` : '—' }}</span>
           <span class="tag">GPU</span>
         </div>
       </div>
@@ -277,26 +290,28 @@ const lineChartOption = computed(() => ({
       <div class="readout-grid">
         <div class="readout">
           <div class="readout-label">CPU Temp</div>
-          <div class="readout-value tnum" :class="cpuTempLevel">
-            {{ cpuTemp }}<span class="unit">°C</span>
+          <div class="readout-value tnum" :class="cpuTempN !== null ? cpuTempLevel : ''">
+            <template v-if="cpuTempN !== null">{{ cpuTempN }}<span class="unit">°C</span></template>
+            <span v-else class="unit">—</span>
           </div>
           <div class="readout-sub">
-            <div class="meter" :class="cpuTempLevel">
-              <i :style="{ width: `${Math.min(cpuTemp, 100)}%` }" />
+            <div class="meter" :class="cpuTempN !== null ? cpuTempLevel : ''">
+              <i :style="{ width: cpuTempN !== null ? `${Math.min(cpuTempN, 100)}%` : '0' }" />
             </div>
-            <span>{{ LEVEL_LABEL[cpuTempLevel] }}</span>
+            <span>{{ cpuTempN !== null ? LEVEL_LABEL[cpuTempLevel] : '无数据' }}</span>
           </div>
         </div>
         <div class="readout">
           <div class="readout-label">GPU Temp</div>
-          <div class="readout-value tnum" :class="gpuTempLevel">
-            {{ gpuTemp }}<span class="unit">°C</span>
+          <div class="readout-value tnum" :class="gpuTempN !== null ? gpuTempLevel : ''">
+            <template v-if="gpuTempN !== null">{{ gpuTempN }}<span class="unit">°C</span></template>
+            <span v-else class="unit">—</span>
           </div>
           <div class="readout-sub">
-            <div class="meter" :class="gpuTempLevel">
-              <i :style="{ width: `${Math.min(gpuTemp, 100)}%` }" />
+            <div class="meter" :class="gpuTempN !== null ? gpuTempLevel : ''">
+              <i :style="{ width: gpuTempN !== null ? `${Math.min(gpuTempN, 100)}%` : '0' }" />
             </div>
-            <span>{{ LEVEL_LABEL[gpuTempLevel] }}</span>
+            <span>{{ gpuTempN !== null ? LEVEL_LABEL[gpuTempLevel] : '无数据' }}</span>
           </div>
         </div>
         <div class="readout">
@@ -335,30 +350,30 @@ const lineChartOption = computed(() => ({
             <div class="fan-row">
               <span class="name">CPU Fan</span>
               <div class="bar-track">
-                <i :style="{ width: `${Math.min((fanSpeed.CPUFanSpeed / 6800) * 100, 100)}%` }" />
+                <i :style="{ width: `${Math.min((fanSpeedN?.CPUFanSpeed ?? 0) / 6800 * 100, 100)}%` }" />
               </div>
-              <span class="rpm tnum">{{ fanSpeed.CPUFanSpeed }}<span>RPM</span></span>
+              <span class="rpm tnum">{{ fanAvailable ? (fanSpeedN?.CPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span>
             </div>
             <div class="fan-row">
               <span class="name">GPU Fan</span>
               <div class="bar-track">
-                <i :style="{ width: `${Math.min((fanSpeed.GPUFanSpeed / 6800) * 100, 100)}%` }" />
+                <i :style="{ width: `${Math.min((fanSpeedN?.GPUFanSpeed ?? 0) / 6800 * 100, 100)}%` }" />
               </div>
-              <span class="rpm tnum">{{ fanSpeed.GPUFanSpeed }}<span>RPM</span></span>
+              <span class="rpm tnum">{{ fanAvailable ? (fanSpeedN?.GPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span>
             </div>
             <div class="fan-row">
               <span class="name">CPU Use</span>
               <div class="bar-track">
-                <i :style="{ width: `${cpuUsage}%` }" />
+                <i :style="{ width: `${cpuUsageN}%` }" />
               </div>
-              <span class="rpm tnum">{{ cpuUsage }}<span>%</span></span>
+              <span class="rpm tnum">{{ cpuUsageN }}<span>%</span></span>
             </div>
             <div class="fan-row">
               <span class="name">GPU Use</span>
               <div class="bar-track">
-                <i :style="{ width: `${gpuUsage}%` }" />
+                <i :style="{ width: `${gpuUsageN}%` }" />
               </div>
-              <span class="rpm tnum">{{ gpuUsage }}<span>%</span></span>
+              <span class="rpm tnum">{{ gpuUsageN }}<span>%</span></span>
             </div>
           </div>
           <div class="noise-line">
