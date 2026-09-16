@@ -95,10 +95,9 @@
         height: 100%;
         border-radius: 50%;
         border: 2px solid transparent;
-        border-top-color: #8a2be2;
-        border-right-color: #3b82f6;
+        border-top-color: #22d3ee;
+        border-right-color: rgba(34, 211, 238, 0.35);
         animation: spin 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
-        filter: drop-shadow(0 0 10px rgba(138, 43, 226, 0.6));
       }
 
       .spinner-inner {
@@ -107,17 +106,15 @@
         height: 70%;
         border-radius: 50%;
         border: 2px solid transparent;
-        border-bottom-color: #00ff7f;
-        border-left-color: #3b82f6;
+        border-bottom-color: rgba(34, 211, 238, 0.5);
+        border-left-color: rgba(34, 211, 238, 0.25);
         animation: spin-reverse 0.9s linear infinite;
-        filter: drop-shadow(0 0 8px rgba(0, 255, 127, 0.5));
       }
 
       .loader-logo-img {
         width: 42px;
         height: 42px;
         object-fit: contain;
-        filter: drop-shadow(0 0 10px rgba(138, 43, 226, 0.7));
         animation: pulse 1.5s ease-in-out infinite alternate;
       }
 
@@ -127,10 +124,6 @@
         font-weight: 700;
         letter-spacing: 3px;
         color: var(--loader-title);
-        text-shadow: 0 0 12px rgba(138, 43, 226, 0.6);
-        background: linear-gradient(90deg, var(--loader-title), #a78bfa, #60a5fa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
       }
 
       .loader-sub {
@@ -159,7 +152,7 @@
         top: 0;
         height: 100%;
         width: 40%;
-        background: linear-gradient(90deg, #8a2be2, #3b82f6, #00ff7f);
+        background: #22d3ee;
         border-radius: 3px;
         animation: progress-move 1.5s ease-in-out infinite;
       }

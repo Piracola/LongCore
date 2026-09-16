@@ -63,7 +63,10 @@ onUnmounted(() => {
       <router-view class="app-view"></router-view>
     </template>
     <template #fallback>
-      <div class="loading-state">Loading Hardware Info...</div>
+      <div class="loading-state">
+        <div class="loading-orb" aria-hidden="true"></div>
+        <span class="loading-label">Loading Hardware Info...</span>
+      </div>
     </template>
   </Suspense>
 </template>
@@ -81,12 +84,43 @@ body {
   height: 100vh;
 }
 
+/* Suspense fallback: 与 index.html 启动 loader 同色语汇, 但更轻量。
+ * 不用无限辉光/双环 —— 那是首次启动的 rare 时刻; 这里只是路由/硬件信息等待。 */
 .loading-state {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
+  gap: 12px;
   height: 100vh;
-  color: var(--color-text-main);
+  color: var(--color-text-muted);
   background-color: var(--color-bg-primary);
+}
+
+.loading-orb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent-line);
+  animation: loading-spin 0.8s linear infinite;
+}
+
+.loading-label {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-orb {
+    animation-duration: 1.6s;
+  }
 }
 </style>

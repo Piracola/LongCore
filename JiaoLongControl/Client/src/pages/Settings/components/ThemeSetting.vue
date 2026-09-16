@@ -37,7 +37,7 @@ function select(mode: ThemeMode) {
           v-for="opt in options"
           :key="opt.value"
           class="theme-opt px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
-          :class="current === opt.value ? 'bg-cyber-purple text-white' : 'text-muted hover:text-ink'"
+          :class="current === opt.value ? 'seg-selected' : 'text-muted hover:text-ink'"
           @click="select(opt.value)"
         >
           {{ opt.label }}
@@ -48,10 +48,15 @@ function select(mode: ThemeMode) {
 </template>
 
 <style scoped lang="scss">
-/* 主题选项胶囊: 只过渡底色/字色, 取短档。选中态去辉光(原 shadow-[0_0_10px_紫])。 */
+/* 主题选项胶囊: 底色/字色 + 按压缩放。选中态去辉光(原 shadow-[0_0_10px_紫])。 */
 .theme-opt {
   transition:
     background-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.theme-opt:active {
+  transform: scale(0.97);
 }
 </style>

@@ -11,8 +11,9 @@ function handleMouseDown(e: MouseEvent) {
 <template>
   <div class="title-bar">
     <div class="drag-region" @mousedown="handleMouseDown">
-      <img src="@/assets/logo.svg" class="logo" alt="LongCore" />
-      <span class="title">JiaoLong Control</span>
+      <div class="mark" aria-hidden="true">LC</div>
+      <span class="title">LongCore</span>
+      <span class="sub">蛟龙 16 Pro · 硬件控制台</span>
     </div>
     <div class="window-actions">
       <button class="action-btn" aria-label="最小化" @click="Window.Minimize()">
@@ -33,27 +34,47 @@ function handleMouseDown(e: MouseEvent) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 50px;
+  height: 36px;
+  flex-shrink: 0;
   user-select: none;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--hair);
 
   .drag-region {
     flex: 1;
     height: 100%;
     display: flex;
     align-items: center;
-    padding-left: 12px;
+    gap: 10px;
+    padding-left: 14px;
     -webkit-app-region: drag;
 
-    .logo {
-      width: 16px;
-      height: 16px;
-      margin-right: 8px;
+    .mark {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent-line);
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
     }
 
     .title {
-      color: var(--color-text-main);
+      color: var(--ink);
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .sub {
+      color: var(--weak);
+      font-size: 11px;
+      font-weight: 400;
     }
   }
 
@@ -61,28 +82,25 @@ function handleMouseDown(e: MouseEvent) {
     display: flex;
     align-items: stretch;
     height: 100%;
-
     -webkit-app-region: no-drag;
 
-    /* Win11 caption 形态: 按钮填满标题栏高度、直角、无圆角。
-     * 用真 <button> 而非 div —— div 不可聚焦, 加 :focus-visible 是惰性的;
-     * 换成 button 后键盘可用性与焦点环才真正成立。 */
     .action-btn {
       display: flex;
       align-items: center;
       justify-content: center;
       height: 100%;
-      width: 46px;
+      width: 42px;
       padding: 0;
       border: 0;
       background: transparent;
-      color: inherit;
-      font-size: 14px;
+      color: var(--muted);
+      font-size: 13px;
       cursor: pointer;
-      transition: background-color var(--dur-press) ease;
+      transition: background-color var(--dur-press) var(--ease-out);
 
       &:hover {
-        background-color: var(--color-fill-3);
+        background-color: rgba(255, 255, 255, 0.05);
+        color: var(--ink);
       }
 
       &:active {
@@ -90,7 +108,7 @@ function handleMouseDown(e: MouseEvent) {
       }
 
       &:focus-visible {
-        outline: 2px solid var(--color-accent-blue);
+        outline: 2px solid var(--accent);
         outline-offset: -2px;
       }
 
@@ -99,6 +117,16 @@ function handleMouseDown(e: MouseEvent) {
         color: white;
       }
     }
+  }
+}
+
+[data-theme='light'] .title-bar {
+  .sub {
+    color: var(--weak);
+  }
+
+  .window-actions .action-btn:hover {
+    background-color: rgba(13, 14, 21, 0.05);
   }
 }
 </style>

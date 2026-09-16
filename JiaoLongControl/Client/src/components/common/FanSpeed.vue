@@ -162,12 +162,12 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
+    class="bg-panel border border-hair rounded-lg p-5 space-y-4"
   >
     <!-- 图表顶栏标题 -->
     <div class="flex justify-between items-center select-none">
       <h2 class="text-[13px] font-semibold text-gray-300 flex items-center gap-1.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+        <span class="w-1.5 h-1.5 rounded-full" style="background: var(--accent)"></span>
         实时运行状态遥测
       </h2>
       <span class="text-[10px] text-gray-500 font-mono">{{ INTERVAL / 1000 }}s 采样间隔</span>
@@ -181,11 +181,7 @@ onUnmounted(() => {
     >
       <svg v-if="width > 0" :width="width" :height="height">
         <defs>
-          <!-- 荧光微弱发光滤镜 -->
-          <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="1.5" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
+          <!-- 无滤镜: 曲线实色绘制, 禁 neon glow -->
         </defs>
 
         <!-- 1. 背景网格横线 (CPU 区间) -->
@@ -266,7 +262,6 @@ onUnmounted(() => {
           fill="none"
           :stroke="COLOR_CPU_FAN"
           stroke-width="2"
-          filter="url(#neon-glow)"
         />
         <polyline
           :points="gpuFanPath"
@@ -274,14 +269,12 @@ onUnmounted(() => {
           :stroke="COLOR_GPU_FAN"
           stroke-width="2"
           stroke-dasharray="6,4"
-          filter="url(#neon-glow)"
         />
         <polyline
           :points="cpuTempPath"
           fill="none"
           :stroke="COLOR_CPU_TEMP"
           stroke-width="2"
-          filter="url(#neon-glow)"
         />
         <polyline
           :points="gpuTempPath"
@@ -289,7 +282,6 @@ onUnmounted(() => {
           :stroke="COLOR_GPU_TEMP"
           stroke-width="2"
           stroke-dasharray="6,4"
-          filter="url(#neon-glow)"
         />
 
         <!-- 6. 数据点拐点微圆点 -->

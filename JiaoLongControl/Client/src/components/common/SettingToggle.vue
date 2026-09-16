@@ -35,7 +35,7 @@ function flashCard(state: 'success' | 'error') {
 const flashStyle = computed(() =>
   flash.value === null
     ? {}
-    : { borderColor: flash.value === 'success' ? 'var(--color-accent-blue)' : '#e11d48' },
+    : { borderColor: flash.value === 'success' ? 'var(--accent)' : '#e11d48' },
 )
 
 onMounted(() => configStore.fetchConfig())
