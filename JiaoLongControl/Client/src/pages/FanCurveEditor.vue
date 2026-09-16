@@ -21,10 +21,7 @@
                 <a-radio value="CPU">CPU 曲线</a-radio>
                 <a-radio value="GPU">GPU 曲线</a-radio>
               </a-radio-group>
-              <button
-                class="tok-btn text-xs font-semibold text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-4 py-1.5 rounded-lg"
-                @click="handleRemoveFanClick"
-              >
+              <button class="btn-danger btn-apply-sm" @click="handleRemoveFanClick">
                 移除转速设置
               </button>
             </a-space>
@@ -42,7 +39,7 @@
                 v-model="isServiceRunning"
                 :loading="serviceLoading"
                 :before-change="handleServiceToggle"
-                class="switch-purple"
+                class="switch-accent"
               />
             </a-space>
           </div>
@@ -414,6 +411,17 @@ const {
   border: 1px solid var(--color-line);
   min-width: 140px;
   padding: 4px 0;
+  /* 入场: 从触发点缩放生长(origin 由 menuStyle 内联 transform-origin 指定) */
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 
   .menu-item {
     padding: 8px 16px;
@@ -422,11 +430,16 @@ const {
     color: color-mix(in srgb, var(--color-text-main) 80%, transparent);
     transition:
       background-color var(--dur-fast) var(--ease-out),
-      color var(--dur-fast) var(--ease-out);
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-press) var(--ease-out);
 
     &:hover {
       background: rgba(138, 43, 226, 0.15);
       color: #a855f7;
+    }
+
+    &:active {
+      transform: scale(0.98);
     }
 
     &.disabled {
@@ -462,20 +475,18 @@ const {
     }
 
     &.arco-radio-button-checked {
-      background-color: var(--color-accent-purple) !important;
-      color: #ffffff !important;
+      background-color: var(--accent) !important;
+      color: var(--accent-ink) !important;
     }
   }
 }
 
-:deep(.radio-gpu.arco-radio-group-button) {
+:deep(.arco-radio-group-button) {
   .arco-radio-button.arco-radio-button-checked {
-    background-color: #10b981 !important;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3) !important;
+    background-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
+    box-shadow: none !important;
   }
-}
-:deep(.switch-purple.arco-switch-checked) {
-  background-color: var(--color-accent-purple) !important;
 }
 
 :deep(.arco-modal) {
@@ -517,6 +528,11 @@ const {
   transition:
     background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.tok-btn:active {
+  transform: scale(0.97);
 }
 </style>

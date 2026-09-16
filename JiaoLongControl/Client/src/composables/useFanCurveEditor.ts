@@ -260,6 +260,8 @@ export function useFanCurveEditor() {
   const menuStyle = computed(() => ({
     left: `${menuPos.x}px`,
     top: `${menuPos.y}px`,
+    // 从点击点左上角生长(popover origin-aware)
+    transformOrigin: 'top left',
   }))
 
   function openContextMenu(index: number, e: MouseEvent) {

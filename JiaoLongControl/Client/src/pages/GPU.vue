@@ -155,7 +155,7 @@ async function fetchGpuRanges() {
       }
     }
 
-    // 偏移量以驱动当前实际值为准, 读取失败时回落到配置持久化值
+    // 偏移量以驱动当前实际值为。 读取失败时回落到配置持久化。
     if (ocOffsets && ocOffsets.Success && ocOffsets.Data) {
       gpuClockOffset.value = ocOffsets.Data.CoreMhz
       memClockOffset.value = ocOffsets.Data.MemoryMhz
@@ -333,7 +333,7 @@ async function handleResetAdvanced() {
 <template>
   <div v-if="GPUData && gpuName" class="h-full overflow-y-auto text-ink p-6 no-scrollbar">
     <div class="max-w-[1300px] mx-auto flex flex-col lg:flex-row gap-6">
-      <!-- ==================== 左/中：显卡主要设置区 ==================== -->
+      <!-- ==================== 左中：显卡主要设置区==================== -->
       <div class="flex-1 space-y-6">
         <!-- 头部标题 -->
         <div>
@@ -341,9 +341,9 @@ async function handleResetAdvanced() {
           <p class="text-[13px] text-gray-500 mt-1">调整 GPU 的性能参数，发挥显卡最佳性能。</p>
         </div>
 
-        <!-- 1. 选择 GPU 与卡片详情 -->
+        <!-- 1. 选择 GPU 与卡片详。-->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg flex flex-col md:flex-row justify-between gap-6"
+          class="panel-card p-5 flex flex-col md:flex-row justify-between gap-6"
         >
           <div class="space-y-3 md:w-1/2">
             <span class="text-[11px] text-gray-500 font-semibold block uppercase">当前 GPU</span>
@@ -403,14 +403,14 @@ async function handleResetAdvanced() {
         <!-- 常规设置面板 -->
         <div
           v-if="!showAdvanced"
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-5"
+          class="panel-card p-5 space-y-5"
         >
           <div class="space-y-5">
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
                   >GPU 频率
-                  <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span>
+                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span>
                 </span>
                 <span class="text-purple-400 font-medium font-mono"
                   >{{ GPUData.GpuClock }} MHz</span
@@ -427,7 +427,7 @@ async function handleResetAdvanced() {
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >显存频率 <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span
+                  >显存频率 <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span
                 >
                 <span class="text-purple-400 font-medium font-mono"
                   >{{ GPUData.MemoryClock }} MHz</span
@@ -441,11 +441,11 @@ async function handleResetAdvanced() {
               />
             </div>
 
-            <!-- 功耗限制：笔记本 TGP 由固件/EC 管理，驱动接口不可用，暂不提供 -->
+            <!-- 功耗限制：笔记。TGP 由固。EC 管理，驱动接口不可用，暂不提。-->
             <!-- <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
-                <span class="text-gray-300 flex items-center gap-1">功耗限制 <span
-                    class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span>
+                <span class="text-gray-300 flex items-center gap-1">功耗限制<span
+                    class="text-gray-500 cursor-pointer text-[10px]">。</span></span>
                 <span class="text-purple-400 font-medium font-mono">{{ GPUData.PowerLimit }} W</span>
               </div>
               <a-slider v-model="GPUData.PowerLimit" :min="powerLimitRange.Min" :max="powerLimitRange.Max" class="w-full"/>
@@ -454,14 +454,14 @@ async function handleResetAdvanced() {
 
           <div class="flex justify-between items-center pt-2 border-t border-ink/[0.04]">
             <button
-              class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors"
+              class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"
               @click="handleResetNormal"
             >
               重置
             </button>
             <button
               :disabled="loading"
-              class="tok-apply text-xs font-medium text-ink bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
+              class="tok-apply btn-apply text-xs"
               @click="handleApplyNormal"
             >
               {{ loading ? '应用中...' : '应用' }}
@@ -472,14 +472,14 @@ async function handleResetAdvanced() {
         <!-- 高级超频面板 -->
 <!--        <div-->
 <!--          v-if="showAdvanced"-->
-<!--          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-5"-->
+<!--          class="panel-card p-5 space-y-5"-->
 <!--        >-->
 <!--          <div class="space-y-5">-->
 <!--            <div-->
 <!--              v-if="!ocCaps.CoreOffset || !ocCaps.MemoryOffset || !ocCaps.VoltageBoost"-->
 <!--              class="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2"-->
 <!--            >-->
-<!--              本机驱动已锁定部分超频能力 (OEM 限制)，对应滑条已置灰。可用「常规设置」的锁频拉满睿频代替。-->
+<!--              本机驱动已锁定部分超频能。(OEM 限制)，对应滑条已置灰。可用「常规设置」的锁频拉满睿频代替。->
 <!--            </div>-->
 
 <!--            <div class="space-y-2">-->
@@ -489,9 +489,9 @@ async function handleResetAdvanced() {
 <!--                  <span-->
 <!--                    v-if="!ocCaps.CoreOffset"-->
 <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-<!--                    >驱动已锁定</span-->
+<!--                    >驱动已锁。/span-->
 <!--                  >-->
-<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span-->
+<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
 <!--                >-->
 <!--                <span class="text-purple-400 font-medium font-mono"-->
 <!--                  >{{ gpuClockOffset > 0 ? '+' : '' }}{{ gpuClockOffset }} MHz</span-->
@@ -513,9 +513,9 @@ async function handleResetAdvanced() {
 <!--                  <span-->
 <!--                    v-if="!ocCaps.MemoryOffset"-->
 <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-<!--                    >不支持</span-->
+<!--                    >不支。/span-->
 <!--                  >-->
-<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span-->
+<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
 <!--                >-->
 <!--                <span class="text-purple-400 font-medium font-mono"-->
 <!--                  >{{ memClockOffset > 0 ? '+' : '' }}{{ memClockOffset }} MHz</span-->
@@ -537,9 +537,9 @@ async function handleResetAdvanced() {
 <!--                  <span-->
 <!--                    v-if="!ocCaps.VoltageBoost"-->
 <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-<!--                    >驱动已锁定</span-->
+<!--                    >驱动已锁。/span-->
 <!--                  >-->
-<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span-->
+<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
 <!--                >-->
 <!--                <span class="text-purple-400 font-medium font-mono"-->
 <!--                  >+{{ voltageBoostPercent }} %</span-->
@@ -557,15 +557,15 @@ async function handleResetAdvanced() {
 <!--            <div class="space-y-2">-->
 <!--              <div class="flex justify-between items-center text-xs">-->
 <!--                <span class="text-gray-300 flex items-center gap-1"-->
-<!--                  >温度墙上限-->
+<!--                  >温度墙上。->
 <!--                  <span-->
 <!--                    v-if="!ocCaps.ThermalPolicy"-->
 <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-<!--                    >不支持</span-->
+<!--                    >不支。/span-->
 <!--                  >-->
-<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">ⓘ</span></span-->
+<!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
 <!--                >-->
-<!--                <span class="text-purple-400 font-medium font-mono">{{ tempWall }} ℃</span>-->
+<!--                <span class="text-purple-400 font-medium font-mono">{{ tempWall }} 。</span>-->
 <!--              </div>-->
 <!--              <a-slider-->
 <!--                v-model="tempWall"-->
@@ -579,7 +579,7 @@ async function handleResetAdvanced() {
 
 <!--          <div class="flex justify-between items-center pt-2 border-t border-ink/[0.04]">-->
 <!--            <button-->
-<!--              class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors"-->
+<!--              class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"-->
 <!--              @click="handleResetAdvanced"-->
 <!--            >-->
 <!--              重置-->
@@ -595,22 +595,22 @@ async function handleResetAdvanced() {
 <!--        </div>-->
       </div>
 
-      <!-- ==================== 右侧：显卡信息与实时监控栏 ==================== -->
+      <!-- ==================== 右侧：显卡信息与实时监控区==================== -->
       <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
         <!-- 2. 实时监控面板 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
+          class="panel-card p-5 space-y-4"
         >
           <div class="flex justify-between items-center">
             <h2 class="text-[13px] font-semibold text-gray-300">实时监控</h2>
           </div>
           <div class="grid grid-cols-2 gap-3">
-            <!-- GPU 使用率 -->
+            <!-- GPU 使用。-->
             <div
               class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
             >
               <div>
-                <span class="text-[10px] text-gray-500 block">GPU 使用率</span>
+                <span class="text-[11px] text-muted block">GPU 使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
                   >{{ gpuUtilization }}
                   <span class="text-[10px] text-gray-500 font-bold">%</span></span
@@ -632,12 +632,12 @@ async function handleResetAdvanced() {
               </svg>
             </div>
 
-            <!-- 显存使用率 -->
+            <!-- 显存使用。-->
             <div
               class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
             >
               <div>
-                <span class="text-[10px] text-gray-500 block">显存使用率</span>
+                <span class="text-[11px] text-muted block">显存使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
                   >{{ gpuMemoryUtilization }}
                   <span class="text-[10px] text-gray-500 font-bold">%</span></span
@@ -727,12 +727,12 @@ async function handleResetAdvanced() {
               </svg>
             </div>
 
-            <!-- 风扇转速 -->
+            <!-- 风扇转。-->
             <div
               class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
             >
               <div>
-                <span class="text-[10px] text-gray-500 block">风扇转速</span>
+                <span class="text-[10px] text-gray-500 block">风扇转。</span>
                 <span class="text-base font-bold text-ink font-mono"
                   >{{ gpuFanSpeed }}
                   <span class="text-[9px] text-gray-500 font-bold">RPM</span></span
@@ -780,10 +780,10 @@ async function handleResetAdvanced() {
 }
 
 :deep(.arco-switch-checked) {
-  background-color: var(--color-accent-purple) !important;
+  background-color: var(--accent) !important;
 }
 
-/* 应用按钮: 只过渡底色。原带 shadow-[0_0_15px_紫] 辉光, 按"去 AI 味"定案移除 */
+/* 应用按钮: 只过渡底色。原。shadow-[0_0_15px_紫] 辉光, 。。AI 。定案移除 */
 .tok-apply {
   transition: background-color var(--dur-fast) var(--ease-out);
 }

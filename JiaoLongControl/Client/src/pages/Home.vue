@@ -10,18 +10,13 @@ import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
 import { storeToRefs } from 'pinia'
-import { Cpu, Fan, MonitorCog, Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
-import CoreMonitoringComp from './Home/CoreMonitoring.vue'
-import StatusBannerComp from './Home/StatusBanner.vue'
+import { Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
 const systemInfoStore = useSystemInfoStore()
 const { cpuTemp, gpuTemp, fanSpeed, gpuStats } = storeToRefs(systemInfoStore)
 
-// 温度语义档位: 在顶层统一判定并带滞回, 供状态条胶囊与监控环共用。
-// 放在顶层是为了保证"同屏同色"——两处各自判定会在阈值附近出现颜色不一致;
-// 带滞回则避免温度在 70/80/90 附近抖动时底色持续闪烁。
 const cpuTempLevel = ref<TempLevel>(tempLevel(cpuTemp.value))
 const gpuTempLevel = ref<TempLevel>(tempLevel(gpuTemp.value))
 watch(cpuTemp, (t) => {
@@ -31,9 +26,6 @@ watch(gpuTemp, (t) => {
   gpuTempLevel.value = tempLevelHys(t, gpuTempLevel.value)
 })
 
-// 命名与枚举一一对应(SystemPerMode 已对齐后端 SysEnums, 见 bridge.ts 注释)
-// 隐喻约定: 高性能=Zap, 平衡=Scale, 静音=Volume1, 自定义=SlidersHorizontal
-// CustomMode 为本地逻辑态: EC 档位不变, 打开命令 23 自定义功耗子状态(数值在 CPU 页调)
 const performanceModes = ref([
   { id: SystemPerMode.PerformanceMode, name: '高性能', icon: markRaw(Zap), active: false },
   { id: SystemPerMode.BalanceMode, name: '平衡', icon: markRaw(Scale), active: false },
@@ -65,7 +57,6 @@ function setMode(id: SystemPerMode) {
   }
 }
 
-// Fn 热键切换模式时后端推送 {type:'mode-changed', mode:N}, 同步胶囊高亮
 function handleModeChanged(e: MessageEvent) {
   try {
     const data: unknown = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
@@ -87,7 +78,10 @@ function handleModeChanged(e: MessageEvent) {
 
 const cpuUsage = computed(() => systemInfoStore.cpuStats?.Usage ?? 0)
 const gpuUsage = computed(() => parseInt(gpuStats.value?.GpuUtilization || '0', 10))
-// 无噪音传感器: 以风扇转速查表估算 (标定: 3000 RPM≈25 dBA, 4800 RPM≈40 dBA)
+const maxFanRpm = computed(() =>
+  Math.max(fanSpeed.value.CPUFanSpeed, fanSpeed.value.GPUFanSpeed),
+)
+
 const NOISE_CALIBRATION: Array<[rpm: number, dba: number]> = [
   [1500, 19],
   [3000, 25],
@@ -96,7 +90,7 @@ const NOISE_CALIBRATION: Array<[rpm: number, dba: number]> = [
   [6800, 48],
 ]
 const noiseLevel = computed(() => {
-  const rpm = Math.max(fanSpeed.value.CPUFanSpeed, fanSpeed.value.GPUFanSpeed)
+  const rpm = maxFanRpm.value
   const pts = NOISE_CALIBRATION
   if (rpm <= pts[0]![0]) return pts[0]![1]
   for (let i = 1; i < pts.length; i++) {
@@ -109,40 +103,19 @@ const noiseLevel = computed(() => {
   return pts[pts.length - 1]![1]
 })
 
+// 包功耗估算: 无直接传感器时按 CPU/GPU 占用粗估, 标注 est.
+const packagePower = computed(() => {
+  return Math.round((cpuUsage.value / 100) * 45 + (gpuUsage.value / 100) * 80)
+})
+
 const sysCpuName = ref('Loading...')
 const sysGpuName = ref('Loading...')
 const sysMemory = ref('Loading...')
 const sysOs = ref('Loading...')
 
-// 模拟历史数据
 const tempHistory = ref<{ cpu: number | null; gpu: number | null }[]>(
   Array(10).fill({ cpu: null, gpu: null }),
 )
-
-// 心电图数据与生成逻辑
-const ecgData = ref<number[]>(Array(50).fill(30))
-let ecgIndex = 0
-const ecgPattern = [0, 0, 0, 0, -2, 2, -25, 12, -2, -6, 0, 0, 0, 0, 0, 0]
-
-function tickEcg() {
-  const offset = ecgPattern[ecgIndex] ?? 0
-  ecgIndex = (ecgIndex + 1) % ecgPattern.length
-  const noise = (Math.random() - 0.5) * 1.5
-  const nextY = 30 + offset + noise
-  ecgData.value.push(nextY)
-  if (ecgData.value.length > 50) {
-    ecgData.value.shift()
-  }
-}
-
-const ecgPointsString = computed(() => {
-  return ecgData.value
-    .map((y, i) => {
-      const x = (i / (ecgData.value.length - 1)) * 300
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-})
 
 async function fetchStaticInfo() {
   try {
@@ -158,12 +131,10 @@ async function fetchStaticInfo() {
   }
 }
 
-let ecgTimer: ReturnType<typeof setInterval> | null = null
 let historyTimer: ReturnType<typeof setInterval> | null = null
 
 function startTimers() {
   stopTimers()
-  ecgTimer = setInterval(tickEcg, 100)
   historyTimer = setInterval(() => {
     tempHistory.value.push({ cpu: cpuTemp.value, gpu: gpuTemp.value })
     if (tempHistory.value.length > 10) tempHistory.value.shift()
@@ -171,10 +142,6 @@ function startTimers() {
 }
 
 function stopTimers() {
-  if (ecgTimer) {
-    clearInterval(ecgTimer)
-    ecgTimer = null
-  }
   if (historyTimer) {
     clearInterval(historyTimer)
     historyTimer = null
@@ -211,18 +178,22 @@ onUnmounted(() => {
   }
 })
 
-// 2. 温度曲线 - 折线图
+const LEVEL_LABEL: Record<TempLevel, string> = {
+  cool: 'COOL',
+  warm: 'WARM',
+  hot: 'HOT',
+  critical: 'CRIT',
+}
+
 const lineChartOption = computed(() => ({
-  // 折线每 2s 推入一个点。保留 ECharts 默认入场/更新补间会让曲线永远处于
-  // "追赶"状态; 实时折线必须数据驱动、瞬时重绘。
   animation: false,
   animationDurationUpdate: 0,
-  grid: { top: 30, bottom: 20, left: 35, right: 10 },
+  grid: { top: 28, bottom: 18, left: 36, right: 8 },
   legend: {
     data: ['CPU', 'GPU'],
     icon: 'roundRect',
     itemWidth: 12,
-    itemHeight: 4,
+    itemHeight: 3,
     textStyle: { color: chartTheme.value.legend, fontSize: 10 },
     top: 0,
   },
@@ -231,14 +202,14 @@ const lineChartOption = computed(() => ({
     data: Array(10).fill(''),
     axisLine: { show: false },
     axisTick: { show: false },
-    axisLabel: { color: chartTheme.value.axis, fontSize: 10, margin: 12 },
+    axisLabel: { show: false },
   },
   yAxis: {
     type: 'value',
     min: 0,
     max: 100,
     interval: 25,
-    splitLine: { lineStyle: { color: chartTheme.value.line } },
+    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
     axisLabel: { color: chartTheme.value.axis, fontSize: 10, formatter: '{value}°C' },
   },
   series: [
@@ -248,9 +219,9 @@ const lineChartOption = computed(() => ({
       type: 'line',
       smooth: true,
       symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { color: '#3B82F6', width: 3 },
-      itemStyle: { color: '#3B82F6' },
+      symbolSize: 5,
+      lineStyle: { color: '#60a5fa', width: 2 },
+      itemStyle: { color: '#60a5fa' },
     },
     {
       name: 'GPU',
@@ -258,167 +229,591 @@ const lineChartOption = computed(() => ({
       type: 'line',
       smooth: true,
       symbol: 'circle',
-      symbolSize: 6,
-      lineStyle: { color: '#10B981', width: 3 },
-      itemStyle: { color: '#10B981' },
+      symbolSize: 5,
+      lineStyle: { color: '#34d399', width: 2 },
+      itemStyle: { color: '#34d399' },
     },
   ],
 }))
 </script>
 
 <template>
-  <div class="p-6 h-full overflow-y-auto space-y-6 text-ink no-scrollbar">
-    <!-- Row 1: 一行状态条(品牌 + 温度速读 + 模式胶囊) -->
-    <StatusBannerComp
-      :cpu-temp="cpuTemp"
-      :gpu-temp="gpuTemp"
-      :cpu-temp-level="cpuTempLevel"
-      :gpu-temp-level="gpuTempLevel"
-      :modes="performanceModes"
-      @change-mode="setMode"
-    />
+  <div class="home flex flex-col h-full overflow-hidden">
+    <!-- 状态条: 模式 + 温度 chip + 功耗/风扇/噪音 -->
+    <header class="status-strip">
+      <span class="status-label">Mode</span>
+      <div class="mode-seg" role="tablist" aria-label="性能模式">
+        <button
+          v-for="mode in performanceModes"
+          :key="mode.id"
+          :class="['mode-btn', mode.active ? 'active' : '']"
+          role="tab"
+          :aria-selected="mode.active"
+          @click="setMode(mode.id)"
+        >
+          <component :is="mode.icon" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
+          {{ mode.name }}
+        </button>
+      </div>
+      <div class="temp-pair">
+        <div class="temp-chip" :class="cpuTempLevel">
+          <span class="val tnum">{{ cpuTemp }}°C</span>
+          <span class="tag">CPU</span>
+        </div>
+        <div class="temp-chip" :class="gpuTempLevel">
+          <span class="val tnum">{{ gpuTemp }}°C</span>
+          <span class="tag">GPU</span>
+        </div>
+      </div>
+      <div class="status-meta tnum">
+        <span>PWR <b>{{ packagePower }}W</b></span>
+        <span>FAN <b>{{ maxFanRpm }}</b> RPM</span>
+        <span>NOISE <b>{{ noiseLevel }}</b> dBA</span>
+      </div>
+    </header>
 
-    <!-- Row 2: 核心监控(性能模式已上移至状态条, 整行让给监控环) -->
-    <div class="grid grid-cols-12 gap-3 h-[250px]">
-      <CoreMonitoringComp
-        :cpu-usage="cpuUsage"
-        :gpu-usage="gpuUsage"
-        :cpu-temp="cpuTemp"
-        :gpu-temp="gpuTemp"
-        :cpu-temp-level="cpuTempLevel"
-        :gpu-temp-level="gpuTempLevel"
-      />
-    </div>
-
-    <!-- Row 3: 系统概览 & 风扇 & 曲线 -->
-    <div class="grid grid-cols-12 gap-6 h-[280px]">
-      <!-- 系统概览 -->
-      <div class="col-span-4 glass-card p-6 flex flex-col">
-        <h2 class="text-[15px] font-medium text-ink/90 mb-4">系统概览</h2>
-        <div class="flex-1 flex flex-col justify-between">
-          <div class="flex items-center gap-4">
-            <div
-              class="badge-blue w-8 h-8 rounded-full flex items-center justify-center text-blue-500"
-            >
-              <Cpu class="w-4 h-4" :stroke-width="1.75" />
-            </div>
-            <div>
-              <div class="text-xs text-ink/90">CPU</div>
-              <div class="text-xs text-gray-500 mt-0.5">{{ sysCpuName }}</div>
-            </div>
+    <!-- 内容: 读数机架 -->
+    <div class="content">
+      <div class="readout-grid">
+        <div class="readout">
+          <div class="readout-label">CPU Temp</div>
+          <div class="readout-value tnum" :class="cpuTempLevel">
+            {{ cpuTemp }}<span class="unit">°C</span>
           </div>
-          <div class="flex items-center gap-4">
-            <div
-              class="badge-green w-8 h-8 rounded-full flex items-center justify-center text-green-500"
-            >
-              <MonitorCog class="w-4 h-4" :stroke-width="1.75" />
+          <div class="readout-sub">
+            <div class="meter" :class="cpuTempLevel">
+              <i :style="{ width: `${Math.min(cpuTemp, 100)}%` }" />
             </div>
-            <div>
-              <div class="text-xs text-ink/90">GPU</div>
-              <div class="text-xs text-gray-500 mt-0.5">{{ sysGpuName }}</div>
-            </div>
+            <span>{{ LEVEL_LABEL[cpuTempLevel] }}</span>
           </div>
-          <div class="flex items-center gap-4">
-            <div
-              class="badge-yellow w-8 h-8 rounded-full flex items-center justify-center text-yellow-500"
-            >
-              <icon-storage />
-            </div>
-            <div>
-              <div class="text-xs text-ink/90">内存</div>
-              <div class="text-xs text-gray-500 mt-0.5">{{ sysMemory }}</div>
-            </div>
+        </div>
+        <div class="readout">
+          <div class="readout-label">GPU Temp</div>
+          <div class="readout-value tnum" :class="gpuTempLevel">
+            {{ gpuTemp }}<span class="unit">°C</span>
           </div>
-          <div class="flex items-center gap-4">
-            <div
-              class="badge-red w-8 h-8 rounded-full flex items-center justify-center text-red-500"
-            >
-              <icon-computer />
+          <div class="readout-sub">
+            <div class="meter" :class="gpuTempLevel">
+              <i :style="{ width: `${Math.min(gpuTemp, 100)}%` }" />
             </div>
-            <div>
-              <div class="text-xs text-ink/90">系统</div>
-              <div class="text-xs text-gray-500 mt-0.5">{{ sysOs }}</div>
+            <span>{{ LEVEL_LABEL[gpuTempLevel] }}</span>
+          </div>
+        </div>
+        <div class="readout">
+          <div class="readout-label">Fan Max</div>
+          <div class="readout-value tnum">
+            {{ maxFanRpm }}<span class="unit">RPM</span>
+          </div>
+          <div class="readout-sub">
+            <div class="meter">
+              <i :style="{ width: `${Math.min((maxFanRpm / 6800) * 100, 100)}%` }" />
             </div>
+            <span>CPU+GPU</span>
+          </div>
+        </div>
+        <div class="readout">
+          <div class="readout-label">Package Power</div>
+          <div class="readout-value tnum">
+            {{ packagePower }}<span class="unit">W</span>
+          </div>
+          <div class="readout-sub">
+            <div class="meter">
+              <i :style="{ width: `${Math.min((packagePower / 140) * 100, 100)}%` }" />
+            </div>
+            <span>est.</span>
           </div>
         </div>
       </div>
 
-      <!-- 风扇与噪音 -->
-      <div class="col-span-4 glass-card p-6 flex flex-col">
-        <h2 class="text-[15px] font-medium text-ink/90 mb-4">风扇与噪音</h2>
-
-        <div class="flex items-center gap-4 mb-6">
-          <div
-            class="badge-neutral w-12 h-12 rounded-full flex items-center justify-center overflow-hidden"
-          >
-            <!-- 风扇图标保持静态: 原为 animate-spin 3s 无限旋转, 属纯装饰动效 -->
-            <Fan class="w-7 h-7 icon-tint-blue-bright" :stroke-width="1.75" />
+      <div class="lower">
+        <section class="panel fan-panel">
+          <div class="panel-head">
+            <h2>Fans & Load</h2>
+            <span class="badge">LIVE</span>
           </div>
-          <div>
-            <div class="flex items-baseline gap-1">
-              <span class="text-3xl font-semibold">{{
-                Math.max(fanSpeed.CPUFanSpeed, fanSpeed.GPUFanSpeed)
-              }}</span>
-              <span class="text-xs text-gray-400">RPM</span>
+          <div class="fan-rows">
+            <div class="fan-row">
+              <span class="name">CPU Fan</span>
+              <div class="bar-track">
+                <i :style="{ width: `${Math.min((fanSpeed.CPUFanSpeed / 6800) * 100, 100)}%` }" />
+              </div>
+              <span class="rpm tnum">{{ fanSpeed.CPUFanSpeed }}<span>RPM</span></span>
             </div>
-            <div class="text-xs text-gray-500">风扇转速</div>
+            <div class="fan-row">
+              <span class="name">GPU Fan</span>
+              <div class="bar-track">
+                <i :style="{ width: `${Math.min((fanSpeed.GPUFanSpeed / 6800) * 100, 100)}%` }" />
+              </div>
+              <span class="rpm tnum">{{ fanSpeed.GPUFanSpeed }}<span>RPM</span></span>
+            </div>
+            <div class="fan-row">
+              <span class="name">CPU Use</span>
+              <div class="bar-track">
+                <i :style="{ width: `${cpuUsage}%` }" />
+              </div>
+              <span class="rpm tnum">{{ cpuUsage }}<span>%</span></span>
+            </div>
+            <div class="fan-row">
+              <span class="name">GPU Use</span>
+              <div class="bar-track">
+                <i :style="{ width: `${gpuUsage}%` }" />
+              </div>
+              <span class="rpm tnum">{{ gpuUsage }}<span>%</span></span>
+            </div>
           </div>
-        </div>
-
-        <!-- 模拟心电图 (ECG) -->
-        <div class="h-16 flex items-center justify-center mb-6 overflow-hidden">
-          <svg class="w-full h-full" viewBox="0 0 300 60" preserveAspectRatio="none">
-            <defs>
-              <!-- 水平方向渐变色，从紫色过渡到蓝色，再到浅绿 -->
-              <linearGradient id="ecgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#8A2BE2" stop-opacity="0.3" />
-                <stop offset="50%" stop-color="#3B82F6" stop-opacity="0.8" />
-                <stop offset="100%" stop-color="#10B981" stop-opacity="1" />
-              </linearGradient>
-              <!-- 霓虹发光滤镜 -->
-              <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                <feGaussianBlur stdDeviation="1.2" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-            <polyline
-              fill="none"
-              stroke="url(#ecgGrad)"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              filter="url(#glow)"
-              :points="ecgPointsString"
-            />
-          </svg>
-        </div>
-
-        <div class="mt-auto">
-          <div class="flex items-baseline gap-1">
-            <span class="text-2xl font-semibold">{{ noiseLevel }}</span>
-            <span class="text-xs text-gray-400">dBA</span>
+          <div class="noise-line">
+            <span class="num tnum">{{ noiseLevel }}</span>
+            <span class="unit">dBA</span>
+            <span class="lbl">噪音估算</span>
           </div>
-          <div class="text-xs text-gray-500">当前噪音 (估算)</div>
-        </div>
-      </div>
+        </section>
 
-      <!-- 温度曲线 -->
-      <div class="col-span-4 glass-card p-6 flex flex-col">
-        <h2 class="text-[15px] font-medium text-ink/90 mb-2">温度曲线</h2>
-        <div class="flex-1">
-          <VChart :option="lineChartOption" autoresize />
-        </div>
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <h2>Temperature History</h2>
+            <span class="badge">20s</span>
+          </div>
+          <div class="chart-body">
+            <VChart :option="lineChartOption" autoresize />
+          </div>
+        </section>
+
+        <section class="panel sys-panel">
+          <div class="sys-rows">
+            <div class="sys-cell">
+              <span class="k">CPU</span>
+              <span class="v">{{ sysCpuName }}</span>
+            </div>
+            <div class="sys-cell">
+              <span class="k">GPU</span>
+              <span class="v">{{ sysGpuName }}</span>
+            </div>
+            <div class="sys-cell">
+              <span class="k">Memory</span>
+              <span class="v">{{ sysMemory }}</span>
+            </div>
+            <div class="sys-cell">
+              <span class="k">OS</span>
+              <span class="v">{{ sysOs }}</span>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+.home {
+  background: var(--bg-app);
+}
+
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.status-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--weak);
+  font-weight: 600;
+}
+
+.mode-seg {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-inset);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+}
+
+.mode-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.mode-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mode-btn.active {
+  color: var(--accent-ink);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+.temp-pair {
+  display: flex;
+  gap: 8px;
+}
+
+.temp-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+  transition:
+    color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+
+  .val {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .tag {
+    font-size: 10px;
+    opacity: 0.75;
+    letter-spacing: 0.04em;
+  }
+
+  &.cool {
+    background: var(--temp-cool-bg);
+    color: var(--temp-cool);
+  }
+
+  &.warm {
+    background: var(--temp-warm-bg);
+    color: var(--temp-warm);
+  }
+
+  &.hot {
+    background: var(--temp-hot-bg);
+    color: var(--temp-hot);
+  }
+
+  &.critical {
+    background: var(--temp-critical-bg);
+    color: var(--temp-critical);
+  }
+}
+
+.status-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  color: var(--weak);
+
+  b {
+    color: var(--muted);
+    font-weight: 500;
+  }
+}
+
+.content {
+  flex: 1;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.readout-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--bg-panel);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.readout {
+  padding: 16px 18px 14px;
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+
+  &:last-child {
+    border-right: 0;
+  }
+}
+
+.readout-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--weak);
+  font-weight: 600;
+}
+
+.readout-value {
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+
+  .unit {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--weak);
+    margin-left: 4px;
+    letter-spacing: 0;
+  }
+
+  &.cool {
+    color: var(--temp-cool);
+  }
+
+  &.warm {
+    color: var(--temp-warm);
+  }
+
+  &.hot {
+    color: var(--temp-hot);
+  }
+
+  &.critical {
+    color: var(--temp-critical);
+  }
+}
+
+.readout-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.meter {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+
+  > i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  &.cool > i {
+    background: var(--temp-cool);
+  }
+
+  &.warm > i {
+    background: var(--temp-warm);
+  }
+
+  &.hot > i {
+    background: var(--temp-hot);
+  }
+
+  &.critical > i {
+    background: var(--temp-critical);
+  }
+}
+
+.lower {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  grid-template-rows: 1fr auto;
+  gap: 12px;
+  min-height: 280px;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hair);
+
+  h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+}
+
+.fan-panel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.chart-panel {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.sys-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.fan-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 78px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--hair);
+
+  .name {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .rpm {
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+
+    span {
+      font-size: 10px;
+      color: var(--weak);
+      font-weight: 400;
+      margin-left: 2px;
+    }
+  }
+}
+
+.bar-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+
+  > i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, rgba(34, 211, 238, 0.35), var(--accent));
+  }
+}
+
+.noise-line {
+  margin-top: auto;
+  padding: 12px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-top: 1px solid var(--hair);
+  background: var(--bg-inset);
+
+  .num {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .unit {
+    font-size: 11px;
+    color: var(--weak);
+  }
+
+  .lbl {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+  }
+}
+
+.chart-body {
+  flex: 1;
+  padding: 8px 12px 10px;
+  min-height: 160px;
+}
+
+.sys-rows {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.sys-cell {
+  padding: 12px 14px;
+  border-right: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  .k {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--weak);
+    font-weight: 600;
+  }
+
+  .v {
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .echarts {
   width: 100%;
   height: 100%;
+}
+
+[data-theme='light'] .bar-track {
+  background: rgba(13, 14, 21, 0.06);
+}
+
+[data-theme='light'] .meter {
+  background: rgba(13, 14, 21, 0.06);
+}
+
+[data-theme='light'] .mode-btn:hover {
+  background: rgba(13, 14, 21, 0.04);
 }
 </style>

@@ -13,16 +13,16 @@ const colorPicker = ref('#8A2BE2')
 
 // 快捷配色预设
 const colorPresets = [
-  { name: '炫彩紫', hex: '#8A2BE2', r: 138, g: 43, b: 226 },
-  { name: '冰晶蓝', hex: '#00F0FF', r: 0, g: 240, b: 255 },
-  { name: '极光绿', hex: '#00FF66', r: 0, g: 255, b: 102 },
-  { name: '烈焰红', hex: '#FF3366', r: 255, g: 51, b: 102 },
-  { name: '暖阳黄', hex: '#FFCC00', r: 255, g: 204, b: 0 },
-  { name: '纯净白', hex: '#FFFFFF', r: 255, g: 255, b: 255 },
+  { name: '炫彩', hex: '#8A2BE2', r: 138, g: 43, b: 226 },
+  { name: '冰晶', hex: '#00F0FF', r: 0, g: 240, b: 255 },
+  { name: '极光', hex: '#00FF66', r: 0, g: 255, b: 102 },
+  { name: '烈焰', hex: '#FF3366', r: 255, g: 51, b: 102 },
+  { name: '暖阳', hex: '#FFCC00', r: 255, g: 204, b: 0 },
+  { name: '纯净', hex: '#FFFFFF', r: 255, g: 255, b: 255 },
 ]
 
 async function loadInitialData() {
-  // 渐变运行状态独立且优先读取: 不依赖颜色/亮度读取结果
+  // 渐变运行状态独立且优先读取: 不依赖颜。亮度读取结果
   try {
     const gradientRes = await KeyboardGradient.IsRunning()
     gradientRunning.value = gradientRes.Success
@@ -147,14 +147,14 @@ function handleReset() {
           <p class="text-[13px] text-gray-500 mt-1">自定义 RGB 背光颜色与灯光亮度。</p>
         </div>
 
-        <!-- 1. 键盘灯效可视化预览卡片 -->
+        <!-- 1. 键盘灯效可视化预览卡。-->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
+          class="panel-card p-5"
         >
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-[13px] font-semibold text-gray-300">灯效实时预览</h2>
             <div class="flex items-center gap-2">
-              <span class="text-xs text-gray-400">颜色拾取器:</span>
+              <span class="text-xs text-gray-400">颜色拾取器</span>
               <a-color-picker v-model="colorPicker" size="mini" :disabled="gradientRunning">
                 <div
                   class="kb-scale w-6 h-6 rounded-md border border-ink/20 cursor-pointer shadow-sm"
@@ -172,9 +172,9 @@ function handleReset() {
                 boxShadow: `0 10px 30px rgba(0, 0, 0, 0.6), 0 0 ${LightBrightness * 12}px rgba(${color.red}, ${color.green}, ${color.blue}, ${LightBrightness * 0.25})`,
               }"
             >
-              <!-- 灯光溢出画幅: 全页唯一一处 hue-rotate 滤镜层。
+              <!-- 灯光溢出画幅: 全页唯一一。hue-rotate 滤镜层。
                    原实现同时在 52 个按键内层各挂一份 .gradient-glow, 共 53 层
-                   逐帧重算, 是掉帧源 —— 已收敛到这一层。 -->
+                   逐帧重算, 是掉帧源 —— 已收敛到这一层。-->
               <div
                 class="absolute inset-0 pointer-events-none"
                 :class="{ 'gradient-glow': gradientRunning }"
@@ -190,8 +190,8 @@ function handleReset() {
                   :key="i"
                   class="bg-[#1a1b2b]/90 border border-ink/[0.06] rounded flex items-center justify-center relative overflow-hidden"
                 >
-                  <!-- 亮度由滑块连续拖动产生: 连续值不得挂过渡,
-                       否则 52 个元素各自"追赶"指针 = 滞后 + 逐帧重绘 -->
+                  <!-- 亮度由滑块连续拖动产。 连续值不得挂过渡,
+                       否则 52 个元素各自追赶"指针 = 滞后 + 逐帧重绘 -->
                   <div
                     class="absolute inset-0 opacity-40 blur-[3px]"
                     :style="{
@@ -208,7 +208,7 @@ function handleReset() {
 
         <!-- 2. 快捷配色预设 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
+          class="panel-card p-5"
         >
           <h2 class="text-[13px] font-semibold text-gray-300 mb-3">快捷预设</h2>
           <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
@@ -232,7 +232,7 @@ function handleReset() {
 
         <!-- 3. 键盘渐变效果 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
+          class="panel-card p-5"
         >
           <div class="flex items-center justify-between gap-4">
             <div class="space-y-1.5">
@@ -242,11 +242,11 @@ function handleReset() {
               </p>
               <span
                 class="text-xs inline-flex items-center gap-1.5"
-                :class="gradientRunning ? 'text-emerald-400' : 'text-gray-500'"
+                :class="gradientRunning ? 'text-accent' : 'text-weak'"
               >
                 <span
                   class="w-1.5 h-1.5 rounded-full"
-                  :class="gradientRunning ? 'bg-emerald-400' : 'bg-gray-600'"
+                  :class="gradientRunning ? 'bg-accent' : 'bg-weak'"
                 ></span>
                 {{ gradientRunning ? '渐变色环循环中' : '未运行' }}
               </span>
@@ -262,12 +262,12 @@ function handleReset() {
           </div>
         </div>
 
-        <!-- 4. 灯光通道与亮度手动调节 -->
+        <!-- 4. 灯光通道与亮度手动调。-->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-6"
+          class="panel-card p-5 space-y-6"
           :class="{ 'opacity-40 pointer-events-none': gradientRunning }"
         >
-          <h2 class="text-[13px] font-semibold text-gray-300">RGB 通道与亮度</h2>
+          <h2 class="text-[13px] font-semibold text-gray-300">RGB 通道与亮。</h2>
 
           <div class="space-y-5">
             <!-- 红色通道 (Red) -->
@@ -316,10 +316,10 @@ function handleReset() {
           </div>
         </div>
 
-        <!-- 5. 底部动作栏 -->
+        <!-- 5. 底部动作。-->
         <div class="flex justify-between items-center pt-2">
           <button
-            class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors"
+            class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"
             :class="{ 'opacity-40 pointer-events-none': gradientRunning }"
             @click="handleReset"
           >
@@ -336,7 +336,7 @@ function handleReset() {
 
           <button
             :disabled="loading || gradientRunning"
-            class="kb-apply text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
+            class="kb-apply btn-apply text-xs"
             @click="handleApply"
           >
             {{ loading ? '应用中...' : '应用' }}
@@ -344,11 +344,11 @@ function handleReset() {
         </div>
       </div>
 
-      <!-- ==================== 右侧：信息与说明栏 ==================== -->
+      <!-- ==================== 右侧：信息与说明区==================== -->
       <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
         <!-- 1. 当前颜色色板卡片 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
+          class="panel-card p-5 space-y-4"
         >
           <h2 class="text-[13px] font-semibold text-gray-300">当前配色方案</h2>
           <div
@@ -374,12 +374,12 @@ function handleReset() {
 
         <!-- 2. 说明卡片 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-2.5"
+          class="panel-card p-5 space-y-2.5"
         >
           <h2 class="text-[13px] font-semibold text-gray-300">使用说明</h2>
           <div class="text-[11px] text-gray-500 leading-relaxed space-y-2">
             <p>通过 R/G/B 三通道滑块、快捷预设或颜色拾取器设置背光颜色。</p>
-            <p>背光亮度设置为 0 时将关闭键盘灯光。</p>
+            <p>背光亮度设置。0 时将关闭键盘灯光。</p>
             <p>点击“应用”即可生效并保存硬件状态。</p>
           </div>
         </div>
@@ -404,7 +404,7 @@ function handleReset() {
 }
 :deep(.red-slider .arco-slider-button) {
   border-color: #ef4444 !important;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.7) !important;
+  box-shadow: none !important;
 }
 
 :deep(.green-slider .arco-slider-bar) {
@@ -412,7 +412,7 @@ function handleReset() {
 }
 :deep(.green-slider .arco-slider-button) {
   border-color: #22c55e !important;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.7) !important;
+  box-shadow: none !important;
 }
 
 :deep(.blue-slider .arco-slider-bar) {
@@ -420,10 +420,10 @@ function handleReset() {
 }
 :deep(.blue-slider .arco-slider-button) {
   border-color: #3b82f6 !important;
-  box-shadow: 0 0 10px rgba(59, 130, 246, 0.7) !important;
+  box-shadow: none !important;
 }
 
-/* 渐变运行中: 预览灯层做 12s 一圈的色相旋转, 模拟真实色轮循环 */
+/* 渐变运行。 预览灯层。12s 一圈的色相旋转, 模拟真实色轮循环 */
 @keyframes gradient-hue {
   from {
     filter: hue-rotate(0deg);
@@ -436,24 +436,35 @@ function handleReset() {
   animation: gradient-hue 12s linear infinite;
 }
 
-/* ===== 动效令牌驱动的局部过渡, 替代原先 6 处 transition-all duration-300 ===== */
+/* ===== 动效令牌驱动的局部过。 替代原先 6 。transition-all duration-300 ===== */
 .kb-preset {
   transition:
     border-color var(--dur-fast) var(--ease-out),
-    background-color var(--dur-fast) var(--ease-out);
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.kb-preset:active {
+  transform: scale(0.97);
 }
 
 .kb-apply {
-  transition: background-color var(--dur-fast) var(--ease-out);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
 }
 
-/* 当前配色色板: 只过渡底色(原 transition-all 会连带模糊/阴影一起动) */
+.kb-apply:active {
+  transform: scale(0.97);
+}
+
+/* 当前配色色板: 只过渡底。。transition-all 会连带模。阴影一起动) */
 .kb-swatch {
   transition: background-color var(--dur-base) var(--ease-out);
 }
 
-/* hover 动效门禁: 无精确指针的设备(触屏)不响应 hover,
- * 否则点击后悬停态会粘住不还原 */
+/* hover 动效门禁: 无精确指针的设备(触屏)不响。hover,
+ * 否则点击后悬停态会粘住不还。*/
 @media (hover: hover) and (pointer: fine) {
   .kb-scale,
   .kb-scale-group {

@@ -100,8 +100,8 @@ const emit = defineEmits<{
   padding: 0 12px;
   border-radius: var(--radius-pill);
   transition:
-    color var(--dur-base) ease,
-    background-color var(--dur-base) ease;
+    color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
 }
 
 /* 性能模式胶囊 */
@@ -126,13 +126,18 @@ const emit = defineEmits<{
   color: var(--color-text-muted);
   cursor: pointer;
   transition:
-    color var(--dur-fast) ease,
-    background-color var(--dur-fast) ease;
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
 }
 
 .mode-seg:hover {
   color: var(--color-text-main);
   background: var(--color-overlay);
+}
+
+.mode-seg:active {
+  transform: scale(0.97);
 }
 
 .mode-seg-active {

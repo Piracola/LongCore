@@ -23,12 +23,12 @@ if (infoResult.Success) {
   cpuInfo.value = infoResult.Data
 }
 
-// 使用 computed 来简化对配置项的访问，并确保响应性
+// 使用 computed 来简化对配置项的访问，并确保响应。
 const CPUData = computed(() => configStore.config?.Cpu)
 const SmuData = computed(() => configStore.config?.Smu)
 const cpuStats = computed(() => systemInfoStore.cpuStats)
 
-// 页面内部交互状态
+// 页面内部交互状。
 const selectedProfile = ref('default')
 
 // 配置文件卡片: 从配置恢复上次选中的档位（不覆盖已保存的值）
@@ -39,12 +39,12 @@ const profiles = [
   { key: 'custom', title: '自定义配置', desc: '自定义参数设置' },
 ] as const
 
-// 从配置恢复上次选中的档位（不覆盖已保存的值）
+// 从配置恢复上次选中的档位（不覆盖已保存的值）。C# 侧可能是 PascalCase, 统一小写匹配卡片 key
 if (CPUData.value?.CpuProfile) {
-  selectedProfile.value = CPUData.value.CpuProfile
+  selectedProfile.value = String(CPUData.value.CpuProfile).toLowerCase()
 }
 
-// 档位名 -> 配置块字段名（config.yaml 中 Cpu 下的 Default/Performance/Saving/Custom）
+// 档位。-> 配置块字段名（config.yaml 。Cpu 下的 Default/Performance/Saving/Custom。
 function profileKey(profile: string): 'Default' | 'Performance' | 'Saving' | 'Custom' {
   const map: Record<string, 'Default' | 'Performance' | 'Saving' | 'Custom'> = {
     default: 'Default',
@@ -55,7 +55,7 @@ function profileKey(profile: string): 'Default' | 'Performance' | 'Saving' | 'Cu
   return map[profile] ?? 'Default'
 }
 
-// 当前选中档位的参数块（滑块直接绑定它；切换档位即切换绑定的数据源）
+// 当前选中档位的参数块（滑块直接绑定它；切换档位即切换绑定的数据源。
 const activeProfile = computed<CpuProfileDataType>(() => {
   const cpu = CPUData.value
   return (cpu?.[profileKey(selectedProfile.value)] ?? cpu?.Default) as CpuProfileDataType
@@ -73,43 +73,43 @@ async function handleApplyAll() {
   loading.value = true
   let smuWarning: string | null = null
   try {
-    // 0. 必须先打开自定义功耗子状态(命令 23 = OpenState), 再下发 SPL/SPPT/温度墙。
-    //    协议要求: 只有 CPUPower=OpenState 时这三个值才会被 EC 接受并生效,
-    //    官方把三个写入严格包在 if (m == OpenState) 内(decompiled/main.cs:2386 SetSP_CustomMode)。
+    // 0. 必须先打开自定义功耗子状。命令 23 = OpenState), 再下。SPL/SPPT/温度墙。
+    //    协议要求: 只有 CPUPower=OpenState 时这三个值才会被 EC 接受并生。
+    //    官方把三个写入严格包。if (m == OpenState) 。decompiled/main.cs:2386 SetSP_CustomMode)。
     //    注意 PerformanceMode.Set 切换标准档时会写 CloseState, 之后这三个写入会全部失效,
-    //    所以这里必须无条件先开 —— 四个档位一视同仁, 否则非自定义档必然失败。
-    //    代价: 应用后首页胶囊会呈现"自定义"(功耗值确实已是自定义值, 属诚实反馈)。
+    //    所以这里必须无条件先开 —。四个档位一视同。 否则非自定义档必然失败。
+    //    代价: 应用后首页胶囊会呈现"自定。(功耗值确实已是自定义。 属诚实反。。
     const customRes = await CPU.SetCustomMode(true)
     if (!customRes.Success) {
       Message.error(customRes.Message || '进入自定义功耗模式失败')
       return
     }
 
-    // 1. 设置温度墙 (官方顺序: OpenState → 温度墙(4) → SPL(2) → SPPT(3))
+    // 1. 设置温度。(官方顺序: OpenState 。温度。4) 。SPL(2) 。SPPT(3))
     const tempWallRes = await CPU.SetCPUTempWall(activeProfile.value.CpuTempWall)
     if (!tempWallRes.Success) {
       Message.error(tempWallRes.Message || '温度墙设置失败')
       return
     }
-    // 2. 设置长时功耗限制 SPL (PL1)
+    // 2. 设置长时功耗限制SPL (PL1)
     const longPowerRes = await CPU.SetCpuLongPower(activeProfile.value.CpuLongPower)
     if (!longPowerRes.Success) {
       Message.error(longPowerRes.Message || '长时功耗限制设置失败')
       return
     }
-    // 3. 设置短时功耗限制 SPPT (PL2)
+    // 3. 设置短时功耗限制SPPT (PL2)
     const shortPowerRes = await CPU.SetCpuShortPower(activeProfile.value.CpuShortPower)
     if (!shortPowerRes.Success) {
       Message.error(shortPowerRes.Message || '短时功耗限制设置失败')
       return
     }
-    // 4. 设置最大频率
+    // 4. 设置最大频。
     const maxFreqRes = await Power.SetCPUMaxFrequency(activeProfile.value.CpuMaxFrequency)
     if (!maxFreqRes.Success) {
       Message.error(maxFreqRes.Message || '最大频率设置失败')
       return
     }
-    // 5. 设置睿频开关
+    // 5. 设置睿频开。
     if (activeProfile.value.CpuTurbo) {
       const turboRes = await Power.EnableTurbo()
       if (!turboRes.Success) {
@@ -124,10 +124,10 @@ async function handleApplyAll() {
       }
     }
     // 6. 设置核心电压偏移 (Curve Optimizer All)
-    //    CO=0 的语义是"不偏移", 属无操作 —— 直接跳过。
-    //    这样可避免在未安装 PawnIO 内核驱动的机器上因驱动缺失而误报失败
+    //    CO=0 的语义是"不偏。, 属无操作 —。直接跳过。
+    //    这样可避免在未安。PawnIO 内核驱动的机器上因驱动缺失而误报失。
     //    (SMU 读写依赖 PawnIO, 是用户可选安装的组件)。
-    //    即便确有偏移要写而失败, 也不中止前面已生效的功耗/频率设置, 只做提示。
+    //    即便确有偏移要写而失。 也不中止前面已生效的功。频率设置, 只做提示。
     const coValue = configStore.config?.Smu?.CurveOptimizerAll ?? 0
     if (coValue !== 0) {
       const curveRes = await RyzenSmu.SetCurveOptimizerAll(coValue)
@@ -136,7 +136,7 @@ async function handleApplyAll() {
       }
     }
 
-    // 7. 保存主配置（含当前档位块参数与选中档位，供开机自启等使用）
+    // 7. 保存主配置（含当前档位块参数与选中档位，供开机自启等使用率
     const saveRes = await configStore.saveConfig()
     if (!saveRes?.Success) {
       Message.error(saveRes?.Message || '设置保存失败')
@@ -148,13 +148,13 @@ async function handleApplyAll() {
       Message.success('设置应用成功')
     }
   } catch {
-    Message.error('应用设置失败，请检查桥接服务。')
+    Message.error('应用设置失败，请检查桥接服务')
   } finally {
     loading.value = false
   }
 }
 
-// 重置当前选中档位的出厂默认参数 (不切换档位)
+// 重置当前选中档位的出厂默认参。(不切换档。
 async function handleReset() {
   const key = profileKey(selectedProfile.value)
   const defaults = CPU_PROFILE_DEFAULTS[key]
@@ -179,7 +179,7 @@ async function handleCancel() {
 <template>
   <div v-if="CPUData" class="h-full overflow-y-auto text-ink p-6 no-scrollbar">
     <div class="max-w-[1300px] mx-auto flex flex-col lg:flex-row gap-6">
-      <!-- ==================== 左/中：CPU 设置区域 ==================== -->
+      <!-- ==================== 左中：CPU 设置区域 ==================== -->
       <div class="flex-1 space-y-6">
         <!-- 头部标题 -->
         <div>
@@ -189,10 +189,10 @@ async function handleCancel() {
 
         <!-- 1. CPU 配置文件 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
+          class="panel-card p-5"
         >
           <div class="flex justify-between items-center mb-4">
-            <h2 class="text-[13px] font-semibold text-gray-300">CPU 配置文件</h2>
+            <h2 class="section-label !mb-0">CPU 配置文件</h2>
           </div>
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -200,10 +200,10 @@ async function handleCancel() {
               v-for="p in profiles"
               :key="p.key"
               :class="[
-                'pf-card border rounded-xl p-4 cursor-pointer flex flex-col justify-between h-[96px]',
+                'pf-card border rounded-lg p-4 cursor-pointer flex flex-col justify-between h-[96px]',
                 selectedProfile === p.key
-                  ? 'profile-active border-cyber-purple bg-panel-active'
-                  : 'border-ink/[0.05] bg-panel hover:border-ink/10',
+                  ? 'profile-active'
+                  : 'border-hair bg-panel hover:border-ink/15',
               ]"
               @click="selectProfile(p.key)"
             >
@@ -219,37 +219,41 @@ async function handleCancel() {
 
         <!-- 2. 核心设置 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-6"
+          class="panel-card p-5 space-y-6"
         >
-          <h2 class="text-[13px] font-semibold text-gray-300">核心设置</h2>
+          <h2 class="section-label">核心设置</h2>
 
           <div class="space-y-6">
-            <!-- 短时功耗限制 (PL1) -->
+            <!-- 短时功耗限制(PL1) -->
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >长时功耗限制 (PL1)
-                  <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
-                    >ⓘ</span
+                  >长时功耗限制(PL1)
+                  <span
+                    class="text-weak cursor-help text-[10px] hover:text-muted"
+                    title="CPU 可持续运行的长时功耗上限"
+                    >?</span
                   ></span
                 >
-                <span class="text-purple-400 font-medium font-mono"
+                <span class="text-accent font-medium tnum"
                   >{{ activeProfile.CpuLongPower }} W</span
                 >
               </div>
               <a-slider v-model="activeProfile.CpuLongPower" :min="30" :max="120" class="w-full" />
             </div>
 
-            <!-- 长时功耗限制 (PL2) -->
+            <!-- 长时功耗限制(PL2) -->
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >短时功耗限制 (PL2)
-                  <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
-                    >ⓘ</span
+                  >短时功耗限制(PL2)
+                  <span
+                    class="text-weak cursor-help text-[10px] hover:text-muted"
+                    title="CPU 短时间爆发功耗上限"
+                    >?</span
                   ></span
                 >
-                <span class="text-purple-400 font-medium font-mono"
+                <span class="text-accent font-medium tnum"
                   >{{ activeProfile.CpuShortPower }} W</span
                 >
               </div>
@@ -261,11 +265,13 @@ async function handleCancel() {
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
                   >核心电压偏移 (CO)
-                  <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
-                    >ⓘ</span
+                  <span
+                    class="text-weak cursor-help text-[10px] hover:text-muted"
+                    title="Curve Optimizer 电压偏移, 负值为降压"
+                    >?</span
                   ></span
                 >
-                <span class="text-purple-400 font-medium font-mono">{{
+                <span class="text-accent font-medium tnum">{{
                   configStore.config?.Smu?.CurveOptimizerAll ?? 0
                 }}</span>
               </div>
@@ -278,32 +284,36 @@ async function handleCancel() {
               />
             </div>
 
-            <!-- CPU 温度墙 -->
+            <!-- CPU 温度。-->
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
                   >CPU 温度墙
-                  <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
-                    >ⓘ</span
+                  <span
+                    class="text-weak cursor-help text-[10px] hover:text-muted"
+                    title="触发降频前的最高核心温度"
+                    >?</span
                   ></span
                 >
-                <span class="text-purple-400 font-medium font-mono"
+                <span class="text-accent font-medium tnum"
                   >{{ activeProfile.CpuTempWall }} °C</span
                 >
               </div>
               <a-slider v-model="activeProfile.CpuTempWall" :min="60" :max="105" class="w-full" />
             </div>
 
-            <!-- 最大睿频频率 -->
+            <!-- 最大睿频频。-->
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
                 <span class="text-gray-300 flex items-center gap-1"
-                  >最大睿频频率
-                  <span class="text-gray-500 cursor-pointer text-[10px] hover:text-gray-300"
-                    >ⓘ</span
+                  >最大睿频
+                  <span
+                    class="text-weak cursor-help text-[10px] hover:text-muted"
+                    title="CPU 最大加速频率上限"
+                    >?</span
                   ></span
                 >
-                <span class="text-purple-400 font-medium font-mono"
+                <span class="text-accent font-medium tnum"
                   >{{ (activeProfile.CpuMaxFrequency / 1000).toFixed(1) }} GHz</span
                 >
               </div>
@@ -317,13 +327,13 @@ async function handleCancel() {
             </div>
           </div>
         </div>
-        <!-- 4. 底部全局控制栏 -->
+        <!-- 4. 底部全局控制。-->
         <div class="flex justify-between items-center pt-2">
           <button
-            class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors"
+            class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"
             @click="handleReset"
           >
-            <!-- 刷新旋转小图标 -->
+            <!-- 刷新旋转小图。-->
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 stroke-linecap="round"
@@ -344,7 +354,7 @@ async function handleCancel() {
             </button>
             <button
               :disabled="loading"
-              class="tok-apply text-xs font-medium text-white bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg"
+              class="tok-apply btn-apply text-xs"
               @click="handleApplyAll"
             >
               {{ loading ? '应用中...' : '应用' }}
@@ -353,15 +363,15 @@ async function handleCancel() {
         </div>
       </div>
 
-      <!-- ==================== 右侧：信息与说明栏 ==================== -->
+      <!-- ==================== 右侧：信息与说明区==================== -->
       <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
         <!-- 1. CPU 信息卡片 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
+          class="panel-card p-5"
         >
           <h2 class="text-[13px] font-semibold text-gray-300 mb-4">CPU 信息</h2>
           <div class="flex items-center gap-4 h-[96px]">
-            <!-- 高保真 3D 芯片矢量线稿 (CpuDie) -->
+            <!-- 高保。3D 芯片矢量线稿 (CpuDie) -->
             <div
               class="w-16 h-16 bg-ink/[0.02] border border-ink/[0.05] rounded-xl flex items-center justify-center relative"
             >
@@ -381,11 +391,11 @@ async function handleCancel() {
           </div>
         </div>
 
-        <!-- 2. 实时状态卡片 -->
+        <!-- 2. 实时状态卡。-->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
+          class="panel-card p-5 space-y-4"
         >
-          <h2 class="text-[13px] font-semibold text-gray-300">实时状态</h2>
+          <h2 class="text-sm font-semibold text-ink">实时状态</h2>
 
           <div class="space-y-3.5">
             <!-- 频率 -->
@@ -425,15 +435,15 @@ async function handleCancel() {
               </div>
             </div>
 
-            <!-- 使用率 -->
+            <!-- 使用。-->
             <div class="space-y-1.5">
               <div class="flex justify-between text-[11px]">
-                <span class="text-gray-400">使用率</span>
+                <span class="text-muted">使用率</span>
                 <span class="text-ink font-mono font-medium">{{ cpuStats?.Usage || 0 }} %</span>
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
-                  class="bar-fill h-full bg-[#3B82F6]"
+                  class="bar-fill h-full bg-accent"
                   :style="{ transform: `scaleX(${Math.min((cpuStats?.Usage || 0) / 100, 1)})` }"
                 ></div>
               </div>
@@ -461,27 +471,27 @@ async function handleCancel() {
 
         <!-- 3. 核心分布卡片 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-3.5"
+          class="panel-card p-5 space-y-3.5"
         >
           <div class="flex justify-between items-center">
             <h2 class="text-[13px] font-semibold text-gray-300">核心分布</h2>
             <!-- <button
-              class="bg-ink/[0.04] border border-ink/10 hover:bg-ink/[0.08] text-[10px] text-gray-400 hover:text-ink px-2 py-0.5 rounded transition"
+              class="bg-ink/[0.04] border border-ink/10 hover:bg-ink/[0.08] text-[10px] text-gray-400 hover:text-ink px-2 py-0.5 rounded transition-colors pressable"
             >
               详情
             </button> -->
           </div>
 
           <div class="space-y-2">
-            <!-- 动态渲染所有核心 -->
+            <!-- 动态渲染所有核。-->
             <div class="grid grid-cols-6 gap-1.5">
               <div
                 v-for="i in cpuInfo?.Cores || 0"
                 :key="'core' + i"
-                class="core-tile bg-purple-950/20 border border-purple-500/25 rounded-lg py-2 text-center"
+                class="core-tile bg-inset border border-hair rounded-lg py-2 text-center"
               >
-                <div class="text-[8px] text-purple-400 leading-none">C</div>
-                <div class="text-xs text-purple-300 font-bold font-mono mt-0.5">
+                <div class="text-[8px] text-weak leading-none">C</div>
+                <div class="text-xs text-ink font-bold tnum mt-0.5">
                   {{ String(i - 1).padStart(2, '0') }}
                 </div>
               </div>
@@ -491,7 +501,7 @@ async function handleCancel() {
 
         <!-- 4. 说明卡片 -->
         <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-2.5"
+          class="panel-card p-5 space-y-2.5"
         >
           <h2 class="text-[13px] font-semibold text-gray-300">说明</h2>
           <div class="text-[11px] text-gray-500 leading-relaxed space-y-2">
@@ -514,7 +524,7 @@ async function handleCancel() {
 </template>
 
 <style lang="scss" scoped>
-/* 隐藏默认滚动条 */
+/* 隐藏默认滚动。*/
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -523,33 +533,29 @@ async function handleCancel() {
   scrollbar-width: none;
 }
 
-/* 浅色下选中配置卡片: 淡灰底 + 灰边框, 不发光(深色保持紫调, 见模板类) */
-[data-theme='light'] .profile-active {
-  border-color: rgba(13, 14, 21, 0.16);
+/* 选中配置卡片: 冷青描边 + 微底, 文字保持 ink 可读 */
+.profile-active {
+  border-color: var(--accent) !important;
+  background: var(--accent-dim) !important;
   box-shadow: none;
 }
 
-/* 浅色下核心分布磁贴: 淡灰底 + 灰边框 + 灰字(深色保持紫调) */
-[data-theme='light'] .core-tile {
-  background-color: rgba(13, 14, 21, 0.04);
-  border-color: rgba(13, 14, 21, 0.1);
-}
-[data-theme='light'] .core-tile .text-purple-400 {
-  color: #64708a;
-}
-[data-theme='light'] .core-tile .text-purple-300 {
-  color: #454d61;
+[data-theme='light'] .profile-active {
+  background: color-mix(in srgb, var(--accent) 8%, #ffffff) !important;
+  border-color: var(--accent) !important;
 }
 
-/* 深度重写 Arco Slider 为高透炫光紫色 */
+/* 浅色下核心分布磁贴: 统一中性 inset, 不引入第二强调色 */
+
+/* 深度重写 Arco Slider 为高透炫光紫。*/
 
 
-/* 深度重写 Arco Switch */
+/* Arco Switch 选中。 统一冷青 */
 :deep(.arco-switch-checked) {
-  background-color: var(--color-accent-purple) !important;
+  background-color: var(--accent) !important;
 }
 
-/* 重写下拉菜单为深色模式样式 */
+/* 重写下拉菜单为深色模式样。*/
 :deep(.select-dark .arco-select-view-single) {
   background-color: var(--color-panel-elevated) !important;
   border: 1px solid var(--color-line-soft) !important;
@@ -558,24 +564,35 @@ async function handleCancel() {
   height: 32px !important;
 }
 
-/* ===== 动效令牌驱动的局部过渡 (替代原 transition-all duration-300) ===== */
-/* 配置档卡片: 只过渡颜色/边框/底色(原 transition-all 无界) */
+/* ===== 动效令牌驱动的局部过。(替代。transition-all duration-300) ===== */
+/* 配置档卡。 颜色/边框/底色 + 按压缩放 */
 .pf-card {
   transition:
     color var(--dur-fast) var(--ease-out),
     background-color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
 }
 
-/* 应用按钮: 只过渡底色。原带 shadow-[0_0_15px_紫] 辉光, 按"去 AI 味"定案移除 */
+.pf-card:active {
+  transform: scale(0.97);
+}
+
+/* 应用按钮: 只过渡底。+ 按压缩放。原。shadow-[0_0_15px_紫] 辉光, 。。AI 。定案移除 */
 .tok-apply {
-  transition: background-color var(--dur-fast) var(--ease-out);
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
 }
 
-/* 四个实时条(频率/电压/使用率/温度):
- * 用 transform:scaleX 而非 width —— width 是非合成属性, 会触发布局;
- * 填充层自身不带 border-radius, 圆角由父层 rounded-full + overflow-hidden 裁剪,
- * 因此 scaleX 不会把圆角拉伸变形。轮询周期 5s, 250ms 过渡占空比约 5%。 */
+.tok-apply:active {
+  transform: scale(0.97);
+}
+
+/* 四个实时。频率/电压/使用率温度):
+ * 。transform:scaleX 而非 width —。width 是非合成属。 会触发布局;
+ * 填充层自身不。border-radius, 圆角由父。rounded-full + overflow-hidden 裁剪,
+ * 因此 scaleX 不会把圆角拉伸变形。轮询周。5s, 250ms 过渡占空比约 5%。*/
 .bar-fill {
   transform-origin: left;
   transition: transform var(--dur-slow) var(--ease-out);
