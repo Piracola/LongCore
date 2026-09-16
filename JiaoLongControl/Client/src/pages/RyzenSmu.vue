@@ -16,7 +16,6 @@ interface ConfigGroupItem {
   max: number
   step?: number
   unit: string
-  sliderClass: string
 }
 interface ConfigGroup {
   title: string
@@ -25,60 +24,18 @@ interface ConfigGroup {
 
 const CONFIG_GROUPS: ConfigGroup[] = [
   {
-    title: '功耗限制 (Power Limits)',
+    title: '功耗限制 Power Limits',
     items: [
-      {
-        label: 'STAPM 长期功耗上限',
-        key: 'StapmLimit',
-        min: 0,
-        max: 200,
-        unit: 'W',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: 'STAPM 时间窗口',
-        key: 'StapmTime',
-        min: 0,
-        max: 3600,
-        unit: 's',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: 'Fast 瞬时功耗上限',
-        key: 'FastLimit',
-        min: 0,
-        max: 200,
-        unit: 'W',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: 'Slow 持续功耗上限',
-        key: 'SlowLimit',
-        min: 0,
-        max: 200,
-        unit: 'W',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: 'Slow 功耗时间窗口',
-        key: 'SlowTime',
-        min: 0,
-        max: 3600,
-        unit: 's',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: 'PPT 功耗限制 (RSMU)',
-        key: 'PptLimitRsmu',
-        min: 0,
-        max: 200,
-        unit: 'W',
-        sliderClass: 'slider-purple',
-      },
+      { label: 'STAPM 长期功耗上限', key: 'StapmLimit', min: 0, max: 200, unit: 'W' },
+      { label: 'STAPM 时间窗口', key: 'StapmTime', min: 0, max: 3600, unit: 's' },
+      { label: 'Fast 瞬时功耗上限', key: 'FastLimit', min: 0, max: 200, unit: 'W' },
+      { label: 'Slow 持续功耗上限', key: 'SlowLimit', min: 0, max: 200, unit: 'W' },
+      { label: 'Slow 功耗时间窗口', key: 'SlowTime', min: 0, max: 3600, unit: 's' },
+      { label: 'PPT 功耗限制 (RSMU)', key: 'PptLimitRsmu', min: 0, max: 200, unit: 'W' },
     ],
   },
   {
-    title: '电流限制 (Current Limits)',
+    title: '电流限制 Current Limits',
     items: [
       {
         label: 'VRM 持续电流限制 (MP1)',
@@ -87,7 +44,6 @@ const CONFIG_GROUPS: ConfigGroup[] = [
         max: 300000,
         step: 1000,
         unit: 'mA',
-        sliderClass: 'slider-blue',
       },
       {
         label: 'VRM 持续电流限制 (RSMU)',
@@ -96,7 +52,6 @@ const CONFIG_GROUPS: ConfigGroup[] = [
         max: 300000,
         step: 1000,
         unit: 'mA',
-        sliderClass: 'slider-blue',
       },
       {
         label: 'EDC 瞬间电流限制 (MP1)',
@@ -105,7 +60,6 @@ const CONFIG_GROUPS: ConfigGroup[] = [
         max: 300000,
         step: 1000,
         unit: 'mA',
-        sliderClass: 'slider-blue',
       },
       {
         label: 'EDC 瞬间电流限制 (RSMU)',
@@ -114,60 +68,22 @@ const CONFIG_GROUPS: ConfigGroup[] = [
         max: 300000,
         step: 1000,
         unit: 'mA',
-        sliderClass: 'slider-blue',
       },
     ],
   },
   {
-    title: '温度控制 (Thermal Control)',
+    title: '温度控制 Thermal Control',
     items: [
-      {
-        label: '温度墙限制 (MP1)',
-        key: 'TempLimitMp1',
-        min: 40,
-        max: 115,
-        unit: '℃',
-        sliderClass: 'slider-red',
-      },
-      {
-        label: '温度墙限制 (RSMU)',
-        key: 'TempLimitRsmu',
-        min: 40,
-        max: 115,
-        unit: '℃',
-        sliderClass: 'slider-red',
-      },
+      { label: '温度墙限制 (MP1)', key: 'TempLimitMp1', min: 40, max: 115, unit: '℃' },
+      { label: '温度墙限制 (RSMU)', key: 'TempLimitRsmu', min: 40, max: 115, unit: '℃' },
     ],
   },
   {
-    title: '时钟与超频 (Clocks & OC)',
+    title: '时钟与超频 Clocks & OC',
     items: [
-      {
-        label: 'PBO 倍率上限选择',
-        key: 'PboScalar',
-        min: 1,
-        max: 10,
-        unit: 'x',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: '超频核心频率偏移',
-        key: 'OcClk',
-        min: -500,
-        max: 500,
-        step: 25,
-        unit: 'MHz',
-        sliderClass: 'slider-purple',
-      },
-      {
-        label: '超频核心电压设定',
-        key: 'OcVolt',
-        min: 0,
-        max: 1550,
-        step: 5,
-        unit: 'mV',
-        sliderClass: 'slider-purple',
-      },
+      { label: 'PBO 倍率上限选择', key: 'PboScalar', min: 1, max: 10, unit: 'x' },
+      { label: '超频核心频率偏移', key: 'OcClk', min: -500, max: 500, step: 25, unit: 'MHz' },
+      { label: '超频核心电压设定', key: 'OcVolt', min: 0, max: 1550, step: 5, unit: 'mV' },
     ],
   },
 ]
@@ -179,7 +95,6 @@ if (!configStore.config) {
 }
 const smuData = computed(() => configStore.config?.Smu)
 
-// Physical core count fetched from backend (excludes hyperthreading)
 const coreCount = ref(0)
 const cpuName = ref('AMD Ryzen')
 const cpuCoreInfo = ref('')
@@ -205,7 +120,49 @@ watch(
   { immediate: true },
 )
 
+/**
+ * 禁止写入 0 的 SMU 限制项。
+ * 这些参数在真机上不存在「设为 0」的合法意图；而限制值在读取失败时会被渲染成 0
+ * （configStore.config.Smu 全 0），直接下发即是把 0 W / 0 s / 0 mA 写进固件限制。
+ * 此处是前端硬闸门；Server 侧写入闸门为第二道。
+ * 豁免：CurveOptimizerAll（0 = 不偏移，合法）、OcClk / OcVolt（独立控件，不在本表）。
+ */
+const ZERO_UNWRITABLE = new Set([
+  'StapmLimit',
+  'StapmTime',
+  'FastLimit',
+  'SlowLimit',
+  'SlowTime',
+  'PptLimitRsmu',
+  'VrmCurrentMp1',
+  'VrmCurrentRsmu',
+  'EdcLimitMp1',
+  'EdcLimitRsmu',
+  'TempLimitMp1',
+  'TempLimitRsmu',
+])
+
+function isZeroBlocked(itemKey: string, value: number | undefined): boolean {
+  return ZERO_UNWRITABLE.has(itemKey) && (!Number.isFinite(value) || value === 0)
+}
+
+/** 把模板里的 loadingMap 键与 applySetting 的 methodName 对齐。
+ *  此前模板读 loadingMap[item.key]、写入却落在 loadingMap['Set'+item.key]，
+ *  两个键从来不同名 → 按钮禁用态从未生效，连点即连发写入。 */
+function setterKey(itemKey: string): string {
+  return `Set${itemKey}`
+}
+
 const applySetting = async (methodName: keyof typeof RyzenSmu, ...args: number[]) => {
+  const itemKey = String(methodName).replace(/^Set/, '')
+  if (ZERO_UNWRITABLE.has(itemKey)) {
+    const v = args[0]
+    if (!Number.isFinite(v) || v === 0) {
+      Message.warning('该值当前为 0（多为读取失败），已阻止写入。请先设定有效数值。')
+      return
+    }
+  }
+
   loadingMap[methodName] = true
   try {
     const fn = RyzenSmu[methodName] as unknown as (
@@ -227,9 +184,15 @@ const applySetting = async (methodName: keyof typeof RyzenSmu, ...args: number[]
   }
 }
 
-// ====== Real-time SMU Telemetry ======
 const HISTORY_LEN = 24
-const telemetry = ref<SmuTelemetry>({ Ppt: 0, Tdc: null, Edc: null, Temp: 0, FreqMhz: 0, Usage: 0 })
+const telemetry = ref<SmuTelemetry>({
+  Ppt: 0,
+  Tdc: null,
+  Edc: null,
+  Temp: 0,
+  FreqMhz: 0,
+  Usage: 0,
+})
 const pptHistory = ref<number[]>(Array(HISTORY_LEN).fill(0))
 const tdcHistory = ref<number[]>(Array(HISTORY_LEN).fill(0))
 const edcHistory = ref<number[]>(Array(HISTORY_LEN).fill(0))
@@ -250,8 +213,18 @@ const edcChart = computed(() => sparkline(edcHistory.value, 400))
 const tempChart = computed(() => sparkline(tempHistory.value, 110))
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null
+/** 在途标志：宿主慢时不得叠加第二次请求（2026-09-16 卡死事故直接成因之一） */
+let telemetryInFlight = false
+/** 已卸载标志：异步初始化晚于卸载时不得再建定时器，否则泄漏且永不清理 */
+let disposed = false
+/** 连续失败计数：达上限即停止轮询，避免反复撞击已卡住的宿主 */
+let consecutiveFailures = 0
+let telemetryStalled = false
+const MAX_CONSECUTIVE_FAILURES = 5
 
 async function fetchTelemetry() {
+  if (telemetryInFlight || disposed) return
+  telemetryInFlight = true
   try {
     const res = await RyzenSmu.GetSmuTelemetry()
     if (res.Success && res.Data) {
@@ -260,28 +233,59 @@ async function fetchTelemetry() {
       pushHistory(tdcHistory.value, res.Data.Tdc ?? 0)
       pushHistory(edcHistory.value, res.Data.Edc ?? 0)
       pushHistory(tempHistory.value, res.Data.Temp)
+      consecutiveFailures = 0
+      telemetryStalled = false
+    } else {
+      consecutiveFailures += 1
     }
   } catch {
     // silent fail — telemetry is best-effort
+    consecutiveFailures += 1
+  } finally {
+    telemetryInFlight = false
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      stopPolling()
+      telemetryStalled = true
+    }
   }
 }
 
-onMounted(async () => {
-  // Fetch real physical core count (no hyperthreading)
+function startPolling() {
+  if (disposed || telemetryStalled || pollingTimer !== null) return
+  pollingTimer = setInterval(fetchTelemetry, POLL_INTERVAL_SMU)
+}
+
+function stopPolling() {
+  if (pollingTimer !== null) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
+
+/** 窗口不可见时停轮询：后台挂着的控制台不该持续敲固件 */
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopPolling()
+    return
+  }
+  if (!telemetryStalled) {
+    void fetchTelemetry()
+    startPolling()
+  }
+}
+
+async function loadCpuInfo() {
   try {
     const coreRes = await CPU.GetPhysicalCoreCount()
-    if (coreRes.Success && coreRes.Data > 0) {
-      coreCount.value = coreRes.Data
-    } else {
-      coreCount.value = 8 // safe fallback
-    }
+    if (disposed) return
+    coreCount.value = coreRes.Success && coreRes.Data > 0 ? coreRes.Data : 8
   } catch {
-    coreCount.value = 8
+    if (!disposed) coreCount.value = 8
   }
 
-  // Fetch CPU name for display
   try {
     const infoRes = await CPU.GetCpuInfo()
+    if (disposed) return
     if (infoRes.Success && infoRes.Data) {
       cpuName.value = infoRes.Data.Name || 'AMD Ryzen'
       cpuCoreInfo.value = `${infoRes.Data.Cores} 核心 / ${infoRes.Data.Threads} 线程`
@@ -289,216 +293,197 @@ onMounted(async () => {
   } catch {
     /* ignore */
   }
+}
 
-  fetchTelemetry()
-  pollingTimer = setInterval(fetchTelemetry, POLL_INTERVAL_SMU)
+onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  // 先起轮询、再取 CPU 信息：任何 await 之后都不再创建定时器，杜绝卸载竞态泄漏
+  void fetchTelemetry()
+  startPolling()
+  void loadCpuInfo()
 })
 
 onUnmounted(() => {
-  if (pollingTimer) clearInterval(pollingTimer)
+  disposed = true
+  stopPolling()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
+
+function tempClass(celsius: number) {
+  if (celsius > 90) return 'text-temp-critical'
+  if (celsius > 80) return 'text-temp-hot'
+  return 'text-ink'
+}
 </script>
 
 <template>
   <div v-if="smuData" class="h-full overflow-y-auto text-ink p-6 no-scrollbar">
     <div class="max-w-[1300px] mx-auto flex flex-col lg:flex-row gap-6">
-      <!-- ==================== 左/中：高级电源、频率微调区 ==================== -->
       <div class="flex-1 space-y-6">
-        <!-- 头部标题 -->
         <div>
           <h1 class="text-2xl font-bold tracking-wide">Ryzen SMU</h1>
-          <p class="text-[13px] text-gray-500 mt-1">
-            高级电源、电流及频率限制调整 (AMD Ryzen 平台专用)
-          </p>
+          <p class="text-[13px] text-muted mt-1">高级电源、电流及频率限制调整（AMD Ryzen 平台专用）</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <!-- 动态生成的配置卡片（分成左右两个大组排布更整齐） -->
           <div
             v-for="group in CONFIG_GROUPS"
             :key="group.title"
-            class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg flex flex-col justify-between"
+            class="panel-card p-5 flex flex-col justify-between"
           >
             <div>
-              <h3
-                class="text-xs font-black text-purple-400 uppercase tracking-widest mb-5 border-l-4 border-purple-600 pl-2.5"
-              >
-                {{ group.title }}
-              </h3>
+              <h3 class="section-label">{{ group.title }}</h3>
 
-              <div class="space-y-5">
+              <div class="space-y-4">
                 <div v-for="item in group.items" :key="item.key" class="space-y-1.5">
-                  <div class="flex justify-between items-center text-[11px]">
-                    <span class="text-gray-400">{{ item.label }}</span>
-                    <span class="text-ink font-mono font-medium"
-                      >{{ smuData[item.key] }} {{ item.unit }}</span
+                  <div class="flex justify-between items-center text-xs">
+                    <span class="text-muted">{{ item.label }}</span>
+                    <span class="text-ink tnum font-medium"
+                      >{{ isZeroBlocked(item.key, smuData[item.key]) ? '未读取' : smuData[item.key] + ' ' + item.unit }}</span
                     >
                   </div>
-                  <div class="flex items-center gap-4">
+                  <div class="flex items-center gap-3">
                     <a-slider
                       v-model="smuData[item.key]"
                       :min="item.min"
                       :max="item.max"
                       :step="item.step || 1"
                       class="flex-1"
-                      :class="item.sliderClass"
                     />
-                    <a-button
-                      type="primary"
-                      size="small"
-                      class="!bg-purple-600/10 !text-purple-400 !border-purple-500/20 hover:!bg-purple-600 hover:!text-white rounded-md px-3 font-semibold transition"
-                      :loading="loadingMap[item.key]"
+                    <button
+                      class="btn-apply btn-apply-sm pressable shrink-0"
+                      :disabled="loadingMap[setterKey(item.key)] || isZeroBlocked(item.key, smuData[item.key])"
                       @click="
                         applySetting(('Set' + item.key) as keyof typeof RyzenSmu, smuData[item.key])
                       "
-                      >应用</a-button
                     >
+                      {{ loadingMap[setterKey(item.key)] ? '…' : '应用' }}
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- 仅在时钟与超频面板底部显示 OC 开关 -->
             <div
               v-if="group.title.includes('Clocks')"
-              class="mt-6 flex gap-3 pt-5 border-t border-ink/[0.03]"
+              class="mt-5 flex gap-3 pt-4 border-t border-hair"
             >
-              <a-button
-                type="primary"
-                class="flex-1 !rounded-lg font-bold !bg-emerald-600/20 !text-emerald-400 !border-emerald-500/20 hover:!bg-emerald-600 hover:!text-white"
-                :loading="loadingMap['EnableOc']"
+              <button
+                class="btn-ghost flex-1 pressable"
+                :disabled="loadingMap['EnableOc']"
                 @click="applySetting('EnableOc')"
-                >启用超频</a-button
               >
-              <a-button
-                type="primary"
-                class="flex-1 !rounded-lg font-bold !bg-rose-600/20 !text-rose-400 !border-rose-500/20 hover:!bg-rose-600 hover:!text-white"
-                :loading="loadingMap['DisableOc']"
+                启用超频
+              </button>
+              <button
+                class="btn-danger flex-1 pressable"
+                :disabled="loadingMap['DisableOc']"
                 @click="applySetting('DisableOc')"
-                >禁用超频</a-button
               >
+                禁用超频
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- 下部分割栏（Curve Optimizer 与 单核超频） -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <!-- Curve Optimizer 面板 -->
-          <div
-            class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg flex flex-col justify-between"
-          >
-            <div>
-              <div class="flex justify-between items-center mb-4">
-                <h3
-                  class="text-xs font-black text-orange-400 uppercase tracking-widest border-l-4 border-orange-500 pl-2.5"
+          <div class="panel-card p-5">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="section-label !mb-0">Curve Optimizer 曲线优化</h3>
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] font-medium text-weak uppercase">Cores</span>
+                <a-input-number
+                  v-model="coreCount"
+                  :min="1"
+                  :max="64"
+                  size="mini"
+                  class="!w-14 !bg-ink/5 !border-ink/10 !text-ink rounded-md"
+                  hide-button
+                />
+              </div>
+            </div>
+
+            <div class="bg-inset border border-hair p-3.5 rounded-lg mb-4">
+              <div class="flex justify-between items-center mb-1 text-xs">
+                <span class="font-semibold text-ink">All Core Offset（全核心偏移量）</span>
+                <span class="tnum text-accent font-semibold">{{ smuData.CurveOptimizerAll }}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                <a-slider
+                  v-model="smuData.CurveOptimizerAll"
+                  :min="-30"
+                  :max="0"
+                  class="flex-1"
+                />
+                <button
+                  class="btn-apply btn-apply-sm pressable shrink-0"
+                  :disabled="loadingMap['SetCurveOptimizerAll']"
+                  @click="applySetting('SetCurveOptimizerAll', smuData.CurveOptimizerAll)"
                 >
-                  Curve Optimizer 曲线优化
-                </h3>
-                <div class="flex items-center gap-2">
-                  <span class="text-[9px] font-bold text-gray-500 uppercase">Cores</span>
+                  应用
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto no-scrollbar">
+              <div
+                v-for="(_, index) in perCoreCurve"
+                :key="index"
+                class="bg-inset p-2.5 rounded-lg border border-hair flex items-center justify-between"
+              >
+                <span class="text-[10px] font-semibold text-weak uppercase">CORE {{ index }}</span>
+                <div class="flex items-center gap-1.5">
                   <a-input-number
-                    v-model="coreCount"
-                    :min="1"
-                    :max="64"
+                    v-model="perCoreCurve[index]"
+                    :min="-50"
+                    :max="50"
                     size="mini"
-                    class="!w-12 !bg-ink/5 !border-ink/10 !text-ink rounded-md"
+                    class="!w-12 !bg-transparent !border-none !text-ink p-0 text-center tnum"
                     hide-button
                   />
-                </div>
-              </div>
-
-              <!-- 全核偏移调节块 -->
-              <div class="bg-ink/[0.02] border border-ink/[0.04] p-3.5 rounded-lg mb-4">
-                <div class="flex justify-between items-center mb-1 text-[11px]">
-                  <span class="font-bold text-gray-300">All Core Offset (全核心偏移量)</span>
-                  <span class="font-mono text-orange-400 font-semibold">{{
-                    smuData.CurveOptimizerAll
-                  }}</span>
-                </div>
-                <div class="flex items-center gap-4">
-                  <a-slider
-                    v-model="smuData.CurveOptimizerAll"
-                    :min="-30"
-                    :max="0"
-                    class="flex-1 slider-orange"
-                  />
-                  <a-button
-                    type="primary"
-                    size="small"
-                    class="!bg-orange-600/10 !text-orange-400 !border-orange-500/25 hover:!bg-orange-600 hover:!text-white rounded-md px-3 font-semibold transition"
-                    :loading="loadingMap['SetCurveOptimizerAll']"
-                    @click="applySetting('SetCurveOptimizerAll', smuData.CurveOptimizerAll)"
-                    >应用</a-button
+                  <button
+                    class="btn-apply btn-apply-sm !h-6 !w-6 !p-0 pressable"
+                    :disabled="loadingMap['SetCurveOptimizerPerCore']"
+                    title="应用此核心"
+                    @click="
+                      applySetting('SetCurveOptimizerPerCore', index, perCoreCurve[index] ?? 0)
+                    "
                   >
-                </div>
-              </div>
-
-              <!-- 单核优化矩阵 -->
-              <div class="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto no-scrollbar">
-                <div
-                  v-for="(_, index) in perCoreCurve"
-                  :key="index"
-                  class="bg-ink/[0.02] p-2.5 rounded-lg border border-ink/[0.03] flex items-center justify-between"
-                >
-                  <span class="text-[9px] font-bold text-gray-500 uppercase">CORE {{ index }}</span>
-                  <div class="flex items-center gap-1.5">
-                    <a-input-number
-                      v-model="perCoreCurve[index]"
-                      :min="-50"
-                      :max="50"
-                      size="mini"
-                      class="!w-10 !bg-transparent !border-none !text-ink p-0 text-center font-mono"
-                      hide-button
-                    />
-                    <button
-                      class="w-5 h-5 bg-orange-600/10 text-orange-400 hover:bg-orange-600 hover:text-white transition-colors border border-orange-500/20 rounded flex items-center justify-center text-[10px]"
-                      @click="
-                        applySetting('SetCurveOptimizerPerCore', index, perCoreCurve[index] ?? 0)
-                      "
-                    >
-                      ✓
-                    </button>
-                  </div>
+                    ✓
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Per Core OC Clocks 面板 -->
-          <div
-            class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg flex flex-col justify-between"
-          >
-            <div>
-              <h3
-                class="text-xs font-black text-blue-400 uppercase tracking-widest mb-4 border-l-4 border-blue-500 pl-2.5"
-              >
-                Per Core OC Clocks (单核超频限制)
-              </h3>
+          <div class="panel-card p-5">
+            <h3 class="section-label">Per Core OC Clocks（单核超频限制）</h3>
 
-              <div class="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto no-scrollbar">
-                <div
-                  v-for="(_, index) in perCoreOcClk"
-                  :key="index"
-                  class="bg-ink/[0.02] p-2.5 rounded-lg border border-ink/[0.03] flex items-center justify-between"
-                >
-                  <span class="text-[9px] font-bold text-gray-500 uppercase">CORE {{ index }}</span>
-                  <div class="flex items-center gap-1.5">
-                    <a-input-number
-                      v-model="perCoreOcClk[index]"
-                      :min="0"
-                      :max="1000"
-                      :step="25"
-                      size="mini"
-                      class="!w-12 !bg-transparent !border-none !text-ink p-0 text-center font-mono"
-                      hide-button
-                    />
-                    <button
-                      class="w-5 h-5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white transition-colors border border-blue-500/20 rounded flex items-center justify-center text-[10px]"
-                      @click="applySetting('SetPerCoreOcClk', index, perCoreOcClk[index] ?? 0)"
-                    >
-                      ✓
-                    </button>
-                  </div>
+            <div class="grid grid-cols-2 gap-2 max-h-[240px] overflow-y-auto no-scrollbar">
+              <div
+                v-for="(_, index) in perCoreOcClk"
+                :key="index"
+                class="bg-inset p-2.5 rounded-lg border border-hair flex items-center justify-between"
+              >
+                <span class="text-[10px] font-semibold text-weak uppercase">CORE {{ index }}</span>
+                <div class="flex items-center gap-1.5">
+                  <a-input-number
+                    v-model="perCoreOcClk[index]"
+                    :min="0"
+                    :max="1000"
+                    :step="25"
+                    size="mini"
+                    class="!w-14 !bg-transparent !border-none !text-ink p-0 text-center tnum"
+                    hide-button
+                  />
+                  <button
+                    class="btn-apply btn-apply-sm !h-6 !w-6 !p-0 pressable"
+                    :disabled="loadingMap['SetPerCoreOcClk']"
+                    title="应用此核心"
+                    @click="applySetting('SetPerCoreOcClk', index, perCoreOcClk[index] ?? 0)"
+                  >
+                    ✓
+                  </button>
                 </div>
               </div>
             </div>
@@ -506,31 +491,26 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- ==================== 右侧：处理器信息与电源遥测栏 ==================== -->
-      <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
-        <!-- 1. AMD Ryzen 处理器芯片详情 -->
-        <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg"
-        >
-          <h2 class="text-[13px] font-semibold text-gray-300 mb-4">Ryzen 芯片架构</h2>
+      <div class="w-full lg:w-[360px] shrink-0 space-y-5">
+        <div class="panel-card p-5">
+          <h2 class="text-sm font-semibold text-ink mb-4">Ryzen 芯片架构</h2>
           <div class="flex items-center gap-4">
-            <!-- AM5 Socket 异形芯片 SVG 绘制 -->
             <div
-              class="w-16 h-16 bg-ink/[0.02] border border-ink/[0.05] rounded-xl flex items-center justify-center relative shrink-0"
+              class="w-16 h-16 bg-inset border border-hair rounded-lg flex items-center justify-center shrink-0"
             >
-                            <CpuDie />
+              <CpuDie />
             </div>
 
-            <div class="space-y-1 text-[11px] text-gray-400">
+            <div class="space-y-1 text-xs text-muted">
               <div class="text-[13px] font-bold text-ink">
                 <span v-if="cpuName">{{ cpuName }}</span>
-                <span v-else class="text-gray-600 animate-pulse">检测中...</span>
+                <span v-else class="text-weak">检测中…</span>
               </div>
               <div>AMD Ryzen 架构 / AM5 接口</div>
               <div>
                 <span v-if="cpuCoreInfo">{{ cpuCoreInfo }}</span>
-                <span v-else class="text-gray-600 animate-pulse">{{
-                  coreCount > 0 ? `${coreCount} 物理核心` : '检测中...'
+                <span v-else class="text-weak">{{
+                  coreCount > 0 ? `${coreCount} 物理核心` : '检测中…'
                 }}</span>
               </div>
               <div>Curve Optimizer 已加载 {{ coreCount }} 核</div>
@@ -539,184 +519,149 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 2. 电源实时监视器（遥测 PPT / TDC / EDC 波形图） -->
-        <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
-        >
+        <div class="panel-card p-5 space-y-4">
           <div class="flex items-center justify-between">
-            <h2 class="text-[13px] font-semibold text-gray-300">SMU 电源遥测</h2>
-            <span
-              class="text-[10px] text-gray-600 bg-ink/[0.03] border border-ink/[0.05] px-2 py-0.5 rounded-full"
-              >{{ telemetry.FreqMhz }} MHz · {{ telemetry.Usage }}% 负载</span
-            >
+            <h2 class="text-sm font-semibold text-ink">SMU 电源遥测</h2>
+            <span class="text-[11px] text-weak bg-inset border border-hair px-2 py-0.5 rounded-full tnum">
+              {{ telemetry.FreqMhz }} MHz · {{ telemetry.Usage }}% 负载
+            </span>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
-            <!-- PPT 功耗 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
-                <span class="text-[10px] text-gray-500 block">PPT 封装功耗</span>
-                <span class="text-base font-bold text-ink font-mono"
+                <span class="text-[11px] text-muted block">PPT 封装功耗</span>
+                <span class="text-base font-bold text-ink tnum"
                   >{{ telemetry.Ppt.toFixed(1) }}
-                  <span class="text-[10px] text-gray-500 font-bold">W</span></span
+                  <span class="text-[11px] text-weak font-semibold">W</span></span
                 >
               </div>
               <svg
-                class="w-full h-8 opacity-80 mt-1"
+                class="w-full h-8 mt-1"
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
+                aria-hidden="true"
               >
                 <defs>
-                  <linearGradient id="smu-g-purple" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#8A2BE2" stop-opacity="0.35" />
-                    <stop offset="100%" stop-color="#8A2BE2" stop-opacity="0" />
+                  <linearGradient id="smu-g-accent" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />
                   </linearGradient>
                 </defs>
                 <path
                   :d="pptChart.line"
                   fill="none"
-                  stroke="#8A2BE2"
+                  stroke="var(--accent)"
                   stroke-width="1.5"
                   stroke-linecap="round"
                 />
-                <path :d="pptChart.area" fill="url(#smu-g-purple)" />
+                <path :d="pptChart.area" fill="url(#smu-g-accent)" />
               </svg>
             </div>
 
-            <!-- TDC 长期电流 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
-                <span class="text-[10px] text-gray-500 block">TDC 供电电流</span>
-                <span class="text-base font-bold text-ink font-mono"
+                <span class="text-[11px] text-muted block">TDC 供电电流</span>
+                <span class="text-base font-bold text-ink tnum"
                   >{{ (telemetry.Tdc ?? 0).toFixed(1) }}
-                  <span class="text-[10px] text-gray-500 font-bold">A</span></span
+                  <span class="text-[11px] text-weak font-semibold">A</span></span
                 >
               </div>
               <svg
-                class="w-full h-8 opacity-80 mt-1"
+                class="w-full h-8 mt-1"
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
+                aria-hidden="true"
               >
-                <defs>
-                  <linearGradient id="smu-g-blue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35" />
-                    <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
-                  </linearGradient>
-                </defs>
                 <path
                   :d="tdcChart.line"
                   fill="none"
-                  stroke="#3B82F6"
+                  stroke="var(--accent)"
                   stroke-width="1.5"
                   stroke-linecap="round"
                 />
-                <path :d="tdcChart.area" fill="url(#smu-g-blue)" />
+                <path :d="tdcChart.area" fill="url(#smu-g-accent)" />
               </svg>
             </div>
 
-            <!-- EDC 瞬间电流 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
-                <span class="text-[10px] text-gray-500 block">EDC 峰值电流</span>
-                <span class="text-base font-bold text-ink font-mono"
+                <span class="text-[11px] text-muted block">EDC 峰值电流</span>
+                <span class="text-base font-bold text-ink tnum"
                   >{{ (telemetry.Edc ?? 0).toFixed(1) }}
-                  <span class="text-[10px] text-gray-500 font-bold">A</span></span
+                  <span class="text-[11px] text-weak font-semibold">A</span></span
                 >
               </div>
               <svg
-                class="w-full h-8 opacity-80 mt-1"
+                class="w-full h-8 mt-1"
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
+                aria-hidden="true"
               >
-                <defs>
-                  <linearGradient id="smu-g-orange" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#FF7D00" stop-opacity="0.35" />
-                    <stop offset="100%" stop-color="#FF7D00" stop-opacity="0" />
-                  </linearGradient>
-                </defs>
                 <path
                   :d="edcChart.line"
                   fill="none"
-                  stroke="#FF7D00"
+                  stroke="var(--accent)"
                   stroke-width="1.5"
                   stroke-linecap="round"
                 />
-                <path :d="edcChart.area" fill="url(#smu-g-orange)" />
+                <path :d="edcChart.area" fill="url(#smu-g-accent)" />
               </svg>
             </div>
 
-            <!-- 核心温度 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
-                <span class="text-[10px] text-gray-500 block">核心温度</span>
-                <span
-                  class="text-base font-bold font-mono"
-                  :class="
-                    telemetry.Temp > 90
-                      ? 'text-red-400'
-                      : telemetry.Temp > 75
-                        ? 'text-orange-400'
-                        : 'text-ink'
-                  "
+                <span class="text-[11px] text-muted block">核心温度</span>
+                <span class="text-base font-bold tnum" :class="tempClass(telemetry.Temp)"
                   >{{ telemetry.Temp.toFixed(1) }}
-                  <span class="text-[10px] text-gray-500 font-bold">°C</span></span
+                  <span class="text-[11px] text-weak font-semibold">°C</span></span
                 >
               </div>
               <svg
-                class="w-full h-8 opacity-80 mt-1"
+                class="w-full h-8 mt-1"
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
+                aria-hidden="true"
               >
                 <defs>
-                  <linearGradient id="smu-g-red" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#EF4444" stop-opacity="0.35" />
-                    <stop offset="100%" stop-color="#EF4444" stop-opacity="0" />
+                  <linearGradient id="smu-g-temp" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--temp-hot)" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="var(--temp-hot)" stop-opacity="0" />
                   </linearGradient>
                 </defs>
                 <path
                   :d="tempChart.line"
                   fill="none"
-                  stroke="#EF4444"
+                  stroke="var(--temp-hot)"
                   stroke-width="1.5"
                   stroke-linecap="round"
                 />
-                <path :d="tempChart.area" fill="url(#smu-g-red)" />
+                <path :d="tempChart.area" fill="url(#smu-g-temp)" />
               </svg>
             </div>
           </div>
         </div>
 
-        <!-- 3. 技术名释说明 -->
-        <div
-          class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-2.5"
-        >
-          <h2 class="text-[13px] font-semibold text-gray-300">名词解释</h2>
-          <div class="text-[11px] text-gray-500 leading-relaxed space-y-2">
+        <div class="panel-card p-5 space-y-2.5">
+          <h2 class="text-sm font-semibold text-ink">名词解释</h2>
+          <div class="text-xs text-muted leading-relaxed space-y-2">
             <p>
-              <strong>STAPM</strong>: 根据设备表面温度自适应调整 CPU
+              <strong>STAPM</strong>：根据设备表面温度自适应调整 CPU
               功耗分配（在移动端设备和掌机上尤为明显）。
             </p>
             <p>
-              <strong>Curve Optimizer (PBO2)</strong>:
-              通过调校不同内核的电压频率曲线（降压超频），能实现在更低温度下达到更高运行频率的目标。
+              <strong>Curve Optimizer (PBO2)</strong>
+              ：通过调校不同内核的电压频率曲线（降压超频），实现在更低温度下达到更高运行频率。
             </p>
             <p>
-              <strong>RSMU / MP1</strong>:
-              芯片内部不同模块的系统级微处理器，两者的限制参数相互协调限制。
+              <strong>RSMU / MP1</strong>
+              ：芯片内部不同模块的系统级微处理器，两者的限制参数相互协调。
             </p>
           </div>
           <a
             target="_blank"
             href="https://www.amd.com/zh-cn/developer/browse-by-resource-type/documentation.html"
-            class="text-[11px] text-blue-400 hover:text-blue-300 cursor-pointer pt-1 flex items-center gap-0.5 font-medium transition-colors"
+            class="text-xs text-accent hover:opacity-80 cursor-pointer pt-1 inline-flex items-center font-medium transition-opacity"
           >
             参考 AMD PBO 手册
           </a>
@@ -729,8 +674,7 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style scoped lang="scss">
-/* 隐藏自定义滚动条 */
+<style scoped>
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -739,53 +683,10 @@ onUnmounted(() => {
   scrollbar-width: none;
 }
 
-/* 分色重写 Slider 轨道（紫 / 蓝 / 红 / 橘） */
-:deep(.slider-purple .arco-slider-bar) {
-  background: linear-gradient(90deg, #6366f1 0%, var(--color-accent-purple) 100%) !important;
-  height: 5px !important;
-  border-radius: 99px;
+.text-temp-hot {
+  color: var(--temp-hot);
 }
-:deep(.slider-purple .arco-slider-button) {
-  border: 2px solid var(--color-accent-purple) !important;
-  box-shadow: 0 0 8px rgba(138, 43, 226, 0.6) !important;
-}
-
-:deep(.slider-blue .arco-slider-bar) {
-  background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%) !important;
-  height: 5px !important;
-  border-radius: 99px;
-}
-:deep(.slider-blue .arco-slider-button) {
-  border: 2px solid #3b82f6 !important;
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6) !important;
-}
-
-:deep(.slider-red .arco-slider-bar) {
-  background: linear-gradient(90deg, #f43f5e 0%, #e11d48 100%) !important;
-  height: 5px !important;
-  border-radius: 99px;
-}
-:deep(.slider-red .arco-slider-button) {
-  border: 2px solid #e11d48 !important;
-  box-shadow: 0 0 8px rgba(225, 29, 72, 0.6) !important;
-}
-
-:deep(.slider-orange .arco-slider-bar) {
-  background: linear-gradient(90deg, #ff7d00 0%, #ff5000 100%) !important;
-  height: 5px !important;
-  border-radius: 99px;
-}
-:deep(.slider-orange .arco-slider-button) {
-  border: 2px solid #ff7d00 !important;
-  box-shadow: 0 0 8px rgba(255, 125, 0, 0.6) !important;
-}
-
-/* 深色模式下拉选择框 */
-:deep(.arco-select-view-single) {
-  background-color: var(--color-panel-elevated) !important;
-  border: 1px solid var(--color-line-soft) !important;
-  color: var(--color-text-main) !important;
-  border-radius: 6px !important;
-  height: 28px !important;
+.text-temp-critical {
+  color: var(--temp-critical);
 }
 </style>
