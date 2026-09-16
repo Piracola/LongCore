@@ -47,3 +47,8 @@ __pycache__/
 
 # 安装器产物（本地构建输出，不入库）
 /installer/Output/
+# 视觉 QA 截图产物（可由此仓 Client/scripts/visual-shot.mjs 重新生成，不入库）
+.visual-qa/
+
+# 编辑器/工具备份残留（含 AI 改文件时留下的 .bak）
+*.bak
