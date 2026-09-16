@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { AutoFanControl, Fan } from '@/utils/bridge'
 import { useConfigStore } from '@/stores/config'
+import { useFanStore } from '@/stores/fan'
 import FanSpeed from '@/components/common/FanSpeed.vue'
-import { FAN_MAX_RPM, FAN_MIN_RPM } from '@/constants'
 import ControlModule from '@/components/common/ControlModule.vue'
 import ApplyBar from '@/components/common/ApplyBar.vue'
 import PageShell from '@/components/common/PageShell.vue'
@@ -12,6 +11,7 @@ import { useApplyState } from '@/composables/useApplyState'
 
 const visible = ref(false)
 const configStore = useConfigStore()
+const fanStore = useFanStore()
 const apply = useApplyState()
 
 if (!configStore.config) {
@@ -37,11 +37,12 @@ watch(draftSpeed, (v) => {
 
 const displaySpeed = computed(() => draftSpeed.value)
 
+// 危险确认：超出 1500–5800 闸门值域即弹确认（v4 §11 第 3 项）
 function requestApply() {
   if (!FanPageStore.value) return
   if (
-    FanPageStore.value.ManualFanSpeed > FAN_MAX_RPM ||
-    FanPageStore.value.ManualFanSpeed < FAN_MIN_RPM
+    FanPageStore.value.ManualFanSpeed > 5800 ||
+    FanPageStore.value.ManualFanSpeed < 1500
   ) {
     visible.value = true
     return
@@ -52,37 +53,47 @@ function requestApply() {
 async function doApply() {
   if (!FanPageStore.value) return
   visible.value = false
-  const isRunningRes = await AutoFanControl.IsRunning()
-  if (isRunningRes.Success && isRunningRes.Data) {
-    await AutoFanControl.Stop()
-  }
-  const ok = await apply.run('应用风扇转速', () =>
-    Fan.SetFanSpeed(FanPageStore.value!.ManualFanSpeed),
+  const result = await fanStore.applyManualSpeed(FanPageStore.value.ManualFanSpeed, () =>
+    configStore.saveConfig(),
   )
-  if (ok) {
-    Message.success(apply.message.value || '风扇转速已应用')
-    configStore.debouncedSave()
+  if (result.ok) {
+    Message.success(result.message)
+    apply.markClean()
   } else {
-    Message.error(apply.message.value || '风扇转速应用失败')
+    Message.error(result.message)
+    apply.canRetry.value = true
   }
 }
 
+// 「恢复自动控制」常驻可达（v4 §11 第 3 项；C 级可逆性唯一出路）
 async function handleRemoveFanClick() {
-  const isRunningRes = await AutoFanControl.IsRunning()
-  if (isRunningRes.Success && isRunningRes.Data) {
-    await AutoFanControl.Stop()
-  }
-  const ok = await apply.run('移除手动限制', () => Fan.RemoveFanSpeed())
-  if (ok) {
-    Message.success(apply.message.value || '已恢复自动控制')
+  const result = await fanStore.restoreAuto()
+  if (result.ok) {
+    Message.success(result.message)
   } else {
-    Message.error(apply.message.value || '移除限制失败')
+    Message.error(result.message)
   }
 }
 
 function handleCancel() {
   visible.value = false
 }
+
+// 进入页面：判定当前控制权 + 起四态转速读取
+let pollTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  void fanStore.resolveController()
+  void fanStore.refreshSpeed()
+  pollTimer = setInterval(() => {
+    if (!document.hidden) void fanStore.refreshSpeed()
+  }, 2000)
+})
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 </script>
 
 <template>
@@ -96,6 +107,12 @@ function handleCancel() {
           </div>
           <div class="readout-meta">范围 1500–5800 · 步进 100</div>
         </template>
+
+        <!-- 当前由谁控制（v4 §10：自动策略接管必须显示） -->
+        <div class="controller-banner" :class="fanStore.controller">
+          <span class="dot" />
+          当前由{{ fanStore.controllerLabel }}控制
+        </div>
 
         <a-slider
           v-model="FanPageStore.ManualFanSpeed"
@@ -132,9 +149,21 @@ function handleCancel() {
           </ul>
           <template #footer>
             <button class="btn-ghost-block" type="button" @click="handleRemoveFanClick">
-              移除限制 · 恢复自动
+              恢复自动控制
             </button>
           </template>
+        </ControlModule>
+
+        <ControlModule title="最近活动" eyebrow="Recent" badge="用户操作">
+          <ul v-if="fanStore.activity.length" class="activity-list">
+            <li v-for="item in fanStore.activity" :key="item.seq" class="activity-item">
+              <span class="t">{{ item.intent }}</span>
+              <span :class="['o', item.outcome]">
+                {{ { applied: '已应用', accepted: '已接受', failed: '失败', partial: '部分应用' }[item.outcome] }}
+              </span>
+            </li>
+          </ul>
+          <p v-else class="hint">暂无用户操作记录（自动温控的底层写入不进入此处）</p>
         </ControlModule>
       </div>
     </div>
@@ -208,6 +237,88 @@ function handleCancel() {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.controller-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hair);
+  background: var(--bg-inset);
+  font-size: 12px;
+  color: var(--muted);
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+
+  &.auto .dot {
+    background: var(--temp-cool);
+  }
+
+  &.manual .dot {
+    background: var(--temp-hot);
+  }
+
+  &.curve .dot {
+    background: var(--accent);
+  }
+}
+
+.activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--hair);
+  font-size: 12px;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  .t {
+    color: var(--ink);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .o {
+    flex-shrink: 0;
+    font-size: 11px;
+
+    &.applied {
+      color: var(--temp-cool);
+    }
+
+    &.failed {
+      color: var(--temp-critical);
+    }
+
+    &.partial {
+      color: var(--temp-hot);
+    }
+
+    &.accepted {
+      color: var(--muted);
+    }
+  }
 }
 
 .safety-list {
