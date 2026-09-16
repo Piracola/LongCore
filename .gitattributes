@@ -1,0 +1,60 @@
+# 统一行尾策略 —— 根因修复
+#
+# 背景：Windows 全局 core.autocrlf=true 会把工作区检出为 CRLF，
+# 而 prettier 的 format:check 按 LF 重新格式化，导致一批"看着已格式化、
+# 检查却失败"的假报错。.gitattributes 的优先级高于 core.autocrlf，
+# 在此显式声明后，仓库内所有文本文件在工作区与索引中都是 LF。
+
+* text=auto eol=lf
+
+# ---- 二进制：禁止任何行尾转换 ----
+*.dll   binary
+*.exe   binary
+*.lib   binary
+*.pdb   binary
+*.nupkg binary
+*.zip   binary
+*.7z    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+
+# ---- 明确为文本（避免被上面规则或自动探测误判）----
+*.cs      text
+*.csproj  text
+*.sln     text
+*.props   text
+*.targets text
+*.xaml    text
+*.ts      text
+*.tsx     text
+*.vue     text
+*.js      text
+*.mjs     text
+*.cjs     text
+*.json    text
+*.jsonc   text
+*.yml     text
+*.yaml    text
+*.md      text
+*.css     text
+*.scss    text
+*.html    text
+*.ps1     text
+*.cmd     text
+*.bat     text
+*.sh      text
+*.py      text
+*.iss     text
+*.config  text
+*.manifest text
+
+# ---- 锁定文件：永不手工合并 ----
+package-lock.json  -diff linguist-generated=true
