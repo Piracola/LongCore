@@ -8,6 +8,7 @@ import { useConfigStore } from '@/stores/config'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import type { CpuProfileDataType } from '@/types/config'
 import { CPU_PROFILE_DEFAULTS } from '@/constants'
+import { useCompositeWrite } from '@/composables/useCompositeWrite'
 
 const loading = ref(false)
 const configStore = useConfigStore()
@@ -73,91 +74,93 @@ function selectProfile(profile: string) {
   if (CPUData.value) CPUData.value.CpuProfile = profile
 }
 
-// 统一应用逻辑
+// 统一应用逻辑 —— 复合写入逐步结果模型（v4 §8.3）：顺序写 7 项，
+// 中途失败立即中止、保留已生效项、显式暴露「部分应用」；不做任何回滚。
+const composite = useCompositeWrite()
+
 async function handleApplyAll() {
   if (!CPUData.value || !activeProfile.value) return
   loading.value = true
-  let smuWarning: string | null = null
-  try {
-    // 0. 必须先打开自定义功耗子状。命令 23 = OpenState), 再下。SPL/SPPT/温度墙。
-    //    协议要求: 只有 CPUPower=OpenState 时这三个值才会被 EC 接受并生。
-    //    官方把三个写入严格包。if (m == OpenState) 。decompiled/main.cs:2386 SetSP_CustomMode)。
-    //    注意 PerformanceMode.Set 切换标准档时会写 CloseState, 之后这三个写入会全部失效,
-    //    所以这里必须无条件先开 —。四个档位一视同。 否则非自定义档必然失败。
-    //    代价: 应用后首页胶囊会呈现"自定。(功耗值确实已是自定义。 属诚实反。。
-    const customRes = await CPU.SetCustomMode(true)
-    if (!customRes.Success) {
-      Message.error(customRes.Message || '进入自定义功耗模式失败')
-      return
-    }
+  const p = activeProfile.value
+  const coValue = configStore.config?.Smu?.CurveOptimizerAll ?? 0
 
-    // 1. 设置温度。(官方顺序: OpenState 。温度。4) 。SPL(2) 。SPPT(3))
-    const tempWallRes = await CPU.SetCPUTempWall(activeProfile.value.CpuTempWall)
-    if (!tempWallRes.Success) {
-      Message.error(tempWallRes.Message || '温度墙设置失败')
-      return
-    }
-    // 2. 设置长时功耗限制SPL (PL1)
-    const longPowerRes = await CPU.SetCpuLongPower(activeProfile.value.CpuLongPower)
-    if (!longPowerRes.Success) {
-      Message.error(longPowerRes.Message || '长时功耗限制设置失败')
-      return
-    }
-    // 3. 设置短时功耗限制SPPT (PL2)
-    const shortPowerRes = await CPU.SetCpuShortPower(activeProfile.value.CpuShortPower)
-    if (!shortPowerRes.Success) {
-      Message.error(shortPowerRes.Message || '短时功耗限制设置失败')
-      return
-    }
-    // 4. 设置最大频。
-    const maxFreqRes = await Power.SetCPUMaxFrequency(activeProfile.value.CpuMaxFrequency)
-    if (!maxFreqRes.Success) {
-      Message.error(maxFreqRes.Message || '最大频率设置失败')
-      return
-    }
-    // 5. 设置睿频开。
-    if (activeProfile.value.CpuTurbo) {
-      const turboRes = await Power.EnableTurbo()
-      if (!turboRes.Success) {
-        Message.error(turboRes.Message || '睿频开启失败')
-        return
-      }
-    } else {
-      const turboRes = await Power.DisableTurbo()
-      if (!turboRes.Success) {
-        Message.error(turboRes.Message || '睿频关闭失败')
-        return
-      }
-    }
-    // 6. 设置核心电压偏移 (Curve Optimizer All)
-    //    CO=0 的语义是"不偏。, 属无操作 —。直接跳过。
-    //    这样可避免在未安。PawnIO 内核驱动的机器上因驱动缺失而误报失。
-    //    (SMU 读写依赖 PawnIO, 是用户可选安装的组件)。
-    //    即便确有偏移要写而失。 也不中止前面已生效的功。频率设置, 只做提示。
-    const coValue = configStore.config?.Smu?.CurveOptimizerAll ?? 0
-    if (coValue !== 0) {
-      const curveRes = await RyzenSmu.SetCurveOptimizerAll(coValue)
-      if (!curveRes.Success) {
-        smuWarning = curveRes.Message || '核心电压偏移设置失败'
-      }
-    }
+  const event = await composite.run({
+    source: 'user',
+    transport: 'wmi',
+    requestedValue: `${p.CpuLongPower}W / ${p.CpuShortPower}W / ${p.CpuTempWall}°C / ${p.CpuMaxFrequency}MHz / turbo=${p.CpuTurbo}`,
+    reversible: 'b',
+    // B 级可逆性：只能重新应用另一组值，不得宣称回滚
+    compensation: '如需改回，请重新调整参数后再次应用',
+    preRead: null,
+    steps: [
+      {
+        label: '进入自定义功耗模式',
+        transport: 'wmi',
+        requestedValue: 'OpenState',
+        run: () => CPU.SetCustomMode(true),
+      },
+      {
+        label: `温度墙 ${p.CpuTempWall}°C`,
+        transport: 'wmi',
+        requestedValue: p.CpuTempWall,
+        run: () => CPU.SetCPUTempWall(p.CpuTempWall),
+      },
+      {
+        label: `长时功耗 ${p.CpuLongPower}W`,
+        transport: 'wmi',
+        requestedValue: p.CpuLongPower,
+        run: () => CPU.SetCpuLongPower(p.CpuLongPower),
+      },
+      {
+        label: `短时功耗 ${p.CpuShortPower}W`,
+        transport: 'wmi',
+        requestedValue: p.CpuShortPower,
+        run: () => CPU.SetCpuShortPower(p.CpuShortPower),
+      },
+      {
+        label: `最大频率 ${p.CpuMaxFrequency}MHz`,
+        transport: 'wmi',
+        requestedValue: p.CpuMaxFrequency,
+        run: () => Power.SetCPUMaxFrequency(p.CpuMaxFrequency),
+      },
+      {
+        label: p.CpuTurbo ? '开启睿频' : '关闭睿频',
+        transport: 'wmi',
+        requestedValue: p.CpuTurbo,
+        run: () => (p.CpuTurbo ? Power.EnableTurbo() : Power.DisableTurbo()),
+      },
+      {
+        label: '核心电压偏移 (CO)',
+        transport: 'smu',
+        requestedValue: coValue,
+        // CO=0 的语义是「不偏移」，属无操作 —— 跳过不报失败（避免 PawnIO 缺失误报）
+        skippable: () => coValue === 0,
+        run: () => RyzenSmu.SetCurveOptimizerAll(coValue),
+      },
+      {
+        label: '保存配置',
+        transport: 'config',
+        requestedValue: 'save',
+        run: async () => {
+          const res = await configStore.saveConfig()
+          return { accepted: !!res?.Success, message: res?.Message }
+        },
+      },
+    ],
+  })
 
-    // 7. 保存主配置（含当前档位块参数与选中档位，供开机自启等使用率
-    const saveRes = await configStore.saveConfig()
-    if (!saveRes?.Success) {
-      Message.error(saveRes?.Message || '设置保存失败')
-      return
-    }
-    if (smuWarning) {
-      Message.warning(`功耗与频率设置已生效；核心电压偏移未应用：${smuWarning}`)
-    } else {
-      Message.success('设置应用成功')
-    }
-  } catch {
-    Message.error('应用设置失败，请检查桥接服务')
-  } finally {
-    loading.value = false
+  // 结果反馈：逐项摘要 + 部分应用显式提示（v4 §10 复合操作交互模型）
+  const { ok, failed, skipped } = composite.summary.value
+  if (event.partialApplied) {
+    Message.warning(
+      `部分应用：${ok} 项已生效，第 ${event.steps.findIndex((s) => s.status === 'failed') + 1} 项「${event.steps.find((s) => s.status === 'failed')?.label}」失败，其余未执行。已生效项不会自动撤销。`,
+    )
+  } else if (failed) {
+    Message.error(composite.state.value.message || '应用失败')
+  } else {
+    Message.success(`设置应用成功（${ok} 项${skipped > 0 ? `，跳过 ${skipped} 项` : ''}）`)
   }
+  loading.value = false
 }
 
 // 重置当前选中档位的出厂默认参。(不切换档。
