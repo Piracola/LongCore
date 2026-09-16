@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, markRaw, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { PerformanceMode, SystemInfo, SystemPerMode, CPU } from '@/utils/bridge'
+import { SystemInfo } from '@/utils/bridge'
+import { useModeStore } from '@/stores/mode'
+import { FIRMWARE_MODE_LABELS, type FirmwareMode } from '@/domain/modes'
+import { ActivityLog } from '@/domain/operations'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
@@ -38,35 +41,35 @@ watch(gpuTempN, (t) => {
   gpuTempLevel.value = tempLevelHys(t ?? 0, gpuTempLevel.value)
 })
 
-const performanceModes = ref([
-  { id: SystemPerMode.PerformanceMode, name: '高性能', icon: markRaw(Zap), active: false },
-  { id: SystemPerMode.BalanceMode, name: '平衡', icon: markRaw(Scale), active: false },
-  { id: SystemPerMode.QuietMode, name: '静音', icon: markRaw(Volume1), active: false },
-  { id: SystemPerMode.CustomMode, name: '自定义', icon: markRaw(SlidersHorizontal), active: false },
-])
+// 模式胶囊 = 预设选择器三分离（v4 §6 + 冲突 A 裁定）：
+// 选中 ≠ 已生效 —— pending 状态显式可感知，失败回滚为观察值，不留虚假激活态。
+// 命名映射（Decision 2026-09-17）：办公=静音 · 游戏=平衡 · 狂飙=高性能。
+const modeStore = useModeStore()
+const activityLog = new ActivityLog(200)
 
-async function fetchPerformanceMode() {
-  try {
-    const res = await PerformanceMode.Get()
-    if (res.Success) {
-      performanceModes.value.forEach((e) => {
-        e.active = e.id === res.Data
-      })
-    }
-  } catch (e) {
-    console.error(e)
+const modeOptions: Array<{ kind: 'preset'; mode: FirmwareMode; icon: unknown }> = [
+  { kind: 'preset', mode: 'performance', icon: Zap },
+  { kind: 'preset', mode: 'balance', icon: Scale },
+  { kind: 'preset', mode: 'quiet', icon: Volume1 },
+]
+
+function isModeActive(kind: 'preset' | 'custom', mode?: FirmwareMode): boolean | 'pending' {
+  const active = modeStore.activeKind
+  if (kind === 'custom') {
+    if (!modeStore.selected || modeStore.selected.kind !== 'custom') return false
+    return active === 'custom' ? true : 'pending'
   }
+  if (!modeStore.selected || modeStore.selected.kind !== 'preset') return false
+  if (modeStore.selected.mode !== mode) return false
+  return active === 'preset' ? true : 'pending'
 }
 
-function setMode(id: SystemPerMode) {
-  performanceModes.value.forEach((m) => {
-    m.active = m.id === id
-  })
-  if (id === SystemPerMode.CustomMode) {
-    void CPU.SetCustomMode(true)
-  } else {
-    void PerformanceMode.Set(id)
-  }
+async function selectPreset(mode: FirmwareMode) {
+  await modeStore.select({ kind: 'preset', mode }, activityLog)
+}
+
+async function selectCustom() {
+  await modeStore.select({ kind: 'custom' }, activityLog)
 }
 
 function handleModeChanged(e: MessageEvent) {
@@ -78,10 +81,8 @@ function handleModeChanged(e: MessageEvent) {
       (data as { type?: string }).type === 'mode-changed' &&
       typeof (data as { mode?: unknown }).mode === 'number'
     ) {
-      const mode = (data as { mode: number }).mode as SystemPerMode
-      performanceModes.value.forEach((m) => {
-        m.active = m.id === mode
-      })
+      // Fn 热键镜像：detail[2] 只有 0/1/2（冲突 B 裁定：按三档做）
+      modeStore.applyHotkeyMirror((data as { mode: number }).mode, activityLog)
     }
   } catch {
     /* 非 JSON 消息忽略 */
@@ -171,7 +172,7 @@ function handleVisibilityChange() {
 
 onMounted(() => {
   fetchStaticInfo()
-  fetchPerformanceMode()
+  void modeStore.refreshObserved()
   startTimers()
   document.addEventListener('visibilitychange', handleVisibilityChange)
   try {
@@ -257,15 +258,26 @@ const lineChartOption = computed(() => ({
       <span class="status-label">Mode</span>
       <div class="mode-seg" role="tablist" aria-label="性能模式">
         <button
-          v-for="mode in performanceModes"
-          :key="mode.id"
-          :class="['mode-btn', mode.active ? 'active' : '']"
+          v-for="opt in modeOptions"
+          :key="opt.mode"
+          :class="['mode-btn', isModeActive('preset', opt.mode) === true ? 'active' : '', isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '']"
           role="tab"
-          :aria-selected="mode.active"
-          @click="setMode(mode.id)"
+          :aria-selected="isModeActive('preset', opt.mode) === true"
+          :disabled="modeStore.syncing"
+          @click="selectPreset(opt.mode)"
         >
-          <component :is="mode.icon" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
-          {{ mode.name }}
+          <component :is="opt.icon" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
+          {{ FIRMWARE_MODE_LABELS[opt.mode] }}
+        </button>
+        <button
+          :class="['mode-btn', isModeActive('custom') === true ? 'active' : '', isModeActive('custom') === 'pending' ? 'pending' : '']"
+          role="tab"
+          :aria-selected="isModeActive('custom') === true"
+          :disabled="modeStore.syncing"
+          @click="selectCustom"
+        >
+          <component :is="SlidersHorizontal" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
+          自定义
         </button>
       </div>
       <div class="temp-pair">
@@ -474,6 +486,18 @@ const lineChartOption = computed(() => ({
   color: var(--accent-ink);
   background: var(--accent);
   font-weight: 600;
+}
+
+/* pending = 已选未确认（命令在途或未回读到一致观察值）：不冒充已生效（v4 第一性原则 1） */
+.mode-btn.pending {
+  color: var(--muted);
+  background: var(--bg-inset);
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+}
+
+.mode-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .temp-pair {
