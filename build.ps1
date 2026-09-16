@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # LongCore 一键本地构建
 # 双击 build.cmd 或直接 .\build.ps1  =>  出现菜单, 按数字选择
 # 也可带参数静默执行(给自动化用):
@@ -25,9 +25,18 @@ if (-not $env:SystemRoot)  { $env:SystemRoot = 'C:\Windows' }
 if (-not $env:windir)      { $env:windir = 'C:\Windows' }
 if (-not $env:PROGRAMDATA) { $env:PROGRAMDATA = 'C:\ProgramData' }
 
-$ParentPackages = Join-Path (Split-Path $Root -Parent) '.nuget-packages'
-if (Test-Path $ParentPackages) {
-    $env:NUGET_PACKAGES = $ParentPackages
+# NuGet 缓存位置：优先仓库内 vendor/（当前布局），回退到上一级目录（旧布局兼容）。
+# 若都找不到，沿用 dotnet 默认缓存。
+$NugetCandidates = @(
+    (Join-Path $Root 'vendor\.nuget-packages'),
+    (Join-Path (Split-Path $Root -Parent) '.nuget-packages')
+)
+foreach ($cand in $NugetCandidates) {
+    if (Test-Path $cand) {
+        $env:NUGET_PACKAGES = $cand
+        Write-Host "NUGET_PACKAGES = $cand"
+        break
+    }
 }
 
 $Dotnet = 'C:\Users\NullCola\.dotnet\dotnet.exe'

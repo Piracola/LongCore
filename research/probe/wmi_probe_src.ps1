@@ -3,7 +3,8 @@
 # Returns: OutData[4..7] holds the value (16-bit little endian)
 
 $ErrorActionPreference = 'Continue'
-$OutFile = "I:\JBCode\AI Tools\jiaolong16pro\probe\10_wmi_get_probe.txt"
+# 输出到脚本同目录（原来硬编码绝对路径，仓库移动后即失效）
+$OutFile = Join-Path $PSScriptRoot '10_wmi_get_probe.txt'
 
 $Commands = @(
     @{ Code = 8;  Name = 'SystemPerMode';         Desc = 'Performance mode 0=Balance 1=Performance 2=Quiet' },
