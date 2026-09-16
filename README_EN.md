@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version">
-  <img src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet" alt=".NET">
+  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET">
   <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs" alt="Vue">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
@@ -86,6 +86,22 @@ dotnet run --project ProtocolCodecTest\ProtocolCodecTest.csproj -c Release
 ```
 
 CI runs the same checks on GitHub Actions (`.github/workflows/ci.yml`).
+
+> **Run frontend commands from `JiaoLongControl/Client`** — the repo root has no `package.json`.
+> Full development conventions: [AGENTS.md](AGENTS.md).
+
+### Repository layout
+
+This is a **single git root** holding both the app and the research layer:
+
+| Path | Contents |
+|---|---|
+| `JiaoLongControl/Client/` | Vue 3 frontend (Vite + Arco + ECharts + Pinia) |
+| `JiaoLongControl/Server/` | .NET WPF host (WebView2 bridge / WMI / EC / SMU) |
+| `installer/` | Inno Setup packaging scripts |
+| [`research/`](research/README.md) | **Protocol research layer**: reverse-engineering, hardware probe data, upstream audit, decision records |
+
+The research layer was formerly a separate repository; it was merged here in 2026-09 with **full history preserved**.
 
 ## Installer
 

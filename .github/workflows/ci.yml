@@ -25,6 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # 行尾由仓库根 .gitattributes 强制 LF；此步防止格式化再次漂移
+      - name: Format check (prettier)
+        run: npm run format:check
+
+      - name: Lint (eslint)
+        run: npm run lint
+
       - name: Build (vue-tsc + vite build)
         run: npm run build
 

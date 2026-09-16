@@ -6,10 +6,10 @@
 ## M0 · 立项与基线
 
 - [x] GitHub 上 fork `GaoXanSheng/JiaolongControl` 到个人账号（→ 用户自建空仓库 Piracola/LongCore，由本地推送完整历史，分支规范为 `main`）
-- [x] 本地 `LongCore/` 关联双 remote：`origin` = Piracola/LongCore，`upstream` = GaoXanSheng/JiaolongControl
+- [x] 本地仓库关联双 remote：`origin` = Piracola/LongCore，`upstream` = GaoXanSheng/JiaolongControl
 - [x] 本机装 .NET 8 SDK（用户级 `C:\Users\NullCola\.dotnet`，8.0.424）+ Node/npm（托管 22.22.2 + npm 10.9.7）
 - [x] 前端构建通过：`npm install` + `npm run build` → `bin/publish/WebRoot/`
-- [ ] 后端构建：**在本工作目录内无法完成**（宿主进程环境缺陷，见下）→ 用 `LongCore\build-and-push.cmd` 在用户自己的终端执行
+- [ ] 后端构建：**在本工作目录内无法完成**（宿主进程环境缺陷，见下）→ 用仓库根目录的 `build-and-push.cmd` 在用户自己的终端执行
 - [ ] 首次推送 main 到 Piracola/LongCore（build-and-push.cmd 第 2 步，会弹 GitHub 登录）
 - [ ] 本机试运行上游：与官方控制中心**二选一**；加载 JiaoLongDriver64.sys 需先处理内存完整性拦截
 - [ ] 用 `probe/` 实测数据对照验证上游读数正确性（风扇/温度/模式/适配器）
@@ -52,6 +52,6 @@
 - [x] README 英文版（README_EN.md）+ 中文 README fork 横幅
 - [x] 安装器：installer/LongCore.iss（管理员/AppMutex 联动/WebView2+.NET8 离线可选静默装）+ build-installer.cmd 一键链
 - [x] 支持机型声明（docs/SUPPORTED_HARDWARE.md）+ 免责声明（docs/DISCLAIMER.md）+ 已知问题清单（docs/KNOWN_ISSUES.md，15 项）
-- [ ] **用户终端**：跑 `LongCore\build-and-push.cmd`（构建后端+协议测试+首次推送 main；M0 两项与 CI 激活都靠它）
+- [ ] **用户终端**：跑 `build-and-push.cmd`（构建后端+协议测试+首次推送 main；M0 两项与 CI 激活都靠它）
 - [ ] **用户终端**：跑 `installer\build-installer.cmd` 产出安装器并实测安装/卸载
 - [ ] GitHub Release v0.1.0 + 杀软误报评估（推送后在仓库网页操作）

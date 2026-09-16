@@ -2,7 +2,7 @@
 
 > **目的**：验证 LongCore 在 Windows 下依赖的三条硬件通道（WMI 方法调用、EC 索引端口、SMU/GPU 原生库）在 Linux (Ubuntu) 下是否可达，为"跨平台重写"可行性提供事实依据。
 > **执行者**：本机 Ubuntu 系统上的 AI agent（或人类按步骤执行）。
-> **参考基准**：Windows 侧已探明的协议见 `docs/02_协议手册.md`；EC 索引协议见 `LongCore/.../Drivers/Blding64.cs`。
+> **参考基准**：Windows 侧已探明的协议见 `docs/02_协议手册.md`；EC 索引协议见 `JiaoLongControl/Server/Core/Drivers/Blding64.cs`。
 >
 > **总原则**：
 > 1. **先只读，后写入**。阶段 0–6 全部为只读探测；唯一可选的写实验在阶段 7，必须显式确认后才执行。

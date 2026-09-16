@@ -1,27 +1,29 @@
-# LongCore 龙核
+# LongCore · 研究层（research）
 
-> 蛟龙 16 Pro 的开源硬件控制中心。
-> 协议逆向自官方「蛟龙游戏控制中心 v0.3.15.0」，应用 fork 自社区项目 [JiaolongControl](https://github.com/GaoXanSheng/JiaolongControl)（MIT），按自己的方向全量重制。
+> 本目录是 LongCore 的**协议研究层**：逆向成果、实测数据、上游审计、决策与计划。
+> 它原本是独立仓库（`jiaolong16pro`），2026-09 已并入应用仓，**历史完整保留**在 git 中。
+> 应用本体（WPF + WebView2 + Vue3）在**仓库根**，入口见 [../README.md](../README.md)。
 
 **目标机型**：机械革命蛟龙 16 Pro 2023（MECHREVO MRID6，Ryzen 9 7945HX + RTX 40 系），BIOS `MRID6_23_V33` 实测通过。
 
 > 本项目不包含任何厂商二进制文件，仅通过系统标准接口（ACPI WMI / NVAPI / PawnIO）与硬件通信。
 
-## 项目构成
-
-本仓库是 LongCore 的**大本营**：协议研究成果、测试工具与上游审计。重制版应用在 fork 仓库开发（链接待补）。
+## 目录
 
 | 目录 | 内容 |
 |---|---|
-| `docs/00_索引.md` | 文档导航与当前状态（从这里读起） |
+| [docs/00_索引.md](docs/00_索引.md) | 文档导航与当前状态（**从这里读起**） |
 | `docs/01_术语表.md` | Windows 开发术语详解（面向初学者） |
 | `docs/02_协议手册.md` | WMI 32 字节二进制协议完整规格 + 踩坑记录 |
 | `docs/04_上游与架构摘要.md` | 上游三通道、EC 寄存器、功能缺口 |
 | `docs/05–09` | Linux 探测 / 决策 / 动效原则 / 安全架构 / UI 重设计 |
-| `docs/archive/` | 过时路线图与已执行计划全文（只读） |
+| `docs/archive/` | 过时路线图与已执行计划全文（只读历史） |
 | `src/jiaolongctl/` | Python 协议封装 + CLI（协议层的参考实现） |
 | `probe/` | 本机实测脚本与第一手数据 |
 | `TODO.md` | 开发待办清单（M0–M4 里程碑） |
+| `REPORT.md` | 逆向/探测报告 |
+
+> UI 重构现行方案在应用仓根 `docs/UI重构_最终方案_v4.md`（本目录 `docs/09` 已形式失效，仅作留痕）。
 
 ## 快速开始（协议层）
 
