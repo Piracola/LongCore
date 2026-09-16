@@ -1,4 +1,4 @@
-﻿<h1 align="center">LongCore</h1>
+<h1 align="center">LongCore</h1>
 
 <p align="center">
   <strong>蛟龙 16 PRO 笔记本硬件控制中心</strong><br>
@@ -86,12 +86,12 @@
 ## 开发
 
 ```bash
-# 前端开发（需要 Node.js 18+）
+# 前端开发（需要 Node.js 24.15+，见 Client/.nvmrc）
 cd JiaoLongControl/Client
 npm install
 npm run dev
 
-# 后端构建（需要 .NET 8 SDK）
+# 后端构建（需要 .NET 10 SDK）
 dotnet build JiaoLongControl/JiaoLongControl.csproj
 
 # 发布

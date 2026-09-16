@@ -40,10 +40,7 @@ const displaySpeed = computed(() => draftSpeed.value)
 // 危险确认：超出 1500–5800 闸门值域即弹确认（v4 §11 第 3 项）
 function requestApply() {
   if (!FanPageStore.value) return
-  if (
-    FanPageStore.value.ManualFanSpeed > 5800 ||
-    FanPageStore.value.ManualFanSpeed < 1500
-  ) {
+  if (FanPageStore.value.ManualFanSpeed > 5800 || FanPageStore.value.ManualFanSpeed < 1500) {
     visible.value = true
     return
   }
@@ -122,9 +119,7 @@ onUnmounted(() => {
           class="w-full"
         />
 
-        <p class="hint">
-          手动设定会关闭自动温控后台并锁定转速。重载时过低转速可能导致降频。
-        </p>
+        <p class="hint">手动设定会关闭自动温控后台并锁定转速。重载时过低转速可能导致降频。</p>
 
         <template #footer>
           <ApplyBar
@@ -159,7 +154,11 @@ onUnmounted(() => {
             <li v-for="item in fanStore.activity" :key="item.seq" class="activity-item">
               <span class="t">{{ item.intent }}</span>
               <span :class="['o', item.outcome]">
-                {{ { applied: '已应用', accepted: '已接受', failed: '失败', partial: '部分应用' }[item.outcome] }}
+                {{
+                  { applied: '已应用', accepted: '已接受', failed: '失败', partial: '部分应用' }[
+                    item.outcome
+                  ]
+                }}
               </span>
             </li>
           </ul>
@@ -168,7 +167,13 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <a-modal v-model:visible="visible" simple :mask-closable="false" @ok="doApply" @cancel="handleCancel">
+    <a-modal
+      v-model:visible="visible"
+      simple
+      :mask-closable="false"
+      @ok="doApply"
+      @cancel="handleCancel"
+    >
       <template #title>安全警告</template>
       <div class="modal-body">
         设定目标转速高于

@@ -231,7 +231,11 @@ export interface BridgeApi {
     SetPowerLimit(watts: number, gpuIndex?: number): HostBridgePromise<void>
     GetClockOffsetRange(gpuIndex?: number): HostBridgePromise<ClockOffsetRangeInfo>
     GetClockOffsets(gpuIndex?: number): HostBridgePromise<ClockOffsetsInfo>
-    ApplyClockOffsets(coreMhz: number, memoryMhz: number, gpuIndex?: number): HostBridgePromise<void>
+    ApplyClockOffsets(
+      coreMhz: number,
+      memoryMhz: number,
+      gpuIndex?: number,
+    ): HostBridgePromise<void>
     SetCoreClockOffset(mhz: number, gpuIndex?: number): HostBridgePromise<void>
     SetMemoryClockOffset(mhz: number, gpuIndex?: number): HostBridgePromise<void>
     ResetClockOffsets(gpuIndex?: number): HostBridgePromise<void>

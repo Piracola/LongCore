@@ -249,7 +249,9 @@ async function forceTheme(theme) {
     else document.body.removeAttribute('arco-theme')
     try {
       localStorage.setItem('jl-theme', t)
-    } catch {}
+    } catch {
+      // localStorage 在隐私模式/受限上下文可能抛错, 忽略即可
+    }
   }, theme)
 }
 

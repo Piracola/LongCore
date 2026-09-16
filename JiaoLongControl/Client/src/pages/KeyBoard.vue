@@ -148,9 +148,7 @@ function handleReset() {
         </div>
 
         <!-- 1. 键盘灯效可视化预览卡。-->
-        <div
-          class="panel-card p-5"
-        >
+        <div class="panel-card p-5">
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-[13px] font-semibold text-gray-300">灯效实时预览</h2>
             <div class="flex items-center gap-2">
@@ -207,9 +205,7 @@ function handleReset() {
         </div>
 
         <!-- 2. 快捷配色预设 -->
-        <div
-          class="panel-card p-5"
-        >
+        <div class="panel-card p-5">
           <h2 class="text-[13px] font-semibold text-gray-300 mb-3">快捷预设</h2>
           <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
             <div
@@ -231,9 +227,7 @@ function handleReset() {
         </div>
 
         <!-- 3. 键盘渐变效果 -->
-        <div
-          class="panel-card p-5"
-        >
+        <div class="panel-card p-5">
           <div class="flex items-center justify-between gap-4">
             <div class="space-y-1.5">
               <h2 class="text-[13px] font-semibold text-gray-300">键盘渐变效果</h2>
@@ -278,7 +272,13 @@ function handleReset() {
                 >
                 <span class="text-red-400 font-medium font-mono">{{ color.red }}</span>
               </div>
-              <a-slider v-model="color.red" :min="0" :max="255" :disabled="gradientRunning" class="w-full red-slider" />
+              <a-slider
+                v-model="color.red"
+                :min="0"
+                :max="255"
+                :disabled="gradientRunning"
+                class="w-full red-slider"
+              />
             </div>
 
             <!-- 绿色通道 (Green) -->
@@ -289,7 +289,13 @@ function handleReset() {
                 >
                 <span class="text-green-400 font-medium font-mono">{{ color.green }}</span>
               </div>
-              <a-slider v-model="color.green" :min="0" :max="255" :disabled="gradientRunning" class="w-full green-slider" />
+              <a-slider
+                v-model="color.green"
+                :min="0"
+                :max="255"
+                :disabled="gradientRunning"
+                class="w-full green-slider"
+              />
             </div>
 
             <!-- 蓝色通道 (Blue) -->
@@ -300,7 +306,13 @@ function handleReset() {
                 >
                 <span class="text-blue-400 font-medium font-mono">{{ color.blue }}</span>
               </div>
-              <a-slider v-model="color.blue" :min="0" :max="255" :disabled="gradientRunning" class="w-full blue-slider" />
+              <a-slider
+                v-model="color.blue"
+                :min="0"
+                :max="255"
+                :disabled="gradientRunning"
+                class="w-full blue-slider"
+              />
             </div>
 
             <!-- 背光亮度 -->
@@ -311,7 +323,14 @@ function handleReset() {
                   >Level {{ LightBrightness }}</span
                 >
               </div>
-              <a-slider v-model="LightBrightness" :min="0" :max="3" :step="1" :disabled="gradientRunning" class="w-full" />
+              <a-slider
+                v-model="LightBrightness"
+                :min="0"
+                :max="3"
+                :step="1"
+                :disabled="gradientRunning"
+                class="w-full"
+              />
             </div>
           </div>
         </div>
@@ -347,9 +366,7 @@ function handleReset() {
       <!-- ==================== 右侧：信息与说明区==================== -->
       <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
         <!-- 1. 当前颜色色板卡片 -->
-        <div
-          class="panel-card p-5 space-y-4"
-        >
+        <div class="panel-card p-5 space-y-4">
           <h2 class="text-[13px] font-semibold text-gray-300">当前配色方案</h2>
           <div
             class="kb-swatch w-full h-24 rounded-xl border border-ink/10 flex flex-col justify-end p-3 shadow-lg relative overflow-hidden"
@@ -373,9 +390,7 @@ function handleReset() {
         </div>
 
         <!-- 2. 说明卡片 -->
-        <div
-          class="panel-card p-5 space-y-2.5"
-        >
+        <div class="panel-card p-5 space-y-2.5">
           <h2 class="text-[13px] font-semibold text-gray-300">使用说明</h2>
           <div class="text-[11px] text-gray-500 leading-relaxed space-y-2">
             <p>通过 R/G/B 三通道滑块、快捷预设或颜色拾取器设置背光颜色。</p>
@@ -396,8 +411,6 @@ function handleReset() {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
-
 
 :deep(.red-slider .arco-slider-bar) {
   background: linear-gradient(90deg, #ef4444 0%, #f87171 100%) !important;

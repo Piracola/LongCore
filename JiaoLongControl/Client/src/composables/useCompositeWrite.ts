@@ -1,5 +1,10 @@
 import { ref, computed } from 'vue'
-import type { OperationEvent, OperationSource, OperationStep, PostReadVerify } from '@/domain/operations'
+import type {
+  OperationEvent,
+  OperationSource,
+  OperationStep,
+  PostReadVerify,
+} from '@/domain/operations'
 
 /**
  * 复合写入逐步结果模型（UI重构_最终方案_v4.md §8.3，Implemented 2026-09-17）。
@@ -24,7 +29,9 @@ export interface StepPlan {
    * 执行该步。可直接返回 CommandResult（Success 即 accepted），
    * 或返回 { accepted, message } 自定义判定。
    */
-  run: () => Promise<{ Success: boolean; Message?: string } | { accepted: boolean; message?: string }>
+  run: () => Promise<
+    { Success: boolean; Message?: string } | { accepted: boolean; message?: string }
+  >
   /**
    * 写后独立重读（可选）：存在可靠 getter 时提供；缺失 = 仅命令确认，不可回读。
    * expected 为该步请求值；重读结果会与 expected 严格比对。
@@ -35,7 +42,12 @@ export interface StepPlan {
 }
 
 /** 归一 run() 的返回：CommandResult → { accepted, message } */
-function normalize(res: { Success?: boolean; Message?: string; accepted?: boolean; message?: string }): {
+function normalize(res: {
+  Success?: boolean
+  Message?: string
+  accepted?: boolean
+  message?: string
+}): {
   accepted: boolean
   message?: string
 } {
@@ -89,7 +101,13 @@ export function useCompositeWrite() {
     /** 全部步骤完成后的整体重读（可选） */
     finalVerify?: () => Promise<PostReadVerify>
   }): Promise<OperationEvent> {
-    state.value = { phase: 'running', steps: [], partialApplied: false, failedAt: null, message: null }
+    state.value = {
+      phase: 'running',
+      steps: [],
+      partialApplied: false,
+      failedAt: null,
+      message: null,
+    }
 
     const steps: OperationStep[] = []
     let aborted = false

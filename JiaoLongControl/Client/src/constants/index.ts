@@ -16,8 +16,32 @@ export const CPU_PROFILE_DEFAULTS: Record<
   'Default' | 'Performance' | 'Saving' | 'Custom',
   CpuProfileDataType
 > = {
-  Default: { CpuLongPower: 45, CpuShortPower: 60, CpuTempWall: 85, CpuMaxFrequency: 5150, CpuTurbo: true },
-  Performance: { CpuLongPower: 54, CpuShortPower: 75, CpuTempWall: 90, CpuMaxFrequency: 5150, CpuTurbo: true },
-  Saving: { CpuLongPower: 30, CpuShortPower: 45, CpuTempWall: 75, CpuMaxFrequency: 3200, CpuTurbo: true },
-  Custom: { CpuLongPower: 45, CpuShortPower: 60, CpuTempWall: 85, CpuMaxFrequency: 5150, CpuTurbo: true },
+  Default: {
+    CpuLongPower: 45,
+    CpuShortPower: 60,
+    CpuTempWall: 85,
+    CpuMaxFrequency: 5150,
+    CpuTurbo: true,
+  },
+  Performance: {
+    CpuLongPower: 54,
+    CpuShortPower: 75,
+    CpuTempWall: 90,
+    CpuMaxFrequency: 5150,
+    CpuTurbo: true,
+  },
+  Saving: {
+    CpuLongPower: 30,
+    CpuShortPower: 45,
+    CpuTempWall: 75,
+    CpuMaxFrequency: 3200,
+    CpuTurbo: true,
+  },
+  Custom: {
+    CpuLongPower: 45,
+    CpuShortPower: 60,
+    CpuTempWall: 85,
+    CpuMaxFrequency: 5150,
+    CpuTurbo: true,
+  },
 }

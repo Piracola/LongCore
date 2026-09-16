@@ -18,7 +18,8 @@ const toggleCards = [
   {
     group: 'fan',
     title: '风扇曲线合并',
-    description: '启用后，软件将在【风扇曲线】页面中将所有风扇的曲线合并为一条曲线，方便用户统一调整风扇转速',
+    description:
+      '启用后，软件将在【风扇曲线】页面中将所有风扇的曲线合并为一条曲线，方便用户统一调整风扇转速',
     configPath: 'Fan.FanCurveMerge',
   },
   {
@@ -30,13 +31,15 @@ const toggleCards = [
   {
     group: 'auto',
     title: 'GPU 参数自动应用',
-    description: '在软件启动时，自动载入并应用【GPU】设置页面中保存的核心与显存超频、电压曲线、功耗目标等参数',
+    description:
+      '在软件启动时，自动载入并应用【GPU】设置页面中保存的核心与显存超频、电压曲线、功耗目标等参数',
     configPath: 'App.BootAdvancedGPUSystem',
   },
   {
     group: 'auto',
     title: 'RyzenSMU 全核降压自动应用',
-    description: '在软件启动时，自动应用【Ryzen SMU】页面中保存的 Curve Optimizer 全核心负压（降压超频）设定',
+    description:
+      '在软件启动时，自动应用【Ryzen SMU】页面中保存的 Curve Optimizer 全核心负压（降压超频）设定',
     configPath: 'App.BootSetRyzenSumCurveOptimizerAll',
   },
   {

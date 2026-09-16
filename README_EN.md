@@ -71,7 +71,7 @@ See [SUPPORTED_HARDWARE.md](docs/SUPPORTED_HARDWARE.md) before use.
 
 ## Build from source
 
-Prerequisites: .NET 8 SDK (Windows), Node.js 22, Windows x64. Administrator is required at runtime.
+Prerequisites: .NET 10 SDK (Windows), Node.js 24.15+ (see Client/.nvmrc), Windows x64. Administrator is required at runtime.
 
 ```bat
 :: Frontend (vue-tsc + vite) — outputs to bin\publish\WebRoot

@@ -161,9 +161,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    class="bg-panel border border-hair rounded-lg p-5 space-y-4"
-  >
+  <div class="bg-panel border border-hair rounded-lg p-5 space-y-4">
     <!-- 图表顶栏标题 -->
     <div class="flex justify-between items-center select-none">
       <h2 class="text-[13px] font-semibold text-gray-300 flex items-center gap-1.5">
@@ -185,7 +183,10 @@ onUnmounted(() => {
         </defs>
 
         <!-- 1. 背景网格横线 (CPU 区间) -->
-        <g style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)" stroke-width="1">
+        <g
+          style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)"
+          stroke-width="1"
+        >
           <line :x1="PADDING_X" :x2="width - PADDING_X" :y1="PADDING_Y" :y2="PADDING_Y" />
           <line
             :x1="PADDING_X"
@@ -213,7 +214,10 @@ onUnmounted(() => {
         />
 
         <!-- 3. 背景网格横线 (GPU 区间) -->
-        <g style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)" stroke-width="1">
+        <g
+          style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)"
+          stroke-width="1"
+        >
           <line
             :x1="PADDING_X"
             :x2="width - PADDING_X"
@@ -257,12 +261,7 @@ onUnmounted(() => {
         </text>
 
         <!-- 5. 独立轨道折线路径 -->
-        <polyline
-          :points="cpuFanPath"
-          fill="none"
-          :stroke="COLOR_CPU_FAN"
-          stroke-width="2"
-        />
+        <polyline :points="cpuFanPath" fill="none" :stroke="COLOR_CPU_FAN" stroke-width="2" />
         <polyline
           :points="gpuFanPath"
           fill="none"
@@ -270,12 +269,7 @@ onUnmounted(() => {
           stroke-width="2"
           stroke-dasharray="6,4"
         />
-        <polyline
-          :points="cpuTempPath"
-          fill="none"
-          :stroke="COLOR_CPU_TEMP"
-          stroke-width="2"
-        />
+        <polyline :points="cpuTempPath" fill="none" :stroke="COLOR_CPU_TEMP" stroke-width="2" />
         <polyline
           :points="gpuTempPath"
           fill="none"
@@ -379,17 +373,34 @@ onUnmounted(() => {
               width="180"
               height="124"
               rx="8"
-              style="fill: var(--color-popover-bg); stroke: color-mix(in srgb, var(--color-text-main) 8%, transparent)"
+              style="
+                fill: var(--color-popover-bg);
+                stroke: color-mix(in srgb, var(--color-text-main) 8%, transparent);
+              "
               stroke-width="1"
             />
-            <text x="15" y="24" font-size="11" font-weight="bold" style="fill: var(--color-text-main)">
+            <text
+              x="15"
+              y="24"
+              font-size="11"
+              font-weight="bold"
+              style="fill: var(--color-text-main)"
+            >
               时间切片: {{ hoverIndex + 1 }} / 10
             </text>
             <g transform="translate(15, 46)">
               <circle r="3.5" :fill="COLOR_CPU_FAN" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 CPU风扇:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ cpuFan[hoverIndex] }}
                 </tspan>
                 RPM
@@ -397,9 +408,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 66)">
               <circle r="3.5" :fill="COLOR_GPU_FAN" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 GPU风扇:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ gpuFan[hoverIndex] }}
                 </tspan>
                 RPM
@@ -407,9 +426,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 86)">
               <circle r="3.5" :fill="COLOR_CPU_TEMP" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 CPU温度:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ cpuTemp[hoverIndex] }}
                 </tspan>
                 °C
@@ -417,9 +444,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 106)">
               <circle r="3.5" :fill="COLOR_GPU_TEMP" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 GPU温度:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ gpuTemp[hoverIndex] }}
                 </tspan>
                 °C

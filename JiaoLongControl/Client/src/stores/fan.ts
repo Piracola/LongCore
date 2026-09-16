@@ -98,7 +98,10 @@ export const useFanStore = defineStore('fan', {
     },
 
     /** 手动设定转速（C 级可逆）。逐项：writeGate → 停 AutoFan → 写转速 → 保存配置。 */
-    async applyManualSpeed(rpm: number, saveConfig: () => Promise<unknown>): Promise<FanApplyResult> {
+    async applyManualSpeed(
+      rpm: number,
+      saveConfig: () => Promise<unknown>,
+    ): Promise<FanApplyResult> {
       const steps: FanApplyResult['steps'] = []
 
       // 闸门（v4 §8.6 前端一致性值域 1500–5800）

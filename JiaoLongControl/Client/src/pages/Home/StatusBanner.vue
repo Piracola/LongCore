@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
-import { Cpu, MonitorCog } from 'lucide-vue-next'
+import { Cpu, MonitorCog } from '@lucide/vue'
 import { SystemPerMode } from '@/utils/bridge'
 import { tempBgVarByLevel, tempVarByLevel, type TempLevel } from '@/utils/temperature'
 

@@ -70,7 +70,10 @@ export interface WriteGateDecision {
 function check(rule: WriteRule | undefined, value: number): WriteGateDecision {
   if (!rule) return { allowed: true, reason: null }
   if (rule.zeroUnwritable && (!Number.isFinite(value) || value === 0)) {
-    return { allowed: false, reason: '该值当前为 0（多为读取失败），已阻止写入。请先设定有效数值。' }
+    return {
+      allowed: false,
+      reason: '该值当前为 0（多为读取失败），已阻止写入。请先设定有效数值。',
+    }
   }
   if (rule.range && (!Number.isFinite(value) || value < rule.range.min || value > rule.range.max)) {
     return {

@@ -36,12 +36,7 @@ const statusClass = computed(() => {
       <span class="msg tnum">{{ apply.statusText.value || '就绪' }}</span>
     </div>
     <div class="apply-actions">
-      <button
-        v-if="apply.canRetry.value"
-        class="btn-ghost"
-        type="button"
-        @click="emit('retry')"
-      >
+      <button v-if="apply.canRetry.value" class="btn-ghost" type="button" @click="emit('retry')">
         重试
       </button>
       <button

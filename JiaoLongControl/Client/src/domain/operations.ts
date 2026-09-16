@@ -12,7 +12,8 @@
  */
 
 /** 操作来源 —— 来源不同，权限与提示不同（v4 §8.1） */
-export type OperationSource = 'user' | 'startup-restore' | 'auto-fan' | 'thermal-watchdog' | 'fn-hotkey'
+export type OperationSource =
+  'user' | 'startup-restore' | 'auto-fan' | 'thermal-watchdog' | 'fn-hotkey'
 
 /** 传输通道（v4 §8.1） */
 export type OperationTransport = 'wmi' | 'ec' | 'smu' | 'nvapi' | 'powercfg' | 'config'

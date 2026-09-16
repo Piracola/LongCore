@@ -75,9 +75,7 @@ export function useFanCurveEditor() {
     }
   }
 
-  const handleServiceToggle = async (
-    newValue: string | number | boolean,
-  ): Promise<boolean> => {
+  const handleServiceToggle = async (newValue: string | number | boolean): Promise<boolean> => {
     serviceLoading.value = true
     try {
       if (newValue) {
@@ -160,9 +158,7 @@ export function useFanCurveEditor() {
   }
 
   const polylinePoints = computed(() => {
-    return currentPoints.value
-      .map((p) => `${safeMapX(p.temp)},${safeMapY(p.speed)}`)
-      .join(' ')
+    return currentPoints.value.map((p) => `${safeMapX(p.temp)},${safeMapY(p.speed)}`).join(' ')
   })
 
   // 计算面积渐变闭合多边形的坐标点

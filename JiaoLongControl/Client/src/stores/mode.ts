@@ -23,9 +23,7 @@ import { ActivityLog } from '@/domain/operations'
  * 启动读取三条路径最终一致；失败不留虚假激活态。
  */
 
-export type ModeSelection =
-  | { kind: 'preset'; mode: FirmwareMode }
-  | { kind: 'custom' }
+export type ModeSelection = { kind: 'preset'; mode: FirmwareMode } | { kind: 'custom' }
 
 interface ModeState {
   /** 固件观察档位（命令 8；热键事件 15 直接更新它） */
@@ -133,10 +131,7 @@ export const useModeStore = defineStore('performanceMode', {
         }
         activity?.record({
           source: 'user',
-          intent:
-            sel.kind === 'custom'
-              ? '开启自定义功耗覆盖'
-              : `切换性能档位：${sel.mode}`,
+          intent: sel.kind === 'custom' ? '开启自定义功耗覆盖' : `切换性能档位：${sel.mode}`,
           requestedValue: sel.kind === 'custom' ? 'custom' : sel.mode,
           outcome: accepted ? 'applied' : 'failed',
           reversible: 'b',

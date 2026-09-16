@@ -34,7 +34,6 @@ if (infoResult.Success) {
 const CPUData = computed(() => configStore.config?.Cpu)
 const SmuData = computed(() => configStore.config?.Smu)
 
-
 // 页面内部交互状。
 const selectedProfile = ref('default')
 
@@ -197,9 +196,7 @@ async function handleCancel() {
         </div>
 
         <!-- 1. CPU 配置文件 -->
-        <div
-          class="panel-card p-5"
-        >
+        <div class="panel-card p-5">
           <div class="flex justify-between items-center mb-4">
             <h2 class="section-label !mb-0">CPU 配置文件</h2>
           </div>
@@ -227,9 +224,7 @@ async function handleCancel() {
         </div>
 
         <!-- 2. 核心设置 -->
-        <div
-          class="panel-card p-5 space-y-6"
-        >
+        <div class="panel-card p-5 space-y-6">
           <h2 class="section-label">核心设置</h2>
 
           <div class="space-y-6">
@@ -244,9 +239,7 @@ async function handleCancel() {
                     >?</span
                   ></span
                 >
-                <span class="text-accent font-medium tnum"
-                  >{{ activeProfile.CpuLongPower }} W</span
-                >
+                <span class="text-accent font-medium tnum">{{ activeProfile.CpuLongPower }} W</span>
               </div>
               <a-slider v-model="activeProfile.CpuLongPower" :min="30" :max="120" class="w-full" />
             </div>
@@ -304,9 +297,7 @@ async function handleCancel() {
                     >?</span
                   ></span
                 >
-                <span class="text-accent font-medium tnum"
-                  >{{ activeProfile.CpuTempWall }} °C</span
-                >
+                <span class="text-accent font-medium tnum">{{ activeProfile.CpuTempWall }} °C</span>
               </div>
               <a-slider v-model="activeProfile.CpuTempWall" :min="60" :max="105" class="w-full" />
             </div>
@@ -361,11 +352,7 @@ async function handleCancel() {
             >
               取消
             </button>
-            <button
-              :disabled="loading"
-              class="tok-apply btn-apply text-xs"
-              @click="handleApplyAll"
-            >
+            <button :disabled="loading" class="tok-apply btn-apply text-xs" @click="handleApplyAll">
               {{ loading ? '应用中...' : '应用' }}
             </button>
           </div>
@@ -375,16 +362,14 @@ async function handleCancel() {
       <!-- ==================== 右侧：信息与说明区==================== -->
       <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
         <!-- 1. CPU 信息卡片 -->
-        <div
-          class="panel-card p-5"
-        >
+        <div class="panel-card p-5">
           <h2 class="text-[13px] font-semibold text-gray-300 mb-4">CPU 信息</h2>
           <div class="flex items-center gap-4 h-[96px]">
             <!-- 高保。3D 芯片矢量线稿 (CpuDie) -->
             <div
               class="w-16 h-16 bg-ink/[0.02] border border-ink/[0.05] rounded-xl flex items-center justify-center relative"
             >
-                            <CpuDie />
+              <CpuDie />
             </div>
 
             <div class="space-y-1 text-[11px] text-gray-400">
@@ -401,9 +386,7 @@ async function handleCancel() {
         </div>
 
         <!-- 2. 实时状态卡。-->
-        <div
-          class="panel-card p-5 space-y-4"
-        >
+        <div class="panel-card p-5 space-y-4">
           <h2 class="text-sm font-semibold text-ink">实时状态</h2>
 
           <div class="space-y-3.5">
@@ -412,10 +395,7 @@ async function handleCancel() {
               <div class="flex justify-between text-[11px]">
                 <span class="text-gray-400">频率</span>
                 <span class="text-ink font-mono font-medium"
-                  >{{
-                    freqMhz !== null ? (freqMhz / 1000).toFixed(2) : '—'
-                  }}
-                  GHz</span
+                  >{{ freqMhz !== null ? (freqMhz / 1000).toFixed(2) : '—' }} GHz</span
                 >
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
@@ -448,9 +428,9 @@ async function handleCancel() {
             <div class="space-y-1.5">
               <div class="flex justify-between text-[11px]">
                 <span class="text-muted">使用率</span>
-                <span class="text-ink font-mono font-medium"
-                  >{{ usagePct !== null ? `${usagePct} %` : '—' }}</span
-                >
+                <span class="text-ink font-mono font-medium">{{
+                  usagePct !== null ? `${usagePct} %` : '—'
+                }}</span>
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
@@ -464,9 +444,9 @@ async function handleCancel() {
             <div class="space-y-1.5">
               <div class="flex justify-between text-[11px]">
                 <span class="text-gray-400">温度</span>
-                <span class="text-ink font-mono font-medium"
-                  >{{ tempC !== null ? `${tempC} °C` : '—' }}</span
-                >
+                <span class="text-ink font-mono font-medium">{{
+                  tempC !== null ? `${tempC} °C` : '—'
+                }}</span>
               </div>
               <div class="h-1.5 bg-ink/[0.03] rounded-full overflow-hidden">
                 <div
@@ -481,9 +461,7 @@ async function handleCancel() {
         </div>
 
         <!-- 3. 核心分布卡片 -->
-        <div
-          class="panel-card p-5 space-y-3.5"
-        >
+        <div class="panel-card p-5 space-y-3.5">
           <div class="flex justify-between items-center">
             <h2 class="text-[13px] font-semibold text-gray-300">核心分布</h2>
             <!-- <button
@@ -511,9 +489,7 @@ async function handleCancel() {
         </div>
 
         <!-- 4. 说明卡片 -->
-        <div
-          class="panel-card p-5 space-y-2.5"
-        >
+        <div class="panel-card p-5 space-y-2.5">
           <h2 class="text-[13px] font-semibold text-gray-300">说明</h2>
           <div class="text-[11px] text-gray-500 leading-relaxed space-y-2">
             <p>功耗限制决定了 CPU 可持续运行的最大功耗。</p>
@@ -559,7 +535,6 @@ async function handleCancel() {
 /* 浅色下核心分布磁贴: 统一中性 inset, 不引入第二强调色 */
 
 /* 深度重写 Arco Slider 为高透炫光紫。*/
-
 
 /* Arco Switch 选中。 统一冷青 */
 :deep(.arco-switch-checked) {

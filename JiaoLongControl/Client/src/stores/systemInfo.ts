@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia'
-import { CPU, Fan, NvidiaGpu, type CommandResult, type FanSpeedInfo, type GpuStats } from '@/utils/bridge'
+import {
+  CPU,
+  Fan,
+  NvidiaGpu,
+  type CommandResult,
+  type FanSpeedInfo,
+  type GpuStats,
+} from '@/utils/bridge'
 import { POLL_INTERVAL_SYSTEM_INFO } from '@/constants'
 import { PollingChannel, okReading, type Reading } from '@/utils/reading'
 
@@ -126,14 +133,33 @@ export const useSystemInfoStore = defineStore('systemInfo', {
         NvidiaGpu.GetGpuFanSpeed(),
         NvidiaGpu.GetGpuTemperature(),
       ])
-      const [temp, usage, freq, volt, fan, name, driver, date, mem, bus, util, memUtil, coreClk, memClk, gpuFan, gpuT] =
-        results
+      const [
+        temp,
+        usage,
+        freq,
+        volt,
+        fan,
+        name,
+        driver,
+        date,
+        mem,
+        bus,
+        util,
+        memUtil,
+        coreClk,
+        memClk,
+        gpuFan,
+        gpuT,
+      ] = results
 
       this.cpuTemp = toReading(this.cpuTemp, temp as PromiseSettledResult<CommandResult<number>>)
       this.cpuUsage = toReading(this.cpuUsage, usage as PromiseSettledResult<CommandResult<number>>)
       this.cpuFreq = toReading(this.cpuFreq, freq as PromiseSettledResult<CommandResult<number>>)
       this.cpuVolt = toReading(this.cpuVolt, volt as PromiseSettledResult<CommandResult<number>>)
-      this.fanSpeed = toReading(this.fanSpeed, fan as PromiseSettledResult<CommandResult<FanSpeedInfo>>)
+      this.fanSpeed = toReading(
+        this.fanSpeed,
+        fan as PromiseSettledResult<CommandResult<FanSpeedInfo>>,
+      )
 
       // GPU 静态通道聚合为一个读数：全部成功才 ok，部分失败按 stale/error 降级
       const staticSettled = [name, driver, date, mem, bus] as Array<
@@ -160,49 +186,49 @@ export const useSystemInfoStore = defineStore('systemInfo', {
         GpuTemperature: Number(parts[5]),
       }))
 
-      return results.some(
-        (r) => r.status === 'fulfilled' && r.value.Success,
-      )
+      return results.some((r) => r.status === 'fulfilled' && r.value.Success)
     },
 
-  /** 多子命令聚合：全 ok → ok；否则有旧值 → stale；从未成功 → error */
-  aggregateReading(
-    prev: Reading<unknown>,
-    settled: Array<PromiseSettledResult<CommandResult<number | string>>>,
-    compose: (parts: Array<number | string>) => unknown,
-  ): Reading<never> {
-    const okParts: Array<number | string> = []
-    let message: string | null = null
-    for (const r of settled) {
-      if (r.status === 'fulfilled' && r.value.Success && 'Data' in r.value) {
-        okParts.push(r.value.Data)
-      } else if (message === null) {
-        message =
-          r.status === 'fulfilled'
-            ? r.value.Message || '读取失败'
-            : r.reason instanceof Error
-              ? r.reason.message
-              : '读取失败'
+    /** 多子命令聚合：全 ok → ok；否则有旧值 → stale；从未成功 → error */
+    aggregateReading(
+      prev: Reading<unknown>,
+      settled: Array<PromiseSettledResult<CommandResult<number | string>>>,
+      compose: (parts: Array<number | string>) => unknown,
+    ): Reading<never> {
+      const okParts: Array<number | string> = []
+      let message: string | null = null
+      for (const r of settled) {
+        if (r.status === 'fulfilled' && r.value.Success && 'Data' in r.value) {
+          okParts.push(r.value.Data)
+        } else if (message === null) {
+          message =
+            r.status === 'fulfilled'
+              ? r.value.Message || '读取失败'
+              : r.reason instanceof Error
+                ? r.reason.message
+                : '读取失败'
+        }
       }
-    }
-    if (okParts.length === settled.length) {
-      return okReading(compose(okParts) as never)
-    }
-    if (prev.state === 'ok' || prev.state === 'stale') {
-      return { state: 'stale', value: prev.value, lastOkAt: prev.lastOkAt, message } as Reading<never>
-    }
-    return { state: 'error', value: null, lastOkAt: null, message }
-  },
+      if (okParts.length === settled.length) {
+        return okReading(compose(okParts) as never)
+      }
+      if (prev.state === 'ok' || prev.state === 'stale') {
+        return {
+          state: 'stale',
+          value: prev.value,
+          lastOkAt: prev.lastOkAt,
+          message,
+        } as Reading<never>
+      }
+      return { state: 'error', value: null, lastOkAt: null, message }
+    },
 
     /**
      * 启动统一监测（App.vue 全局挂载一次）。返回停止函数，签名与旧版一致。
      */
     startPolling(interval = POLL_INTERVAL_SYSTEM_INFO): () => void {
       this.stopPolling()
-      channel = new PollingChannel(
-        () => this.fetchSystemInfo(),
-        { intervalMs: interval },
-      )
+      channel = new PollingChannel(() => this.fetchSystemInfo(), { intervalMs: interval })
       channel.start()
       return () => this.stopPolling()
     },

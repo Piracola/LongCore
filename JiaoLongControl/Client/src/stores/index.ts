@@ -1,15 +1,6 @@
 import { defineStore } from 'pinia'
 import { markRaw, type Component } from 'vue'
-import {
-  ChartLine,
-  Cpu,
-  Fan,
-  Home,
-  Keyboard,
-  Microchip,
-  MonitorCog,
-  Settings,
-} from 'lucide-vue-next'
+import { ChartLine, Cpu, Fan, Home, Keyboard, Microchip, MonitorCog, Settings } from '@lucide/vue'
 import HOME_Page from '@/pages/Home.vue'
 import CPU_Page from '@/pages/CPU.vue'
 import Fan_Page from '@/pages/Fan.vue'
@@ -48,7 +39,7 @@ const useStore = defineStore('store', {
   },
 })
 
-// 线性图标统一走 lucide-vue-next(组件以 markRaw 包装, 避免响应式代理开销);
+// 线性图标统一走 @lucide/vue(组件以 markRaw 包装, 避免响应式代理开销);
 // 隐喻约定: 主页=Home, CPU=Cpu, GPU=MonitorCog, SMU=Microchip, 曲线=ChartLine, 风扇=Fan
 export interface HomeCardItem {
   title: string

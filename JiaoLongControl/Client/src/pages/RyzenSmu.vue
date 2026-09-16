@@ -312,7 +312,9 @@ function tempClass(celsius: number) {
       <div class="flex-1 space-y-6">
         <div>
           <h1 class="text-2xl font-bold tracking-wide">Ryzen SMU</h1>
-          <p class="text-[13px] text-muted mt-1">高级电源、电流及频率限制调整（AMD Ryzen 平台专用）</p>
+          <p class="text-[13px] text-muted mt-1">
+            高级电源、电流及频率限制调整（AMD Ryzen 平台专用）
+          </p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -328,9 +330,11 @@ function tempClass(celsius: number) {
                 <div v-for="item in group.items" :key="item.key" class="space-y-1.5">
                   <div class="flex justify-between items-center text-xs">
                     <span class="text-muted">{{ item.label }}</span>
-                    <span class="text-ink tnum font-medium"
-                      >{{ isZeroBlocked(item.key, smuData[item.key]) ? '未读取' : smuData[item.key] + ' ' + item.unit }}</span
-                    >
+                    <span class="text-ink tnum font-medium">{{
+                      isZeroBlocked(item.key, smuData[item.key])
+                        ? '未读取'
+                        : smuData[item.key] + ' ' + item.unit
+                    }}</span>
                   </div>
                   <div class="flex items-center gap-3">
                     <a-slider
@@ -342,7 +346,10 @@ function tempClass(celsius: number) {
                     />
                     <button
                       class="btn-apply btn-apply-sm pressable shrink-0"
-                      :disabled="loadingMap[setterKey(item.key)] || isZeroBlocked(item.key, smuData[item.key])"
+                      :disabled="
+                        loadingMap[setterKey(item.key)] ||
+                        isZeroBlocked(item.key, smuData[item.key])
+                      "
                       @click="
                         applySetting(('Set' + item.key) as keyof typeof RyzenSmu, smuData[item.key])
                       "
@@ -399,12 +406,7 @@ function tempClass(celsius: number) {
                 <span class="tnum text-accent font-semibold">{{ smuData.CurveOptimizerAll }}</span>
               </div>
               <div class="flex items-center gap-3">
-                <a-slider
-                  v-model="smuData.CurveOptimizerAll"
-                  :min="-30"
-                  :max="0"
-                  class="flex-1"
-                />
+                <a-slider v-model="smuData.CurveOptimizerAll" :min="-30" :max="0" class="flex-1" />
                 <button
                   class="btn-apply btn-apply-sm pressable shrink-0"
                   :disabled="loadingMap['SetCurveOptimizerAll']"
@@ -512,7 +514,9 @@ function tempClass(celsius: number) {
         <div class="panel-card p-5 space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-sm font-semibold text-ink">SMU 电源遥测</h2>
-            <span class="text-[11px] text-weak bg-inset border border-hair px-2 py-0.5 rounded-full tnum">
+            <span
+              class="text-[11px] text-weak bg-inset border border-hair px-2 py-0.5 rounded-full tnum"
+            >
               {{ telemetry.FreqMhz }} MHz · {{ telemetry.Usage }}% 负载
             </span>
           </div>

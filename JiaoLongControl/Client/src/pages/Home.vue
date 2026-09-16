@@ -13,7 +13,7 @@ import { useSystemInfoStore } from '@/stores/systemInfo'
 import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
 import { storeToRefs } from 'pinia'
-import { Scale, SlidersHorizontal, Volume1, Zap } from 'lucide-vue-next'
+import { Scale, SlidersHorizontal, Volume1, Zap } from '@lucide/vue'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
@@ -260,7 +260,11 @@ const lineChartOption = computed(() => ({
         <button
           v-for="opt in modeOptions"
           :key="opt.mode"
-          :class="['mode-btn', isModeActive('preset', opt.mode) === true ? 'active' : '', isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '']"
+          :class="[
+            'mode-btn',
+            isModeActive('preset', opt.mode) === true ? 'active' : '',
+            isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '',
+          ]"
           role="tab"
           :aria-selected="isModeActive('preset', opt.mode) === true"
           :disabled="modeStore.syncing"
@@ -270,7 +274,11 @@ const lineChartOption = computed(() => ({
           {{ FIRMWARE_MODE_LABELS[opt.mode] }}
         </button>
         <button
-          :class="['mode-btn', isModeActive('custom') === true ? 'active' : '', isModeActive('custom') === 'pending' ? 'pending' : '']"
+          :class="[
+            'mode-btn',
+            isModeActive('custom') === true ? 'active' : '',
+            isModeActive('custom') === 'pending' ? 'pending' : '',
+          ]"
           role="tab"
           :aria-selected="isModeActive('custom') === true"
           :disabled="modeStore.syncing"
@@ -291,9 +299,15 @@ const lineChartOption = computed(() => ({
         </div>
       </div>
       <div class="status-meta tnum">
-        <span>PWR <b>{{ packagePower }}W</b></span>
-        <span>FAN <b>{{ maxFanRpm }}</b> RPM</span>
-        <span>NOISE <b>{{ noiseLevel }}</b> dBA</span>
+        <span
+          >PWR <b>{{ packagePower }}W</b></span
+        >
+        <span
+          >FAN <b>{{ maxFanRpm }}</b> RPM</span
+        >
+        <span
+          >NOISE <b>{{ noiseLevel }}</b> dBA</span
+        >
       </div>
     </header>
 
@@ -328,9 +342,7 @@ const lineChartOption = computed(() => ({
         </div>
         <div class="readout">
           <div class="readout-label">Fan Max</div>
-          <div class="readout-value tnum">
-            {{ maxFanRpm }}<span class="unit">RPM</span>
-          </div>
+          <div class="readout-value tnum">{{ maxFanRpm }}<span class="unit">RPM</span></div>
           <div class="readout-sub">
             <div class="meter">
               <i :style="{ width: `${Math.min((maxFanRpm / 6800) * 100, 100)}%` }" />
@@ -340,9 +352,7 @@ const lineChartOption = computed(() => ({
         </div>
         <div class="readout">
           <div class="readout-label">Package Power</div>
-          <div class="readout-value tnum">
-            {{ packagePower }}<span class="unit">W</span>
-          </div>
+          <div class="readout-value tnum">{{ packagePower }}<span class="unit">W</span></div>
           <div class="readout-sub">
             <div class="meter">
               <i :style="{ width: `${Math.min((packagePower / 140) * 100, 100)}%` }" />
@@ -362,16 +372,28 @@ const lineChartOption = computed(() => ({
             <div class="fan-row">
               <span class="name">CPU Fan</span>
               <div class="bar-track">
-                <i :style="{ width: `${Math.min((fanSpeedN?.CPUFanSpeed ?? 0) / 6800 * 100, 100)}%` }" />
+                <i
+                  :style="{
+                    width: `${Math.min(((fanSpeedN?.CPUFanSpeed ?? 0) / 6800) * 100, 100)}%`,
+                  }"
+                />
               </div>
-              <span class="rpm tnum">{{ fanAvailable ? (fanSpeedN?.CPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span>
+              <span class="rpm tnum"
+                >{{ fanAvailable ? (fanSpeedN?.CPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span
+              >
             </div>
             <div class="fan-row">
               <span class="name">GPU Fan</span>
               <div class="bar-track">
-                <i :style="{ width: `${Math.min((fanSpeedN?.GPUFanSpeed ?? 0) / 6800 * 100, 100)}%` }" />
+                <i
+                  :style="{
+                    width: `${Math.min(((fanSpeedN?.GPUFanSpeed ?? 0) / 6800) * 100, 100)}%`,
+                  }"
+                />
               </div>
-              <span class="rpm tnum">{{ fanAvailable ? (fanSpeedN?.GPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span>
+              <span class="rpm tnum"
+                >{{ fanAvailable ? (fanSpeedN?.GPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span
+              >
             </div>
             <div class="fan-row">
               <span class="name">CPU Use</span>
