@@ -1,0 +1,12 @@
+﻿ClassName : MICommonInterface
+SuperClass: 
+Qualifiers: Description, dynamic, guid, Locale, provider, WMI
+Properties (2):
+   Active                   : Boolean
+   InstanceName             : String
+
+METHODS (1):
+  --- MiInterface  (return: Boolean)
+      [IN ] InData               UInt8Array
+      [OUT] OutData              UInt8Array
+      [OUT] Reserved             UInt16

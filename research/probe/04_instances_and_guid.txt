@@ -1,0 +1,24 @@
+﻿=== MICommonInterface instances ===
+InstanceName = ACPI\PNP0C14\MIFS_0 ; Active = True
+
+=== qualifiers detail ===
+  Description = Class used to operate firmware interface
+  dynamic = True
+  guid = {b60bfb48-3e5b-49e4-a0e9-8cffe1b3434b}
+  Locale = MS\0x409
+  provider = WmiProv
+  WMI = True
+
+=== HID_EVENT20 ===
+  Q: Description = Root WMI HID_EVENT20
+  Q: dynamic = True
+  Q: guid = {46c93e13-ee9b-4262-8488-563bca757fef}
+  Q: Locale = MS\0x40A
+  Q: provider = WmiProv
+  Q: WMI = True
+  P: SECURITY_DESCRIPTOR    UInt8Array
+  P: TIME_CREATED           UInt64
+  P: Active                 Boolean
+  P: EventDetail            UInt8Array
+  P: InstanceName           String
+  Methods: 

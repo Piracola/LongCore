@@ -1,0 +1,8 @@
+﻿miss: C:\Program Files\MECHREVO
+miss: C:\Program Files (x86)\MECHREVO
+miss: C:\Program Files\GamingControlCenter
+miss: C:\Program Files (x86)\GamingControlCenter
+=== uninstall registry ===
+  NVIDIA Platform Controllers and Framework | 615.34 | C:\Program Files\NVIDIA Corporation\Installer2\NVPCF.{6F07C2F5-25F2-4C77-B12F-06A9942E2F59}
+  EWEADN G2 gaming mouse | 1.0 | C:\Program Files (x86)\EWEADN G2 gaming mouse\
+  蛟龙游戏控制中心版本0.3.15 | 0.3.15 | C:\Program Files (x86)\蛟龙游戏控制中心\
