@@ -1,80 +1,57 @@
 /* ============================================================
- * 主题变量
- * 深色为主题默认值(:root), 浅色通过 [data-theme='light'] 覆盖。
- * data-theme 由 index.html 内联脚本(启动防闪烁)与 src/theme/theme.ts 维护。
+ * LongCore 硬件仪表令牌 (v2 · 09 附录 A 冻结)
+ * 深色为默认(:root), 浅色 [data-theme='light'] 覆盖。
+ * 权威摘要见 LongCore/DESIGN.md; 动效细则见 docs/07。
  * ============================================================ */
 :root {
-  --color-bg-primary: #0d0e15;
-  --color-bg-secondary: #11121a;
-  --color-bg-grad-top: #0d1025;
-  --color-bg-grad-bottom: #070b1c;
-  --color-card-bg: rgba(26, 27, 38, 0.6);
-  --color-card-solid: #12141d;
-  --color-panel-bg: #121320;
-  --color-panel-raised: #1a1c23;
-  --color-panel-active: #1a182f;
-  --color-panel-elevated: #17192a;
-  --color-popover-bg: rgba(26, 27, 43, 0.95);
-  --color-shadow-pop: rgba(0, 0, 0, 0.5);
-  --color-accent-purple: #8a2be2;
-  --color-accent-blue: #3b82f6;
-  --color-accent-green: #00ff7f;
-  --color-glow-purple: rgba(138, 43, 226, 0.4);
-  --color-text-main: #ffffff;
-  --color-text-muted: #a0aec0;
-  --color-line: rgba(255, 255, 255, 0.08);
-  --color-line-soft: rgba(255, 255, 255, 0.04);
-  --color-overlay: rgba(255, 255, 255, 0.04);
-  --color-overlay-strong: rgba(255, 255, 255, 0.08);
-  --color-scroll-thumb: rgba(255, 255, 255, 0.12);
-  --color-shadow-card: rgba(0, 0, 0, 0.3);
+  /* ── 表面 (实心, 禁大 blur) ── */
+  --bg-app: #0a0b0f;
+  --bg-panel: #12141a;
+  --bg-raised: #181a22;
+  --bg-inset: #0e1015;
 
-  /* 背景光晕(深色下更亮) */
-  --glow-blue: rgba(40, 90, 255, 0.28);
-  --glow-blue-soft: rgba(40, 90, 255, 0.12);
-  --glow-purple: rgba(180, 60, 255, 0.25);
-  --glow-purple-soft: rgba(180, 60, 255, 0.1);
-  --glow-center: rgba(0, 80, 255, 0.15);
+  /* ── 墨色 ── */
+  --ink: #e8eaef;
+  --muted: #8b93a7;
+  --weak: #5c6478;
 
-  /* ===== 动效令牌 (Fluent 对齐, 仅此几档, 不得自造) ===== */
+  /* ── 强调 (唯一功能强调色: 冷青) ── */
+  --accent: #22d3ee;
+  --accent-dim: rgba(34, 211, 238, 0.12);
+  --accent-line: rgba(34, 211, 238, 0.35);
+  --accent-ink: #0a0b0f; /* 强调底上的字色 */
+
+  /* ── 分割 ── */
+  --hair: rgba(255, 255, 255, 0.06);
+  --hair-strong: rgba(255, 255, 255, 0.1);
+
+  /* ── 温度语义 (与 utils/temperature.ts 同源) ── */
+  --temp-cool: #60a5fa;
+  --temp-warm: #22d3ee;
+  --temp-hot: #fb923c;
+  --temp-critical: #f87171;
+  --temp-cool-bg: rgba(96, 165, 250, 0.12);
+  --temp-warm-bg: rgba(34, 211, 238, 0.12);
+  --temp-hot-bg: rgba(251, 146, 60, 0.12);
+  --temp-critical-bg: rgba(248, 113, 113, 0.14);
+
+  /* ── 动效 (docs/07, 不得自造档位) ── */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 120ms;
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 250ms;
 
-  --dur-press: 120ms; /* 按压 / 焦点反馈 */
-  --dur-fast: 150ms; /* 短时态变: 主题 / 模式切换 / 菜单项 */
-  --dur-base: 200ms; /* 常态色变: 温度语义 */
-  --dur-slow: 250ms; /* 长尾上限, 不得再大 */
-
-  /* Tailwind 默认灰阶的主题化取值(深色 = 原生灰阶, 零回归) */
-  --jl-gray-200: #e5e7eb;
-  --jl-gray-300: #d1d5db;
-  --jl-gray-400: #9ca3af;
-  --jl-gray-500: #6b7280;
-  --jl-gray-600: #4b5563;
-
-  /* 语义色 300/400 档(深色 = 原生亮色) */
-  --jl-purple-300: #d8b4fe;
-  --jl-purple-400: #c084fc;
-  --jl-rose-400: #fb7185;
-  --jl-blue-300: #93c5fd;
-  --jl-blue-400: #60a5fa;
-  --jl-orange-400: #fb923c;
-  --jl-red-400: #f87171;
-  --jl-green-400: #4ade80;
-  --jl-emerald-400: #34d399;
-  --jl-amber-400: #fbbf24;
-
-  /* 圆角令牌 (Fluent 对齐: sm4 / md8 / lg8 / xl8, 卡片 8px)
-   * 注意: 本 :root 是无层(unlayered)声明, 层叠上优先于 Tailwind 的 @layer theme,
-   * 因此全站 rounded-* 工具类实际读取的就是这里的值, 改这一处即全站生效 */
+  /* ── 几何 ── */
   --radius-sm: 4px;
-  --radius-md: 8px;
+  --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 8px;
   --radius-pill: 999px;
 
-  /* 字阶令牌(4px 网格): 页面文字统一从此取阶, 不再随手写 px */
+  /* ── 字阶 ── */
   --text-xs: 12px;
   --text-sm: 13px;
   --text-base: 14px;
@@ -83,61 +60,97 @@
   --text-2xl: 22px;
   --text-3xl: 28px;
 
-  /* 温度语义色阶: ≤70° 蓝 → 70–80° 青 → 80–90° 橙 → >90° 红(升温=红)。
-   * 值与 src/utils/temperature.ts 的 TEMP_CHART_COLORS 保持一致 */
-  --temp-cool: #60a5fa;
-  --temp-warm: #22d3ee;
-  --temp-hot: #fb923c;
-  --temp-critical: #f87171;
-  --temp-cool-bg: rgba(96, 165, 250, 0.14);
-  --temp-warm-bg: rgba(34, 211, 238, 0.14);
-  --temp-hot-bg: rgba(251, 146, 60, 0.14);
-  --temp-critical-bg: rgba(248, 113, 113, 0.16);
+  /* ── 字体 ── */
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Inter', system-ui, sans-serif;
+
+  /* ── Tailwind 灰阶主题化 ── */
+  --jl-gray-200: #e5e7eb;
+  --jl-gray-300: #d1d5db;
+  --jl-gray-400: #9ca3af;
+  --jl-gray-500: #6b7280;
+  --jl-gray-600: #4b5563;
+
+  /* ── 语义色 300/400 ── */
+  --jl-rose-400: #fb7185;
+  --jl-blue-300: #93c5fd;
+  --jl-blue-400: #60a5fa;
+  --jl-orange-400: #fb923c;
+  --jl-red-400: #f87171;
+  --jl-green-400: #4ade80;
+  --jl-emerald-400: #34d399;
+  --jl-amber-400: #fbbf24;
+  --jl-purple-300: #d8b4fe;
+  --jl-purple-400: #c084fc;
+
+  /* ============================================================
+   * 迁移别名 (Phase C/D 消费点清零后删除)
+   * 值已对齐新身份: 紫 → 冷青, 玻璃 → 实心, 光晕 → 透明
+   * ============================================================ */
+  --color-bg-primary: var(--bg-app);
+  --color-bg-secondary: var(--bg-panel);
+  --color-bg-grad-top: var(--bg-app);
+  --color-bg-grad-bottom: var(--bg-app);
+  --color-card-bg: var(--bg-panel);
+  --color-card-solid: var(--bg-panel);
+  --color-panel-bg: var(--bg-panel);
+  --color-panel-raised: var(--bg-raised);
+  --color-panel-active: var(--bg-raised);
+  --color-panel-elevated: var(--bg-raised);
+  --color-popover-bg: var(--bg-raised);
+  --color-shadow-pop: rgba(0, 0, 0, 0.5);
+  --color-accent-purple: var(--accent);
+  --color-accent-blue: var(--accent);
+  --color-accent-green: #34d399;
+  --color-glow-purple: transparent;
+  --color-text-main: var(--ink);
+  --color-text-muted: var(--muted);
+  --color-line: var(--hair);
+  --color-line-soft: var(--hair);
+  --color-overlay: rgba(255, 255, 255, 0.04);
+  --color-overlay-strong: rgba(255, 255, 255, 0.08);
+  --color-scroll-thumb: rgba(255, 255, 255, 0.12);
+  --color-shadow-card: rgba(0, 0, 0, 0.3);
+  --glow-blue: transparent;
+  --glow-blue-soft: transparent;
+  --glow-purple: transparent;
+  --glow-purple-soft: transparent;
+  --glow-center: transparent;
 }
 
 [data-theme='light'] {
-  --color-bg-primary: #f2f4f9;
-  --color-bg-secondary: #ffffff;
-  --color-bg-grad-top: #f7f9fd;
-  --color-bg-grad-bottom: #e9edf5;
-  --color-card-bg: rgba(255, 255, 255, 0.85);
-  --color-card-solid: #ffffff;
-  --color-panel-bg: #ffffff;
-  --color-panel-raised: #ffffff;
-  --color-panel-active: #edeff4;
-  --color-panel-elevated: #f5f6fa;
-  --color-popover-bg: rgba(255, 255, 255, 0.95);
-  --color-shadow-pop: rgba(31, 38, 60, 0.18);
-  --color-accent-purple: #8a2be2;
-  --color-accent-blue: #2563eb;
-  --color-accent-green: #059669;
-  --color-glow-purple: rgba(138, 43, 226, 0.16);
-  --color-text-main: #1a1b26;
-  --color-text-muted: #5a6478;
-  --color-line: rgba(13, 14, 21, 0.1);
-  --color-line-soft: rgba(13, 14, 21, 0.06);
-  --color-overlay: rgba(13, 14, 21, 0.045);
-  --color-overlay-strong: rgba(13, 14, 21, 0.08);
-  --color-scroll-thumb: rgba(13, 14, 21, 0.15);
-  --color-shadow-card: rgba(31, 38, 60, 0.08);
+  --bg-app: #f2f4f9;
+  --bg-panel: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-inset: #eef1f6;
 
-  /* 浅色下光晕收敛为淡彩 */
-  --glow-blue: rgba(40, 90, 255, 0.1);
-  --glow-blue-soft: rgba(40, 90, 255, 0.04);
-  --glow-purple: rgba(180, 60, 255, 0.08);
-  --glow-purple-soft: rgba(180, 60, 255, 0.03);
-  --glow-center: rgba(0, 80, 255, 0.06);
+  --ink: #1a1b26;
+  --muted: #5a6478;
+  --weak: #7b86a0;
 
-  /* 浅色灰阶: 序号越大越浅(对比越弱), 与深色序号语义一致 */
+  --accent: #0891b2;
+  --accent-dim: rgba(8, 145, 178, 0.1);
+  --accent-line: rgba(8, 145, 178, 0.35);
+  --accent-ink: #ffffff;
+
+  --hair: rgba(13, 14, 21, 0.1);
+  --hair-strong: rgba(13, 14, 21, 0.16);
+
+  --temp-cool: #2563eb;
+  --temp-warm: #0891b2;
+  --temp-hot: #ea580c;
+  --temp-critical: #dc2626;
+  --temp-cool-bg: rgba(37, 99, 235, 0.1);
+  --temp-warm-bg: rgba(8, 145, 178, 0.1);
+  --temp-hot-bg: rgba(234, 88, 12, 0.1);
+  --temp-critical-bg: rgba(220, 38, 38, 0.1);
+
   --jl-gray-200: #454d61;
   --jl-gray-300: #525a6e;
   --jl-gray-400: #64708a;
   --jl-gray-500: #7b86a0;
   --jl-gray-600: #98a1b5;
 
-  /* 语义色 300/400 档映射到 600/700 档, 保证白底可读 */
-  --jl-purple-300: #7e22ce;
-  --jl-purple-400: #9333ea;
   --jl-rose-400: #e11d48;
   --jl-blue-300: #1d4ed8;
   --jl-blue-400: #2563eb;
@@ -146,30 +159,37 @@
   --jl-green-400: #16a34a;
   --jl-emerald-400: #059669;
   --jl-amber-400: #d97706;
+  --jl-purple-300: #7e22ce;
+  --jl-purple-400: #9333ea;
+
+  --color-overlay: rgba(13, 14, 21, 0.045);
+  --color-overlay-strong: rgba(13, 14, 21, 0.08);
+  --color-scroll-thumb: rgba(13, 14, 21, 0.15);
+  --color-shadow-card: rgba(31, 38, 60, 0.08);
+  --color-shadow-pop: rgba(31, 38, 60, 0.18);
+  --color-accent-green: #059669;
 }
 
 /* ============================================================
- * Arco Design 变量对齐(theme.ts 同步 body[arco-theme])
- * 让 Arco 组件(switch/select/modal/message)融入 LongCore 配色,
- * 深色由 Arco 自带 dark 变量打底, 此处仅覆盖与品牌相关的关键项
+ * Arco 变量对齐 (theme.ts 同步 body[arco-theme])
  * ============================================================ */
 body[arco-theme='dark'] {
-  --color-bg-1: #0d0e15;
-  --color-bg-2: #12141d;
-  --color-bg-3: #17192a;
-  --color-bg-4: #1a1c23;
-  --color-bg-popup: #17192a;
-  --color-text-1: #ffffff;
-  --color-text-2: #a0aec0;
-  --color-text-3: #7b86a0;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-2: rgba(255, 255, 255, 0.12);
+  --color-bg-1: var(--bg-app);
+  --color-bg-2: var(--bg-panel);
+  --color-bg-3: var(--bg-raised);
+  --color-bg-4: var(--bg-raised);
+  --color-bg-popup: var(--bg-raised);
+  --color-text-1: var(--ink);
+  --color-text-2: var(--muted);
+  --color-text-3: var(--weak);
+  --color-border: var(--hair);
+  --color-border-2: var(--hair-strong);
   --color-fill-1: rgba(255, 255, 255, 0.04);
   --color-fill-2: rgba(255, 255, 255, 0.08);
   --color-fill-3: rgba(255, 255, 255, 0.12);
-  --color-primary-light-1: rgba(59, 130, 246, 0.9);
-  --color-primary-light-2: rgba(59, 130, 246, 0.8);
-  --color-primary-light-3: rgba(59, 130, 246, 0.6);
+  --color-primary-light-1: rgba(34, 211, 238, 0.9);
+  --color-primary-light-2: rgba(34, 211, 238, 0.8);
+  --color-primary-light-3: rgba(34, 211, 238, 0.6);
 }
 
 * {
@@ -177,14 +197,13 @@ body[arco-theme='dark'] {
   box-sizing: border-box;
 }
 
-/* 桌面应用风格: 鼠标点击不显示焦点框, 键盘导航必须可见。
- * 用 :where() 降特异度至 (0,1,0), 避免顶掉 Arco 组件自带的焦点样式 */
+/* 鼠标点击不显示焦点框, 键盘导航必须可见 */
 :where(button, a, [role='button']):focus {
   outline: none;
 }
 
 :where(button, a, [role='button']):focus-visible {
-  outline: 2px solid var(--color-accent-blue);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -192,8 +211,9 @@ html,
 body {
   width: 100%;
   height: 100%;
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-main);
+  background-color: var(--bg-app);
+  color: var(--ink);
+  font-family: var(--font-ui);
   margin: 0;
   overflow: hidden;
 }
@@ -211,33 +231,19 @@ body {
   border-radius: 10px;
 }
 
-/* 已移除的死代码 (全库模板引用数 = 0, 09-11 动效/去AI味改造清除):
- *   .glowing-card   —— transition:all .3s + hover 上浮 translateY(-2px) + 紫辉光
- *   .active-glow    —— 辉光边框 + 紫底
- *   .cyber-button   —— transition:all .2s + 选中辉光
- * 无消费者的样式不留; 将来需要请按令牌重建, 不要恢复原写法。 */
-
-/* 单色剪影图标: 遮罩填色机制(不依赖 filter 反转), 深色白剪影, 浅色黑剪影。
- * 配合 .icon-mask 基类与内联 mask-image 使用 */
+/* 单色剪影图标 */
 .icon-silhouette {
-  color: #ffffff;
+  color: var(--ink);
 }
 
-[data-theme='light'] .icon-silhouette {
-  color: #1a1b26;
-}
-
-/* 强调色剪影(选中态图标): 遮罩填色, 深色白剪影, 浅色品牌紫剪影 */
 .icon-silhouette-accent {
-  color: #ffffff;
+  color: var(--ink);
 }
 
 [data-theme='light'] .icon-silhouette-accent {
-  color: var(--color-accent-purple);
+  color: var(--accent);
 }
 
-/* 着色图标: 以 PNG alpha 为遮罩、currentColor 填色, 两个主题都能精确给到语义色。
- * 配合 .icon-mask 基类与内联 mask-image 使用 */
 .icon-mask {
   display: inline-block;
   background-color: currentColor;
@@ -250,38 +256,25 @@ body {
 }
 
 .icon-tint-blue {
-  color: #2898f8;
-}
-
-[data-theme='light'] .icon-tint-blue {
-  color: #2563eb;
+  color: var(--accent);
 }
 
 .icon-tint-blue-bright {
-  color: #28b8f8;
-}
-
-[data-theme='light'] .icon-tint-blue-bright {
-  color: #2563eb;
+  color: var(--accent);
 }
 
 .icon-tint-green {
-  color: #08c888;
+  color: #34d399;
 }
 
 [data-theme='light'] .icon-tint-green {
   color: #059669;
 }
 
-/* 彩色圆形徽章底: 深色用 900 系深蒙层(对应 Tailwind *-900/30), 浅色用同色系浅蒙层;
- * 浅色下同时覆盖 currentColor, 让容器内的 Arco 图标跟随加深 */
+/* 徽章底 */
 .badge-blue {
-  background: rgba(30, 58, 138, 0.3);
-}
-
-[data-theme='light'] .badge-blue {
-  background: rgba(59, 130, 246, 0.14);
-  color: #2563eb;
+  background: var(--accent-dim);
+  color: var(--accent);
 }
 
 .badge-green {
@@ -311,31 +304,20 @@ body {
   color: #dc2626;
 }
 
-/* 中性徽章底(风扇转速圆标): 深色蓝调, 浅色淡灰 */
 .badge-neutral {
-  background: rgba(37, 99, 235, 0.2);
-}
-
-[data-theme='light'] .badge-neutral {
-  background: rgba(13, 14, 21, 0.05);
+  background: var(--accent-dim);
 }
 
 /* ============================================================
- * 减弱动效: 保留 opacity / 颜色过渡, 关闭位移 / 脉冲 / hue 循环 / 拖拽跟随
- * —— 「更轻」而非归零。无限动画全关, 但一次性加载反馈仍保留。
- *
- * 注意: 下面用 `*` + !important 收窄 transition-property 是钝器。
- * 往核心交互里加 transform / width 过渡前, 请先确认不会被这里静默改行为。
+ * 减弱动效
  * ============================================================ */
 @media (prefers-reduced-motion: reduce) {
-  /* 1. 关闭所有无限 / 装饰性动画(Suspense 加载圈豁免, 保留必要加载反馈) */
-  [class*='animate-']:not(.suspense-spinner),
+  [class*='animate-'],
   .gradient-glow,
   .status-dot {
     animation: none !important;
   }
 
-  /* 2. 仅保留 opacity / 颜色系过渡 */
   *,
   *::before,
   *::after {
@@ -343,4 +325,13 @@ body {
       color, background-color, border-color, outline-color, opacity, fill !important;
     scroll-behavior: auto !important;
   }
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* 读数瞬时: 温度/转速/频率等数值禁 transition */
+.readout-instant {
+  transition: none !important;
 }

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>LongCore 标识方案对照 · 2026-09-16</title>
+<style>
+  :root { --ink:#e8eaef; --weak:#8b93a7; --line:#23262f; --acc:#22d3ee; }
+  body { margin:0; padding:40px; background:#0a0b0f; color:var(--ink);
+         font:14px/1.6 "Segoe UI Variable","Segoe UI",system-ui,sans-serif; }
+  h1 { font-size:20px; font-weight:600; margin:0 0 6px; }
+  p.lead { color:var(--weak); margin:0 0 34px; max-width:76ch; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:22px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:20px; background:#12141a; }
+  .card h2 { font-size:15px; margin:0 0 4px; }
+  .card .why { color:var(--weak); font-size:12.5px; margin:0 0 16px; min-height:3.2em; }
+  .hero { display:flex; align-items:center; gap:18px; margin-bottom:16px; }
+  .row { display:flex; align-items:center; gap:14px; padding:10px 0; border-top:1px solid var(--line); }
+  .row.light { background:#f2f4f9; border-radius:8px; padding:10px 12px; margin-top:6px; }
+  .lbl { color:var(--weak); font-size:11px; text-transform:uppercase;
+         letter-spacing:.08em; margin-right:auto; }
+  .row.light .lbl { color:#5b6478; }
+  svg, img { display:block; }
+  .cur { filter:saturate(.9); }
+  code { color:var(--acc); font-size:12px; }
+</style>
+<h1>LongCore 标识 · 4 个方向对照</h1>
+<p class="lead">
+  判定标准只有一条：<b>16px 下还认得出来吗</b>（任务栏 / 托盘 / Alt-Tab 的真实尺寸）。
+  下面每个方案都同时给出 256 / 48 / 32 / 16 px，深底与浅底各一组。
+  最左侧是<b>现状对照</b>——注意它用的是紫色 + 蓝色，正是 DESIGN.md v2 明确禁止的「紫罗兰主色」。
+</p>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>对照 · 现状（八臂龙鳞）</h2>
+    <p class="why">
+      问题不在画得好不好：<b>八个完全对称的径向臂没有方向</b>，所以读起来是齿轮 / 星芒 / 病毒，
+      而不是鳞。龙鳞的关键是<b>同向叠压</b>（像瓦片），径向对称把这一点彻底消掉了。配色也踩了禁区。
+    </p>
+    <div class="hero">
+      <img class="cur" src="../JiaoLongControl/Client/src/assets/logo.svg" width="120" height="120" alt="current">
+    </div>
+    <div class="row">
+      <span class="lbl">深底</span>
+      <img class="cur" src="../JiaoLongControl/Client/src/assets/logo.svg" width="48" height="48">
+      <img class="cur" src="../JiaoLongControl/Client/src/assets/logo.svg" width="32" height="32">
+      <img class="cur" src="../JiaoLongControl/Client/src/assets/logo.svg" width="16" height="16">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>A · 鳞脊 Scale Ridge <span style="color:var(--acc);font-weight:400">← 推荐</span></h2>
+    <p class="why">
+      三片<b>同向叠压</b>的鳞，由大到小向斜上收束。叠压 + 方向 = 读得出「鳞」；
+      缩到 16px 时三片合并成一个干净的斜向楔形，仍可辨识。保留「龙」，但不画龙。
+    </p>
+    <div class="hero">
+      <svg width="120" height="120" viewBox="0 0 256 256">
+        <rect width="256" height="256" rx="56" fill="#0a0b0f"/>
+        <g fill="#22d3ee" stroke="#0a0b0f" stroke-width="9" stroke-linejoin="round">
+          <path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/>
+          <path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/>
+          <path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/>
+        </g>
+      </svg>
+    </div>
+    <div class="row">
+      <span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><g fill="#22d3ee" stroke="#0a0b0f" stroke-width="9" stroke-linejoin="round"><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/></g></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><g fill="#22d3ee" stroke="#0a0b0f" stroke-width="9" stroke-linejoin="round"><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/></g></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><g fill="#22d3ee" stroke="#0a0b0f" stroke-width="9" stroke-linejoin="round"><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/></g></svg>
+    </div>
+    <div class="row light">
+      <span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><g fill="#0891b2" stroke="#12141a" stroke-width="9" stroke-linejoin="round"><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/></g></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><g fill="#0891b2" stroke="#12141a" stroke-width="9" stroke-linejoin="round"><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(44,38)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(58,88)"/><path d="M0 0 H140 C140 41 110 75 70 89 C30 75 0 41 0 0 Z" transform="translate(72,138)"/></g></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>B · 核 Core</h2>
+    <p class="why">
+      纯几何：机加工感的环 + 45° 核心。零叙事，最「大厂」。
+      16px 下退化为一个带方点的圆环，辨识度最高，但完全不保留「龙」。
+    </p>
+    <div class="hero">
+      <svg width="120" height="120" viewBox="0 0 256 256">
+        <rect width="256" height="256" rx="56" fill="#0a0b0f"/>
+        <rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#22d3ee" stroke-width="16"/>
+        <rect x="103" y="103" width="50" height="50" rx="10" fill="#22d3ee" transform="rotate(45 128 128)"/>
+      </svg>
+    </div>
+    <div class="row">
+      <span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#22d3ee" stroke-width="16"/><rect x="103" y="103" width="50" height="50" rx="10" fill="#22d3ee" transform="rotate(45 128 128)"/></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#22d3ee" stroke-width="16"/><rect x="103" y="103" width="50" height="50" rx="10" fill="#22d3ee" transform="rotate(45 128 128)"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#22d3ee" stroke-width="16"/><rect x="103" y="103" width="50" height="50" rx="10" fill="#22d3ee" transform="rotate(45 128 128)"/></svg>
+    </div>
+    <div class="row light">
+      <span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#0891b2" stroke-width="16"/><rect x="103" y="103" width="50" height="50" rx="10" fill="#0891b2" transform="rotate(45 128 128)"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><rect x="54" y="54" width="148" height="148" rx="36" fill="none" stroke="#0891b2" stroke-width="16"/><rect x="103" y="103" width="50" height="50" rx="10" fill="#0891b2" transform="rotate(45 128 128)"/></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>C · 刻度核 Core + Tick</h2>
+    <p class="why">
+      在 B 上引入<b>仪器刻度</b>——正好呼应 v3 计划里的签名物②「仪器刻度条」。
+      标识与产品最独特的功能同源。风险：三根刻线在 16px 下会糊，需要再做减一档。
+    </p>
+    <div class="hero">
+      <svg width="120" height="120" viewBox="0 0 256 256">
+        <rect width="256" height="256" rx="56" fill="#0a0b0f"/>
+        <rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#22d3ee" stroke-width="15"/>
+        <circle cx="136" cy="128" r="19" fill="#22d3ee"/>
+        <g stroke="#22d3ee" stroke-width="14" stroke-linecap="round">
+          <line x1="212" y1="92"  x2="212" y2="112"/>
+          <line x1="212" y1="122" x2="212" y2="134"/>
+          <line x1="212" y1="144" x2="212" y2="164"/>
+        </g>
+      </svg>
+    </div>
+    <div class="row">
+      <span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#22d3ee" stroke-width="15"/><circle cx="136" cy="128" r="19" fill="#22d3ee"/><g stroke="#22d3ee" stroke-width="14" stroke-linecap="round"><line x1="212" y1="92" x2="212" y2="112"/><line x1="212" y1="122" x2="212" y2="134"/><line x1="212" y1="144" x2="212" y2="164"/></g></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#22d3ee" stroke-width="15"/><circle cx="136" cy="128" r="19" fill="#22d3ee"/><g stroke="#22d3ee" stroke-width="14" stroke-linecap="round"><line x1="212" y1="92" x2="212" y2="112"/><line x1="212" y1="122" x2="212" y2="134"/><line x1="212" y1="144" x2="212" y2="164"/></g></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#22d3ee" stroke-width="15"/><circle cx="136" cy="128" r="19" fill="#22d3ee"/><g stroke="#22d3ee" stroke-width="14" stroke-linecap="round"><line x1="212" y1="92" x2="212" y2="112"/><line x1="212" y1="122" x2="212" y2="134"/><line x1="212" y1="144" x2="212" y2="164"/></g></svg>
+    </div>
+    <div class="row light">
+      <span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#0891b2" stroke-width="15"/><circle cx="136" cy="128" r="19" fill="#0891b2"/><g stroke="#0891b2" stroke-width="14" stroke-linecap="round"><line x1="212" y1="92" x2="212" y2="112"/><line x1="212" y1="122" x2="212" y2="134"/><line x1="212" y1="144" x2="212" y2="164"/></g></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#12141a"/><rect x="76" y="60" width="120" height="136" rx="26" fill="none" stroke="#0891b2" stroke-width="15"/><circle cx="136" cy="128" r="19" fill="#0891b2"/><g stroke="#0891b2" stroke-width="14" stroke-linecap="round"><line x1="212" y1="92" x2="212" y2="112"/><line x1="212" y1="122" x2="212" y2="134"/><line x1="212" y1="144" x2="212" y2="164"/></g></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>D · 鳞核 Scale + Core</h2>
+    <p class="why">
+      A 与 B 的合并：一片鳞环抱核心。<b>256px 下最有作者性</b>，
+      但 16px 下鳞与核互相吃掉，是三案里小尺寸风险最高的一个。若选它，需要单独做一个小尺寸简化版。
+    </p>
+    <div class="hero">
+      <svg width="120" height="120" viewBox="0 0 256 256">
+        <rect width="256" height="256" rx="56" fill="#0a0b0f"/>
+        <g fill="#22d3ee" stroke="#0a0b0f" stroke-width="10" stroke-linejoin="round">
+          <path d="M0 0 H150 C150 44 118 80 75 95 C32 80 0 44 0 0 Z" transform="translate(53,116)"/>
+        </g>
+        <rect x="104" y="80" width="48" height="48" rx="9" fill="#0a0b0f"
+              transform="rotate(45 128 104)"/>
+        <rect x="104" y="80" width="48" height="48" rx="9" fill="none" stroke="#22d3ee" stroke-width="11"
+              transform="rotate(45 128 104)"/>
+      </svg>
+    </div>
+    <div class="row">
+      <span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><g fill="#22d3ee" stroke="#0a0b0f" stroke-width="10" stroke-linejoin="round"><path d="M0 0 H150 C150 44 118 80 75 95 C32 80 0 44 0 0 Z" transform="translate(53,116)"/></g><rect x="104" y="80" width="48" height="48" rx="9" fill="#0a0b0f" transform="rotate(45 128 104)"/><rect x="104" y="80" width="48" height="48" rx="9" fill="none" stroke="#22d3ee" stroke-width="11" transform="rotate(45 128 104)"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256"><rect width="256" height="256" rx="56" fill="#0a0b0f"/><g fill="#22d3ee" stroke="#0a0b0f" stroke-width="10" stroke-linejoin="round"><path d="M0 0 H150 C150 44 118 80 75 95 C32 80 0 44 0 0 Z" transform="translate(53,116)"/></g><rect x="104" y="80" width="48" height="48" rx="9" fill="#0a0b0f" transform="rotate(45 128 104)"/><rect x="104" y="80" width="48" height="48" rx="9" fill="none" stroke="#22d3ee" stroke-width="11" transform="rotate(45 128 104)"/></svg>
+    </div>
+  </div>
+
+</div>
+
+<p style="color:var(--weak);margin-top:30px">
+  取舍口径：既然产品身份是「精密仪器」，<b>小尺寸可辨识性优先于大尺寸表现力</b>——
+  这个图标 90% 的出场场景是 16px 的任务栏，不是商店页。
+  配色统一为冷青 <code>#22d3ee</code>（暗）/ <code>#0891b2</code>（亮），<b>紫色完全移除</b>。
+</p>
+</html>

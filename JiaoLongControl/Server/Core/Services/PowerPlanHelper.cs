@@ -6,7 +6,7 @@ namespace JiaoLongControl.Server.Core.Services
 {
     /// <summary>
     /// Windows 电源计划联动: 性能模式切换时同步 powercfg 计划
-    /// (静音→节电, 平衡→平衡, 高性能→高性能; 自定义模式不联动)。
+    /// (办公→节电, 游戏→平衡, 狂飙→高性能; 自定义模式不联动)。
     /// 失败永不阻塞模式设置 —— powercfg 不可用/计划被删时静默跳过。
     /// </summary>
     public static class PowerPlanHelper

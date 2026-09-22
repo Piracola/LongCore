@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8">
+<title>LongCore 标识 v2 · 4 案</title>
+<style>
+  :root{--ink:#e8eaef;--weak:#8b93a7;--line:#23262f;--acc:#22d3ee}
+  body{margin:0;padding:36px;background:#0a0b0f;color:var(--ink);
+       font:14px/1.6 "Segoe UI Variable","Segoe UI",system-ui,sans-serif}
+  h1{font-size:19px;font-weight:600;margin:0 0 4px}
+  .lead{color:var(--weak);margin:0 0 8px;max-width:80ch}
+  .rule{background:#12141a;border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:22px 0}
+  .rule b{color:var(--acc)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+  .card{border:1px solid var(--line);border-radius:10px;padding:20px;background:#12141a}
+  .card h2{font-size:15px;margin:0 0 4px}
+  .why{color:var(--weak);font-size:12.5px;margin:0 0 18px;min-height:4.6em}
+  .hero{display:flex;align-items:center;gap:16px;margin-bottom:14px}
+  .row{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
+  .lbl{color:var(--weak);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin-right:auto}
+  .stress{display:flex;gap:26px;align-items:center;justify-content:center;
+          background:#12141a;border:1px solid var(--line);border-radius:10px;padding:26px;margin:22px 0 30px}
+  .stress span{color:var(--weak);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  svg{display:block}
+</style>
+<h1>LongCore 标识 v2 · 4 案</h1>
+<p class="lead">上一版的错我认：A 把三片同色叠压画成了「叠碗」，C 的刻线完全脱离主体读成「音箱」，B 能看但太通用。
+这次每案只承载 <b>一个</b> 想法。</p>
+
+<!-- ==== 图形定义 ==== -->
+<svg width="0" height="0" style="position:absolute"><defs>
+  <path id="scale" d="M128 210 C84 186 46 152 46 112 C46 78 84 56 128 56 C172 56 210 78 210 112 C210 152 172 186 128 210 Z"/>
+  <g id="v1"><use href="#scale" fill="currentColor"/></g>
+  <g id="v2"><path fill="currentColor" fill-rule="evenodd"
+     d="M128 210 C84 186 46 152 46 112 C46 78 84 56 128 56 C172 56 210 78 210 112 C210 152 172 186 128 210 Z
+        M128 100 L156 128 L128 156 L100 128 Z"/></g>
+  <g id="v3">
+    <use href="#scale" fill="currentColor" transform="translate(30,-26) scale(0.82)"/>
+    <use href="#scale" fill="currentColor" stroke="var(--plate)" stroke-width="16" transform="translate(0,16)"/>
+  </g>
+  <g id="v4">
+    <path d="M128 40 L207 86 L207 170 L128 216 L49 170 L49 86 Z" fill="none"
+          stroke="currentColor" stroke-width="20" stroke-linejoin="round"/>
+    <path d="M128 94 L157 111 L157 145 L128 162 L99 145 L99 111 Z" fill="currentColor" stroke-linejoin="round"/>
+  </g>
+  <rect id="plate" width="256" height="256" rx="56" fill="var(--plate)"/>
+</defs></svg>
+
+<!-- ==== 16px 压力区（唯一判据）==== -->
+<div class="stress">
+  <span>16px：</span>
+  <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+  <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+  <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+  <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+  <span>&nbsp;&nbsp;32px：</span>
+  <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+  <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+  <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+  <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>V1 · 鳞核 · 实心</h2>
+    <p class="why">一枚鳞的正解：<b>顶圆</b>（不是平顶）、<b>底尖</b>、宽略大于高——这就是鳞的真实轮廓。
+      上一版之所以读成碗，是因为我画成了"平顶 + 圆底"。</p>
+    <div class="hero">
+      <svg width="128" height="128" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+    </div>
+    <div class="row"><span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v1"/></svg>
+    </div>
+    <div class="row"><span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v1"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v1"/></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>V2 · 鳞核 · 负形核心 <span style="color:var(--acc);font-weight:400">← 推荐</span></h2>
+    <p class="why">在 V1 里挖出一枚菱形负形 = 「核」。一个形状同时说两件事：<b>鳞</b>（外形）与<b>核</b>（负形）。
+      16px 下菱形会糊成一点，但外形仍然成立——<b>降级是优雅的</b>。</p>
+    <div class="hero">
+      <svg width="128" height="128" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+    </div>
+    <div class="row"><span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v2"/></svg>
+    </div>
+    <div class="row"><span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v2"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v2"/></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>V3 · 双鳞叠压</h2>
+    <p class="why">两片（不是三片）同向叠压，前片用底色描边切出一道缝——这才是「瓦片感」。
+      三片会变成叠碗，两片刚好读出层次。</p>
+    <div class="hero">
+      <svg width="128" height="128" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+    </div>
+    <div class="row"><span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v3"/></svg>
+    </div>
+    <div class="row"><span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v3"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v3"/></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>V4 · 棱核（放弃画龙）</h2>
+    <p class="why">不画龙，只做一台仪器：六边形机加工外框 + 实心六边形核心。
+      六边形比圆形更难撞脸。这是<b>最"大厂"</b>的一案，代价是丢掉「龙」的线索。</p>
+    <div class="hero">
+      <svg width="128" height="128" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+    </div>
+    <div class="row"><span class="lbl">深底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+      <svg width="32" height="32" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#0a0b0f;color:#22d3ee"><use href="#plate"/><use href="#v4"/></svg>
+    </div>
+    <div class="row"><span class="lbl">浅底</span>
+      <svg width="48" height="48" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v4"/></svg>
+      <svg width="16" height="16" viewBox="0 0 256 256" style="--plate:#ffffff;color:#0e7490"><use href="#plate"/><use href="#v4"/></svg>
+    </div>
+  </div>
+
+</div>
+
+<div class="rule">
+  <b>唯一判据</b>：把窗口缩到 25%，只看最上面那一排 16px。<br>
+  认得出、且四个之间能互相区分 → 通过。认不出或糊成一团 → 直接淘汰，不用看大图。<br><br>
+  <span style="color:var(--weak)">配色仍是冷青 <code>#22d3ee</code>(暗) / <code>#0e7490</code>(浅)，紫色零残留。</span>
+</div>
+</html>

@@ -38,6 +38,41 @@ namespace JiaoLongControl.Server
         // ProcessFailed 处理器引用：ConfigureWebView 订阅、DestroyWebView 注销，保证重建后旧回调不再触发
         private EventHandler<CoreWebView2ProcessFailedEventArgs>? _processFailedHandler;
 
+        // 冷启动优化: WebView2 环境创建(拉起 msedgewebview2.exe、准备用户数据目录)是启动阶段最贵的
+        // 串行等待之一。提前在 App.OnStartup 里发起, 与热键订阅/托盘/窗口创建重叠, 而不是等窗口
+        // 显示后才发起。失败/超时由重试路径 ResetEnvironmentTask 丢弃, 不缓存故障任务。
+        private static readonly object EnvLock = new();
+        private static Task<CoreWebView2Environment>? _envTask;
+
+        /// <summary>发起（或复用进行中的）WebView2 环境创建任务。</summary>
+        internal static Task<CoreWebView2Environment> EnsureEnvironmentTask()
+        {
+            lock (EnvLock)
+            {
+                if (_envTask is { IsFaulted: false, IsCanceled: false })
+                    return _envTask;
+
+                var userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "JiaoLongControl",
+                    "WebView2"
+                );
+                Directory.CreateDirectory(userDataFolder);
+                // CoreWebView2Environment.CreateAsync 在 userDataFolder 被残留进程锁定时可能长时间挂起而非抛异常，
+                // 调用方必须带超时（见 InitializeWebViewAsync）
+                _envTask = CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                return _envTask;
+            }
+        }
+
+        private static void ResetEnvironmentTask()
+        {
+            lock (EnvLock)
+            {
+                _envTask = null;
+            }
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -47,6 +82,7 @@ namespace JiaoLongControl.Server
             InitializePaths();
             InitializeTray();
             CreateWebView();
+            Logger.Info($"启动计时: 主窗口构造完成(WebView 已创建) {App.StartupClock.ElapsedMilliseconds}ms");
 
             // 启动后立刻在后台恢复开机策略，不依赖窗口显示。
             // 注意：--boot 隐藏启动时 App.OnStartup 不会 Show 本窗口，Loaded 事件永远不触发，
@@ -159,19 +195,15 @@ namespace JiaoLongControl.Server
             {
                 try
                 {
-                    string userDataFolder = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "JiaoLongControl",
-                        "WebView2"
-                    );
-                    Directory.CreateDirectory(userDataFolder);
-
-                    // CoreWebView2Environment.CreateAsync 在 userDataFolder 被残留进程锁定时可能长时间挂起而非抛异常，
-                    // 必须用超时保护，否则初始化永远卡在第一步，界面停留在加载提示
-                    var envTask = CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                    // 环境创建已在 App.OnStartup 提前发起（见 EnsureEnvironmentTask），这里只等结果。
+                    // 超时/失败时丢弃该任务以便重试，避免把故障任务缓存住。
+                    var envTask = EnsureEnvironmentTask();
                     var envDone = await Task.WhenAny(envTask, Task.Delay(TimeSpan.FromSeconds(15)));
                     if (envDone != envTask)
+                    {
+                        ResetEnvironmentTask();
                         throw new TimeoutException("WebView2 环境创建超时（userDataFolder 可能被残留进程锁定）");
+                    }
                     var env = await envTask;
 
                     if (generation != _webViewGeneration || _webViewDestroyed)
@@ -188,20 +220,7 @@ namespace JiaoLongControl.Server
 
                     ConfigureWebView(view, generation);
                     Bridge.Instance.InitWebView(SafeCore(view)!);
-
-                    // 升级安装会整目录替换 WebRoot 且资源文件名带内容哈希, 先清磁盘缓存,
-                    // 避免虚拟域名命中旧版 index.html 而引用到已不存在的旧资源;
-                    // 只清 DiskCache, 不动 localStorage(主题缓存)与 Cookie。失败不阻断启动。
-                    try
-                    {
-                        var clearTask = SafeCore(view)!.Profile.ClearBrowsingDataAsync(
-                            CoreWebView2BrowsingDataKinds.DiskCache);
-                        await Task.WhenAny(clearTask, Task.Delay(TimeSpan.FromSeconds(3)));
-                    }
-                    catch (Exception cacheEx)
-                    {
-                        Logger.Error($"清理 WebView2 磁盘缓存失败: {cacheEx.Message}");
-                    }
+                    Logger.Info($"启动计时: WebView2 环境就绪 {App.StartupClock.ElapsedMilliseconds}ms");
 
                     envReady = true;
                 }
@@ -228,6 +247,46 @@ namespace JiaoLongControl.Server
 
             // 阶段二：页面导航 + 失败重试（最多 3 次）
             await RetryNavigationAsync(view, generation);
+
+            // 升级安装会整目录替换 WebRoot 且资源名带内容哈希, 版本变化时清一次磁盘缓存,
+            // 避免虚拟域名命中旧版 index.html 而引用到已不存在的旧资源。
+            // 位置很关键: 放在导航之后 —— 既不再挡住首屏, 也保住了正常启动时的磁盘缓存。
+            _ = ClearDiskCacheOnVersionChangeAsync(view, generation);
+        }
+
+        /// <summary>
+        /// 仅当应用版本变化时清理 WebView2 磁盘缓存（只清 DiskCache, 不动 localStorage 与 Cookie）。
+        ///
+        /// 以前是每次启动都在导航前 await 清理, 代价有两份: ① 首屏白等一次清理(最长 3s 超时);
+        /// ② 磁盘缓存里含已编译的 JS 代码缓存, 每次清空 = 每次冷启动都重新解析整套前端资源。
+        /// </summary>
+        private async Task ClearDiskCacheOnVersionChangeAsync(WebView2 view, int generation)
+        {
+            try
+            {
+                Directory.CreateDirectory(ConfigSerializer.ConfigDir);
+                var marker = Path.Combine(ConfigSerializer.ConfigDir, "webview-cache-version.txt");
+                var version = App.Version;
+                if (File.Exists(marker) && File.ReadAllText(marker).Trim() == version)
+                    return;
+
+                var core = SafeCore(view);
+                if (core == null || generation != _webViewGeneration || _webViewDestroyed)
+                    return;
+
+                var clearTask = core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.DiskCache);
+                if (await Task.WhenAny(clearTask, Task.Delay(TimeSpan.FromSeconds(10))) != clearTask)
+                {
+                    Logger.Warn("清理 WebView2 磁盘缓存超时, 下次启动重试");
+                    return;
+                }
+                File.WriteAllText(marker, version);
+                Logger.Info("应用版本变化: 已清理 WebView2 磁盘缓存");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"清理 WebView2 磁盘缓存失败: {ex.Message}");
+            }
         }
 
         /// <summary>导航并等待 NavigationCompleted，返回是否成功</summary>
@@ -285,6 +344,7 @@ namespace JiaoLongControl.Server
                     // 校验代次，避免旧任务的加载层移除误伤新实例的加载层
                     if (generation == _webViewGeneration && !_webViewDestroyed)
                         RemoveLoadingOverlay();
+                    Logger.Info($"启动计时: 页面导航完成(界面可见) {App.StartupClock.ElapsedMilliseconds}ms");
                     return;
                 }
 

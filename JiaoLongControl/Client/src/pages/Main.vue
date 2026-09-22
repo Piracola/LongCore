@@ -1,110 +1,151 @@
 <script setup lang="ts">
 import RightSide from '@/components/layout/RightSide.vue'
 import TitleBar from '@/components/layout/TitleBar.vue'
-import { Settings } from 'lucide-vue-next'
-import useStore, { HomeCardType } from '@/stores'
+import ActivityDrawer from '@/components/layout/ActivityDrawer.vue'
+import useStore, { HomeCardType, type PageId } from '@/stores'
 
-const SettingsIcon = Settings
 const store = useStore()
 
-function onClickMenuItem(key: number) {
-  store.setPage(key)
+function onClickMenuItem(id: PageId) {
+  store.setPage(id)
 }
 
-// 过滤掉 num 为 8 的“设置”选项，主导航菜单中仅渲染除“设置”之外的其他项
-const mainNavItems = HomeCardType.filter((item) => item.num !== 8)
+const mainNavItems = HomeCardType.filter((item) => item.id !== 'settings')
+const settingsItem = HomeCardType.find((item) => item.id === 'settings')
+
+function showDivider(index: number): boolean {
+  if (index <= 0) return false
+  return mainNavItems[index]!.group !== mainNavItems[index - 1]!.group
+}
 </script>
 
 <template>
-  <div class="flex flex-col h-screen text-ink overflow-hidden select-none">
-    <!-- 极简标题栏 -->
-    <TitleBar class="z-50 bg-transparent" />
+  <div class="flex flex-col h-screen text-ink overflow-hidden select-none bg-[var(--bg-app)]">
+    <TitleBar class="z-50" />
 
     <div class="flex flex-1 overflow-hidden">
-      <!-- 侧边栏 (严格对标图左) -->
-      <aside class="w-[240px] flex flex-col shadow-10 mt-6">
-        <div class="flex-1 h-10 px-4 flex flex-col justify-between overflow-y-auto no-scrollbar">
-          <!-- 主导航：这里改用过滤后的 mainNavItems 数组 -->
-          <nav class="space-y-1.5">
-            <button
-              v-for="item in mainNavItems"
-              :key="item.num"
-              :class="[
-                'nav-btn w-full flex items-center gap-4 px-5 py-3.5 rounded-[5px]',
-                store.SwitchPages === item.num
-                  ? 'nav-item-active'
-                  : 'hover:bg-ink/[0.03] text-gray-400 hover:text-gray-1000',
-              ]"
-              @click="onClickMenuItem(Number(item.num))"
-            >
-              <!-- 图标容器 -->
-              <div class="w-5 h-5 flex items-center justify-center relative">
-                <!-- Lucide 线性图标: currentColor 随按钮状态着色 -->
-                <component
-                  :is="item.icon"
-                  class="nav-icon relative z-10 w-full h-full"
-                  :class="store.SwitchPages === item.num ? 'opacity-100' : 'opacity-75'"
-                  :stroke-width="1.75"
-                />
-              </div>
-              <span class="font-medium text-[13px] tracking-wide">{{ item.title }}</span>
-            </button>
-          </nav>
+      <aside class="rail" aria-label="主导航">
+        <template v-for="(item, index) in mainNavItems" :key="item.id">
+          <div v-if="showDivider(index)" class="rail-div" aria-hidden="true" />
+          <button
+            :class="['rail-btn', store.SwitchPages === item.id ? 'active' : '']"
+            :aria-current="store.SwitchPages === item.id ? 'page' : undefined"
+            :aria-label="item.title"
+            @click="onClickMenuItem(item.id)"
+          >
+            <component :is="item.icon" :stroke-width="1.75" class="rail-icon" />
+            <span class="rail-tip">{{ item.title }}</span>
+          </button>
+        </template>
 
-          <!-- 底部工具/设置：依然保持独立渲染，触发 num 为 8 的事件 -->
-          <div class="pb-6">
-            <button
-              :class="[
-                'nav-btn w-full flex items-center justify-between px-5 py-4',
-                store.SwitchPages === 8 ? 'text-ink' : 'text-gray-400 hover:text-ink',
-              ]"
-              @click="onClickMenuItem(8)"
-            >
-              <div class="flex items-center gap-4">
-                <div class="w-5 h-5 flex items-center justify-center relative">
-                  <component
-                    :is="SettingsIcon"
-                    class="nav-icon text-lg relative z-10"
-                    :class="store.SwitchPages === 8 ? 'text-blue-400' : ''"
-                    :stroke-width="1.75"
-                  />
-                </div>
-                <span class="font-medium text-[13px] tracking-wide">设置</span>
-              </div>
-              <icon-right />
-            </button>
-          </div>
-        </div>
+        <div class="rail-spacer" />
+
+        <button
+          v-if="settingsItem"
+          :class="['rail-btn', store.SwitchPages === 'settings' ? 'active' : '']"
+          :aria-current="store.SwitchPages === 'settings' ? 'page' : undefined"
+          aria-label="系统"
+          @click="onClickMenuItem('settings')"
+        >
+          <component :is="settingsItem.icon" :stroke-width="1.75" class="rail-icon" />
+          <span class="rail-tip">系统</span>
+        </button>
       </aside>
 
-      <!-- 主内容区 -->
-      <main class="flex-1 relative overflow-hidden">
-        <!-- 主内容背景发光点缀 -->
-        <div
-          class="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] bg-[radial-gradient(circle_at_center,rgba(138,43,226,0.08),transparent_60%)] pointer-events-none"
-        ></div>
-        <div
-          class="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.05),transparent_60%)] pointer-events-none"
-        ></div>
-
+      <main class="flex-1 relative overflow-hidden bg-[var(--bg-app)]">
         <div class="relative h-full z-10">
           <RightSide />
         </div>
       </main>
     </div>
+
+    <ActivityDrawer />
   </div>
 </template>
 
 <style scoped lang="scss">
-/* 高频导航面: 只过渡颜色与透明度, 取动效令牌的短档。
- * 禁 transition:all(无界属性动画) / 禁辉光 / 禁无限脉冲。 */
-.nav-btn {
-  transition:
-    background-color var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+.rail {
+  width: 60px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+  background: var(--bg-inset);
+  border-right: 1px solid var(--hair);
 }
 
-.nav-icon {
-  transition: opacity var(--dur-fast) var(--ease-out);
+.rail-div {
+  width: 20px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--hair);
+}
+
+.rail-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  color: var(--weak);
+  position: relative;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.rail-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rail-btn.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.rail-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.rail-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.rail-spacer {
+  flex: 1;
+}
+
+.rail-tip {
+  position: absolute;
+  left: 52px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-raised);
+  border: 1px solid var(--hair-strong);
+  color: var(--ink);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-press) var(--ease-out);
+  z-index: 20;
+}
+
+.rail-btn:hover .rail-tip,
+.rail-btn:focus-visible .rail-tip {
+  opacity: 1;
 }
 </style>

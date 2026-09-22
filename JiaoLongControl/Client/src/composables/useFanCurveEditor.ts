@@ -2,6 +2,8 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { AutoFanControl, Fan } from '@/utils/bridge'
 import { useConfigStore } from '@/stores/config'
+import { useActivityStore } from '@/stores/activity'
+import { useFanStore } from '@/stores/fan'
 
 export interface FanCurvePoint {
   temp: number
@@ -14,6 +16,8 @@ export interface FanCurvePoint {
  */
 export function useFanCurveEditor() {
   const configStore = useConfigStore()
+  const activity = useActivityStore()
+  const fanStore = useFanStore()
 
   const activeTab = ref<'CPU' | 'GPU'>('CPU')
   const cpuPoints = ref<FanCurvePoint[]>([
@@ -46,8 +50,11 @@ export function useFanCurveEditor() {
   const selectedIndex = ref<number | null>(null)
   const showEdit = ref(false)
   const editForm = reactive({ temp: 0, speed: 0 })
-  const isServiceRunning = ref(false)
+  // 曲线服务运行状态：镜像 fanStore 的常驻四态读数（null = 读不到，不得当 false 用）
+  const isServiceRunning = computed(() => fanStore.curveService.value ?? false)
   const serviceLoading = ref(false)
+  const saveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const lastSavedAt = ref<number | null>(null)
 
   let autoSaveTimer: number | null = null
 
@@ -68,43 +75,68 @@ export function useFanCurveEditor() {
   }
 
   const checkServiceStatus = async () => {
-    try {
-      isServiceRunning.value = (await AutoFanControl.IsRunning()).Success
-    } catch (e) {
-      console.error('Failed to check fan control status:', e)
-    }
+    // 曲线服务状态由 App.vue 常驻轮询维护（fanStore.curveService），这里只借用，
+    // 不再自立一套 —— 否则切页回来读数会假死，且多一路查询打扰 EC。
+    await fanStore.refreshCurveService()
   }
 
-  const handleServiceToggle = async (
-    newValue: string | number | boolean,
-  ): Promise<boolean> => {
+  const handleServiceToggle = async (newValue: string | number | boolean): Promise<boolean> => {
+    if (locked.value) {
+      Message.warning('固件档位下风扇由 EC 管理，请先在概览页切换到自定义')
+      return false
+    }
     serviceLoading.value = true
     try {
       if (newValue) {
-        await AutoFanControl.Start()
+        const result = await AutoFanControl.Start()
+        if (!result.Success) throw new Error(result.Message || '自动风扇控制启用失败')
         Message.success('自动风扇控制已启用')
       } else {
-        await AutoFanControl.Stop()
+        const result = await AutoFanControl.Stop()
+        if (!result.Success) throw new Error(result.Message || '自动风扇控制停止失败')
         Message.info('自动风扇控制已停止')
       }
-      isServiceRunning.value = (await AutoFanControl.IsRunning()).Success
-      return true
-    } catch {
-      Message.error('操作失败，请检查日志')
-      isServiceRunning.value = (await AutoFanControl.IsRunning()).Success
+      await AutoFanControl.IsRunning()
+      await fanStore.refreshCurveService()
+      const matches = isServiceRunning.value === !!newValue
+      activity.record({
+        source: 'user',
+        intent: newValue ? '启用风扇曲线控制' : '停止风扇曲线控制',
+        requestedValue: !!newValue,
+        outcome: matches ? 'applied' : 'failed',
+        reversible: 'c',
+      })
+      return matches
+    } catch (error) {
+      Message.error(error instanceof Error ? error.message : '操作失败，请检查日志')
+      await AutoFanControl.IsRunning()
+      await fanStore.refreshCurveService().catch(() => undefined)
+      activity.record({
+        source: 'user',
+        intent: newValue ? '启用风扇曲线控制' : '停止风扇曲线控制',
+        requestedValue: !!newValue,
+        outcome: 'failed',
+        reversible: 'c',
+      })
       return false
     } finally {
       serviceLoading.value = false
     }
   }
   const autoSave = async () => {
+    saveState.value = 'saving'
     try {
       if (configStore.config) {
         configStore.config.Fan.CpuFanCurve = cpuPoints.value
         configStore.config.Fan.GpuFanCurve = gpuPoints.value
-        configStore.debouncedSave()
+        const result = (await configStore.saveConfig()) as
+          { Success?: boolean; Message?: string } | undefined
+        if (!result?.Success) throw new Error(result?.Message || '曲线保存失败')
+        lastSavedAt.value = Date.now()
+        saveState.value = 'saved'
       }
     } catch (e) {
+      saveState.value = 'error'
       console.error('Save failed:', e)
     }
   }
@@ -160,9 +192,7 @@ export function useFanCurveEditor() {
   }
 
   const polylinePoints = computed(() => {
-    return currentPoints.value
-      .map((p) => `${safeMapX(p.temp)},${safeMapY(p.speed)}`)
-      .join(' ')
+    return currentPoints.value.map((p) => `${safeMapX(p.temp)},${safeMapY(p.speed)}`).join(' ')
   })
 
   // 计算面积渐变闭合多边形的坐标点
@@ -260,6 +290,8 @@ export function useFanCurveEditor() {
   const menuStyle = computed(() => ({
     left: `${menuPos.x}px`,
     top: `${menuPos.y}px`,
+    // 从点击点左上角生长(popover origin-aware)
+    transformOrigin: 'top left',
   }))
 
   function openContextMenu(index: number, e: MouseEvent) {
@@ -325,12 +357,46 @@ export function useFanCurveEditor() {
   }
 
   async function handleRemoveFanClick() {
-    if (await AutoFanControl.IsRunning()) {
-      await AutoFanControl.Stop()
+    const running = await AutoFanControl.IsRunning()
+    if (running.Success && running.Data) {
+      const stop = await AutoFanControl.Stop()
+      if (!stop.Success) {
+        Message.error(stop.Message || '停止曲线控制失败')
+        return
+      }
     }
-    Message.success((await Fan.RemoveFanSpeed()).Message)
-    isServiceRunning.value = false
+    const remove = await Fan.RemoveFanSpeed()
+    if (remove.Success) {
+      Message.success(remove.Message || '已恢复自动控制')
+      fanStore.setCurveService(false)
+      activity.record({
+        source: 'user',
+        intent: '恢复自动风扇控制',
+        requestedValue: null,
+        outcome: 'applied',
+        reversible: 'c',
+      })
+    } else {
+      Message.error(remove.Message || '恢复自动控制失败')
+    }
   }
+
+  /**
+   * 控制策略显示值 —— 四态。服务状态读不到时返回「未知」，绝不把 null 当 false 显示成
+   * 「EC 自动控制」那样的事实断言（v4 §7：读不到必须显式标注）。
+   */
+  /**
+   * 门禁：固件三档（办公/游戏/狂飙）下风扇由 EC 自己的表管理，曲线编辑不开放。
+   * 与风扇页共用同一个判定，避免两处口径不一。
+   */
+  const locked = computed(() => fanStore.customizationLocked)
+
+  const strategyLabel = computed(() => {
+    const r = fanStore.curveService
+    if (r.value === true) return '应用内曲线接管'
+    if (r.value === false) return 'EC 自动控制'
+    return r.state === 'error' ? '读取失败' : '未知'
+  })
 
   return {
     activeTab,
@@ -350,7 +416,11 @@ export function useFanCurveEditor() {
     showEdit,
     editForm,
     isServiceRunning,
+    locked,
+    strategyLabel,
     serviceLoading,
+    saveState,
+    lastSavedAt,
     canDelete,
     isValidRender,
     onTabChange,

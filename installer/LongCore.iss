@@ -42,11 +42,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; 主程序 + 驱动 + 全部运行时依赖(dotnet publish 产物, 递归整树)
-Source: "..\bin\publish\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+; 排除 logs\: 运行期日志(App.config 的 log4net RollingFileAppender 写在 publish 目录), 不属于发行内容
+Source: "..\bin\publish\*"; DestDir: "{app}"; Excludes: "logs\*,*.log"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; 可选: WebView2 常青版引导器(放入 installer\ 目录并按此命名, 缺省跳过)
 Source: "MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: skipifsourcedoesntexist
-; 可选: .NET 8 Desktop Runtime 离线安装器(同上)
-Source: "windowsdesktop-runtime-8.0-win-x64.exe"; DestDir: "{tmp}"; Flags: skipifsourcedoesntexist
+; 可选: .NET 10 Desktop Runtime 离线安装器(同上)
+Source: "windowsdesktop-runtime-10.0-win-x64.exe"; DestDir: "{tmp}"; Flags: skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -55,9 +56,9 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 ; 依赖检查与安装(静默, 仅在缺失且安装包在旁边时执行)
-Filename: "{tmp}\windowsdesktop-runtime-8.0-win-x64.exe"; \
+Filename: "{tmp}\windowsdesktop-runtime-10.0-win-x64.exe"; \
     Parameters: "/install /quiet /norestart"; \
-    StatusMsg: "安装 .NET 8 Desktop Runtime..."; Flags: skipifdoesntexist runhidden; Check: not DotNet8Installed
+    StatusMsg: "安装 .NET 10 Desktop Runtime..."; Flags: skipifdoesntexist runhidden; Check: not DotNet10Installed
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; \
     Parameters: "/silent /install"; \
     StatusMsg: "安装 WebView2 Runtime..."; Flags: skipifdoesntexist runhidden; Check: not WebView2Installed
@@ -69,8 +70,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
     Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
-// .NET 8 Desktop Runtime 检测: 共享框架版本表里存在 8.x 项即视为已安装
-function DotNet8Installed(): Boolean;
+// .NET 10 Desktop Runtime 检测: 共享框架版本表里存在 10.x 项即视为已安装
+function DotNet10Installed(): Boolean;
 var
     key: String;
     names: TArrayOfString;
@@ -81,7 +82,7 @@ begin
     if RegGetValueNames(HKLM, key, names) then
     begin
         for i := 0 to GetArrayLength(names) - 1 do
-            if Copy(names[i], 1, 2) = '8.' then
+            if Copy(names[i], 1, 3) = '10.' then
             begin
                 Result := True;
                 exit;

@@ -53,6 +53,7 @@ public static class ConfigSerializer
             {
                 var yaml = File.ReadAllText(ConfigPath);
                 config = Deserializer.Deserialize<JiaoLongConfig>(yaml);
+                MigrateLegacyCpuProfiles(yaml, config);
             }
             catch (Exception)
             {
@@ -63,6 +64,7 @@ public static class ConfigSerializer
                     {
                         var yaml = File.ReadAllText(BackupPath);
                         config = Deserializer.Deserialize<JiaoLongConfig>(yaml);
+                        MigrateLegacyCpuProfiles(yaml, config);
                     }
                     catch
                     {
@@ -241,5 +243,73 @@ public static class ConfigSerializer
 
             return base.EnterMapping(key, value, context, serializer);
         }
+    }
+
+    // ── 旧配置迁移 ────────────────────────────────────────────────────
+    // 旧版 config.yaml 的 CPU 是四张方案表（CpuProfile + Default/Performance/Saving/Custom）。
+    // 现已废除, 收成单套 Cpu.Custom。迁移只在 Cpu.Custom 仍等于出厂默认值（说明用户从未写过
+    // 这一项）时接管旧值, 否则保持现状 —— 不静默覆盖用户正在用的一组参数。
+    // 旧键在下一次落盘（Bridge 5s 脏检查）时自然消失。
+
+    private static void MigrateLegacyCpuProfiles(string yaml, JiaoLongConfig config)
+    {
+        LegacyConfig? legacy;
+        try
+        {
+            legacy = Deserializer.Deserialize<LegacyConfig>(yaml);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        var cpu = legacy?.Cpu;
+        if (cpu == null)
+            return;
+        // 三个旧档位全缺 = 已是新格式, 无需迁移
+        if (cpu.Default == null && cpu.Performance == null && cpu.Saving == null)
+            return;
+        if (!IsFactoryDefault(config.Cpu.Custom))
+            return;
+
+        var active = cpu.CpuProfile?.ToLowerInvariant() switch
+        {
+            "performance" => cpu.Performance,
+            "saving" => cpu.Saving,
+            "custom" => cpu.Custom,
+            _ => cpu.Default
+        } ?? cpu.Custom ?? cpu.Default ?? cpu.Performance ?? cpu.Saving;
+
+        if (active == null)
+            return;
+
+        config.Cpu.Custom = active;
+        RangeLog.Info("配置迁移: 旧 CPU 四档方案表已废除, 已接管为单套 Cpu.Custom");
+    }
+
+    private static bool IsFactoryDefault(CpuPowerData? data)
+    {
+        var factory = new CpuPowerData();
+        return data != null
+               && data.CpuLongPower == factory.CpuLongPower
+               && data.CpuShortPower == factory.CpuShortPower
+               && data.CpuTempWall == factory.CpuTempWall
+               && data.CpuMaxFrequency == factory.CpuMaxFrequency
+               && data.CpuTurbo == factory.CpuTurbo;
+    }
+
+    /// <summary>旧版配置的只读投影, 只用于迁移取值, 不参与序列化。</summary>
+    private class LegacyConfig
+    {
+        public LegacyCpuSection? Cpu { get; set; }
+    }
+
+    private class LegacyCpuSection
+    {
+        public string? CpuProfile { get; set; }
+        public CpuPowerData? Default { get; set; }
+        public CpuPowerData? Performance { get; set; }
+        public CpuPowerData? Saving { get; set; }
+        public CpuPowerData? Custom { get; set; }
     }
 }

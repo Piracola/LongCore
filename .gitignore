@@ -47,3 +47,14 @@ __pycache__/
 
 # 安装器产物（本地构建输出，不入库）
 /installer/Output/
+# 视觉 QA 截图产物（可由此仓 Client/scripts/visual-shot.mjs 重新生成，不入库）
+.visual-qa/
+
+# 编辑器/工具备份残留（含 AI 改文件时留下的 .bak）
+*.bak
+
+# ===== 厂商素材与研究工具（本地专用，禁止入库）=====
+# vendor/ 存放：厂商安装包、解包产物、反编译输出、NuGet 缓存、Python venv、逆向脚本。
+# 其中包含有版权的厂商 DLL/EXE —— 一旦提交就无法开源，故整目录忽略。
+# 注意：忽略在文件系统层面生效，务必不要在 .gitignore 中对其做任何反向例外（!）。
+/vendor/

@@ -25,7 +25,8 @@ namespace JiaoLongControl.Server.Core.Controllers
                     mode = SystemPerMode.CustomMode;
             }
 
-            return new CommandResult(true, "获取成功", mode);
+            // 显式装箱为 int：避免 object Data 携带枚举时 JSON 写成 {}
+            return new CommandResult(true, "获取成功", (int)mode);
         }
 
         public CommandResult Set(SystemPerMode mode)

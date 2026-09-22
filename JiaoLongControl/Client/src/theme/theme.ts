@@ -17,14 +17,22 @@ export const chartTheme = computed(() =>
     ? {
         legend: '#5a6478',
         axis: '#8a93a5',
-        line: 'rgba(13, 14, 21, 0.08)',
+        line: 'rgba(13, 14, 21, 0.16)',
+        band: ['rgba(13, 14, 21, 0.035)', 'transparent'] as [string, string],
         label: '#1a1b26',
+        cross: 'rgba(8, 145, 178, 0.9)',
+        tooltipBg: 'rgba(255, 255, 255, 0.94)',
+        tooltipBorder: 'rgba(13, 14, 21, 0.12)',
       }
     : {
         legend: '#A0AEC0',
-        axis: '#6B7280',
-        line: 'rgba(255, 255, 255, 0.05)',
+        axis: '#8B93A7',
+        line: 'rgba(255, 255, 255, 0.14)',
+        band: ['rgba(255, 255, 255, 0.04)', 'transparent'] as [string, string],
         label: '#FFFFFF',
+        cross: 'rgba(34, 211, 238, 0.95)',
+        tooltipBg: 'rgba(16, 18, 26, 0.94)',
+        tooltipBorder: 'rgba(255, 255, 255, 0.12)',
       },
 )
 

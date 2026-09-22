@@ -231,7 +231,11 @@ export interface BridgeApi {
     SetPowerLimit(watts: number, gpuIndex?: number): HostBridgePromise<void>
     GetClockOffsetRange(gpuIndex?: number): HostBridgePromise<ClockOffsetRangeInfo>
     GetClockOffsets(gpuIndex?: number): HostBridgePromise<ClockOffsetsInfo>
-    ApplyClockOffsets(coreMhz: number, memoryMhz: number, gpuIndex?: number): HostBridgePromise<void>
+    ApplyClockOffsets(
+      coreMhz: number,
+      memoryMhz: number,
+      gpuIndex?: number,
+    ): HostBridgePromise<void>
     SetCoreClockOffset(mhz: number, gpuIndex?: number): HostBridgePromise<void>
     SetMemoryClockOffset(mhz: number, gpuIndex?: number): HostBridgePromise<void>
     ResetClockOffsets(gpuIndex?: number): HostBridgePromise<void>
@@ -329,28 +333,99 @@ export const raw: BridgeApi = new Proxy({} as BridgeApi, {
   },
 })
 
-export async function call<T>(promise: HostBridgePromise<T>): Promise<CommandResult<T>> {
-  return JSON.parse(await promise.toJson())
+/**
+ * 桥接调用超时（毫秒）。
+ * WebView2 的 hostObjects.bridge 经 COM 编组到 WPF UI 线程：宿主一旦阻塞，
+ * 返回的 promise 永不 settle。没有超时 = 前端永久挂起，且下一轮轮询再叠一层
+ * 未完成请求，排队上界无穷 → 「界面点击无响应但画面仍在刷新」。
+ * 2026-09-16 切到 Ryzen SMU 页卡死即此成因。
+ */
+const BRIDGE_TIMEOUT_MS = 8000
+
+/** 同一方法失败后的冷却时间：宿主卡住时不反复敲同一扇门 */
+const FAILURE_COOLDOWN_MS = 15000
+
+export class BridgeTimeoutError extends Error {
+  constructor(label: string) {
+    super(`桥接调用超时（${BRIDGE_TIMEOUT_MS}ms）：${label}`)
+    this.name = 'BridgeTimeoutError'
+  }
+}
+
+function withTimeout<T>(value: PromiseLike<T> | T, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new BridgeTimeoutError(label)), ms)
+    Promise.resolve(value).then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err: unknown) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
+export async function call<T>(
+  promise: HostBridgePromise<T>,
+  label = 'unknown',
+): Promise<CommandResult<T>> {
+  return JSON.parse(await withTimeout(promise.toJson(), BRIDGE_TIMEOUT_MS, label))
 }
 const CACHE_TTL_MS = 1000 // 动态监控类：1 秒内复用，保证实时性
 const STATIC_TTL_MS = 30 * 1000 // 静态信息类：30S 内复用
 
 const readCache = new Map<string, { result: unknown; ts: number }>()
+/** 在途去重：同 key 并发只发一次，杜绝宿主阻塞时的请求堆积 */
+const inFlight = new Map<string, Promise<unknown>>()
+/** 失败冷却：key -> 可再次请求的时间戳 */
+const cooldownUntil = new Map<string, number>()
 
 function cached<T>(
   ttlMs: number,
   key: string,
   exec: () => Promise<CommandResult<T>>,
 ): Promise<CommandResult<T>> {
-  const now = Date.now()
   const hit = readCache.get(key)
-  if (hit && now - hit.ts < ttlMs) {
+  if (hit && Date.now() - hit.ts < ttlMs) {
     return Promise.resolve(hit.result as CommandResult<T>)
   }
-  return exec().then((result) => {
-    readCache.set(key, { result, ts: now })
-    return result
-  })
+
+  const pending = inFlight.get(key)
+  if (pending) return pending as Promise<CommandResult<T>>
+
+  const until = cooldownUntil.get(key)
+  if (until !== undefined && until > Date.now()) {
+    return Promise.resolve({
+      Success: false,
+      Message: '宿主暂时无响应，已跳过本次轮询',
+    } as CommandResult<T>)
+  }
+
+  const task = exec()
+    .then((result) => {
+      // 仅成功时写缓存：失败结果若被缓存，会把一次瞬时故障放大成持续故障
+      if (result.Success !== false) {
+        readCache.set(key, { result, ts: Date.now() })
+        cooldownUntil.delete(key)
+      } else {
+        cooldownUntil.set(key, Date.now() + FAILURE_COOLDOWN_MS)
+      }
+      return result
+    })
+    .catch((err: unknown) => {
+      cooldownUntil.set(key, Date.now() + FAILURE_COOLDOWN_MS)
+      if (err instanceof BridgeTimeoutError) throw new BridgeTimeoutError(key)
+      throw err
+    })
+    .finally(() => {
+      inFlight.delete(key)
+    })
+
+  inFlight.set(key, task)
+  return task
 }
 
 export function toByte(value: number): number {

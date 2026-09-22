@@ -4,9 +4,9 @@ rem LongCore 安装器一键构建:
 rem   1. 前端构建 → bin\publish\WebRoot
 rem   2. dotnet publish → bin\publish
 rem   3. Inno Setup 编译 → installer\Output\LongCore-<ver>-setup.exe
-rem 前置: Node 22 / .NET 8 SDK / Inno Setup 6 (iscc 在 PATH 或默认安装位置)
-rem 可选: 把 WebView2 引导器与 .NET 8 桌面运行时离线包放到 installer\ 目录,
-rem       文件名: MicrosoftEdgeWebview2Setup.exe / windowsdesktop-runtime-8.0-win-x64.exe
+rem 前置: Node 24.15+ / .NET 10 SDK / Inno Setup 6 (iscc 在 PATH 或默认安装位置)
+rem 可选: 把 WebView2 引导器与 .NET 10 桌面运行时离线包放到 installer\ 目录,
+rem       文件名: MicrosoftEdgeWebview2Setup.exe / windowsdesktop-runtime-10.0-win-x64.exe
 rem ============================================================
 cd /d "%~dp0.." || exit /b 1
 

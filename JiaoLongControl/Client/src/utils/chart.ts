@@ -20,13 +20,13 @@ export interface SparklineResult {
   area?: string
 }
 
-export function buildSparkline(
-  values: number[],
-  options: SparklineOptions = {},
-): SparklineResult {
+export function buildSparkline(values: number[], options: SparklineOptions = {}): SparklineResult {
   const { width = 160, height = 40, max, smooth = true, area = false } = options
   if (values.length < 2) {
-    return { line: `M 0 ${height}`, ...(area ? { area: `M 0 ${height} L ${width} ${height} L 0 ${height} Z` } : {}) }
+    return {
+      line: `M 0 ${height}`,
+      ...(area ? { area: `M 0 ${height} L ${width} ${height} L 0 ${height} Z` } : {}),
+    }
   }
   const yMax = max ?? Math.max(...values)
   const points = values.map((v, i) => ({

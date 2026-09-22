@@ -1,8 +1,73 @@
-﻿<Window x:Class="JiaoLongControl.Server.UpdateDialog"
+<Window x:Class="JiaoLongControl.Server.UpdateDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="软件更新" Height="430" Width="500"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="True">
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" ShowInTaskbar="True"
+        Background="{DynamicResource BgBrush}" Foreground="#FFFFFF">
+    <Window.Resources>
+        <!-- 与 Client Global.scss 深色令牌对齐; 浅色主题在代码后置改 Resources(需 DynamicResource) -->
+        <SolidColorBrush x:Key="BgBrush" Color="#0D0E15"/>
+        <SolidColorBrush x:Key="PanelBrush" Color="#121320"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#A0AEC0"/>
+        <SolidColorBrush x:Key="LineBrush" Color="#1F2430"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#3B82F6"/>
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#1A1C23"/>
+        <Style x:Key="GhostBtn" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource SecondaryBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="90"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="8,4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#252836"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2E3242"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryBtn" TargetType="Button" BasedOn="{StaticResource GhostBtn}">
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="8,4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#2563EB"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#1D4ED8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -12,10 +77,12 @@
         </Grid.RowDefinitions>
 
         <!-- 标题 -->
-        <TextBlock Text="发现新版本！" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+        <TextBlock x:Name="TxtTitle" Text="发现新版本！" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"
+                   Foreground="#FFFFFF"/>
 
         <!-- 版本对比 -->
-        <Border Grid.Row="1" Background="#F5F5F5" CornerRadius="6" Padding="14,10" Margin="0,0,0,12">
+        <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" CornerRadius="8" Padding="14,10" Margin="0,0,0,12"
+                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -24,53 +91,54 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel>
-                    <TextBlock Text="当前版本" FontSize="12" Foreground="#888"/>
-                    <TextBlock x:Name="TxtCurrentVersion" FontSize="15"/>
+                    <TextBlock Text="当前版本" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock x:Name="TxtCurrentVersion" FontSize="15" Foreground="#FFFFFF"/>
                 </StackPanel>
 
                 <TextBlock Grid.Column="1" Text="  →  " FontSize="18" VerticalAlignment="Center"
-                           Foreground="#4A90D9" Margin="8,0"/>
+                           Foreground="{DynamicResource AccentBrush}" Margin="8,0"/>
 
                 <StackPanel Grid.Column="2">
-                    <TextBlock Text="最新版本" FontSize="12" Foreground="#888"/>
-                    <TextBlock x:Name="TxtNewVersion" FontSize="15" FontWeight="Bold" Foreground="#4A90D9"/>
+                    <TextBlock Text="最新版本" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock x:Name="TxtNewVersion" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- 更新日志 -->
-        <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Margin="0,0,0,12">
+        <Border Grid.Row="2" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,12"
+                Background="{DynamicResource PanelBrush}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Border Background="#FAFAFA" Padding="10,6" CornerRadius="3,3,0,0">
-                    <TextBlock Text="更新日志" FontSize="13" FontWeight="SemiBold" Foreground="#555"/>
+                <Border x:Name="NotesHeader" Background="#17192A" Padding="10,6" CornerRadius="7,7,0,0">
+                    <TextBlock x:Name="TxtNotesHeader" Text="更新日志" FontSize="13" FontWeight="SemiBold" Foreground="#D1D5DB"/>
                 </Border>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="10,8">
                     <TextBlock x:Name="TxtReleaseNotes" TextWrapping="Wrap" FontSize="13"
-                               Foreground="#444" LineHeight="20"/>
+                               Foreground="#E5E7EB" LineHeight="20"/>
                 </ScrollViewer>
             </Grid>
         </Border>
 
         <!-- 下载进度 (默认隐藏) -->
         <StackPanel x:Name="DownloadPanel" Grid.Row="3" Visibility="Collapsed">
-            <TextBlock x:Name="TxtDownloadStatus" FontSize="12" Foreground="#666" Margin="0,0,0,6"/>
-            <ProgressBar x:Name="DownloadProgress" Height="6" Margin="0,0,0,8"/>
-            <Button Content="取消下载" Width="80" Height="26" HorizontalAlignment="Right"
+            <TextBlock x:Name="TxtDownloadStatus" FontSize="12" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6"/>
+            <ProgressBar x:Name="DownloadProgress" Height="6" Margin="0,0,0,8"
+                         Background="#1F2430" Foreground="{DynamicResource AccentBrush}"/>
+            <Button Content="取消下载" Style="{StaticResource GhostBtn}" Width="80" Height="26" HorizontalAlignment="Right"
                     Click="BtnCancelDownload_Click"/>
         </StackPanel>
 
         <!-- 操作按钮 (下载时隐藏) -->
         <StackPanel x:Name="ButtonPanel" Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="立即更新" Width="90" Height="30" Click="BtnUpdate_Click"
-                    IsDefault="True" Margin="5,0"
-                    Background="#4A90D9" Foreground="White" BorderThickness="0"/>
-            <Button Content="跳过该版本" Width="90" Height="30" Click="BtnSkip_Click" Margin="5,0"/>
-            <Button Content="稍后提醒" Width="90" Height="30" Click="BtnLater_Click"
-                    IsCancel="True" Margin="5,0"/>
+            <Button Content="立即更新" Style="{StaticResource PrimaryBtn}" Click="BtnUpdate_Click"
+                    IsDefault="True"/>
+            <Button Content="跳过该版本" Style="{StaticResource GhostBtn}" Click="BtnSkip_Click"/>
+            <Button Content="稍后提醒" Style="{StaticResource GhostBtn}" Click="BtnLater_Click"
+                    IsCancel="True"/>
         </StackPanel>
     </Grid>
 </Window>

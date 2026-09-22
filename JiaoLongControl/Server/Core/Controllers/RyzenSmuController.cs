@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using JiaoLongControl.Server.Core.Drivers;
+using JiaoLongControl.Server.Core.Services;
 using JiaoLongControl.Server.Core.Utils;
 
 namespace JiaoLongControl.Server.Core.Controllers;
@@ -133,6 +134,11 @@ public class RyzenSmuController : PawnIO
         }
     }
 
+    private static CommandResult? RejectIfBlocked(string key, double value) =>
+        SmuWriteGate.TryValidate(key, value, out var reason)
+            ? null
+            : new CommandResult(false, reason ?? "写入被闸门拒绝");
+
     private CommandResult TrySend(uint arg, string name, params (uint cmd, bool isMp1)[] commands)
     {
         CommandResult? lastResult = null;
@@ -150,6 +156,7 @@ public class RyzenSmuController : PawnIO
     #region (Power Limits - PPT)
     public CommandResult SetStapmLimit(double watts)
     {
+        if (RejectIfBlocked("StapmLimit", watts) is { } blocked) return blocked;
         uint arg = (uint)(watts * 1000);
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(arg, "STAPM Limit", (0x14, true), (0x31, false)),
@@ -161,6 +168,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetStapmTime(uint seconds)
     {
+        if (RejectIfBlocked("StapmTime", seconds) is { } blocked) return blocked;
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(seconds, "STAPM Time", (0x18, true), (0x36, false)),
             RyzenSmuFamily.FP7_FP8 => TrySend(seconds, "STAPM Time", (0x18, true), (0x36, false)),
@@ -171,6 +179,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetFastLimit(double watts)
     {
+        if (RejectIfBlocked("FastLimit", watts) is { } blocked) return blocked;
         uint arg = (uint)(watts * 1000);
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(arg, "Fast Limit", (0x15, true), (0x32, false)),
@@ -182,6 +191,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetSlowLimit(double watts)
     {
+        if (RejectIfBlocked("SlowLimit", watts) is { } blocked) return blocked;
         uint arg = (uint)(watts * 1000);
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(arg, "Slow Limit", (0x16, true), (0x33, false)),
@@ -193,6 +203,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetSlowTime(uint seconds)
     {
+        if (RejectIfBlocked("SlowTime", seconds) is { } blocked) return blocked;
         return CurrentFamily switch {
             RyzenSmuFamily.FP6 => TrySend(seconds, "Slow Time", (0x17, true), (0x35, false)),
             RyzenSmuFamily.FP7_FP8 => TrySend(seconds, "Slow Time", (0x17, true), (0x35, false)),
@@ -203,6 +214,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetPptLimitRsmu(double watts)
     {
+        if (RejectIfBlocked("PptLimitRsmu", watts) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x33u, 
             RyzenSmuFamily.FP7_FP8 => 0x31u, 
@@ -216,6 +228,7 @@ public class RyzenSmuController : PawnIO
     #region (Current & Temp Limits)
     public CommandResult SetVrmCurrentMp1(uint milliamps)
     {
+        if (RejectIfBlocked("VrmCurrentMp1", milliamps) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x1Au, 
             RyzenSmuFamily.FP7_FP8 => 0x1Au, 
@@ -227,6 +240,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetVrmCurrentRsmu(uint milliamps)
     {
+        if (RejectIfBlocked("VrmCurrentRsmu", milliamps) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x38u, 
             RyzenSmuFamily.FP7_FP8 => 0x38u, 
@@ -238,6 +252,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetEdcLimitMp1(uint milliamps)
     {
+        if (RejectIfBlocked("EdcLimitMp1", milliamps) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x1Cu, 
             RyzenSmuFamily.FP7_FP8 => 0x1Cu, 
@@ -249,6 +264,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetEdcLimitRsmu(uint milliamps)
     {
+        if (RejectIfBlocked("EdcLimitRsmu", milliamps) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x3Au, 
             RyzenSmuFamily.FP7_FP8 => 0x3Au, 
@@ -260,6 +276,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetTempLimitMp1(uint celsius)
     {
+        if (RejectIfBlocked("TempLimitMp1", celsius) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x19u, 
             RyzenSmuFamily.FP7_FP8 => 0x19u, 
@@ -271,6 +288,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetTempLimitRsmu(uint celsius)
     {
+        if (RejectIfBlocked("TempLimitRsmu", celsius) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x37u, 
             RyzenSmuFamily.FP7_FP8 => 0x37u, 
@@ -284,6 +302,7 @@ public class RyzenSmuController : PawnIO
     #region (PBO & Overclocking)
     public CommandResult SetPboScalar(uint value)
     {
+        if (RejectIfBlocked("PboScalar", value) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x3Fu, 
             RyzenSmuFamily.FP7_FP8 => 0x3Eu, 
@@ -295,6 +314,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetOcClk(int mhz)
     {
+        if (RejectIfBlocked("OcClk", mhz) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x19u, 
             RyzenSmuFamily.FP7_FP8 => 0x19u, 
@@ -306,6 +326,9 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetPerCoreOcClk(uint coreIdx, uint mhz)
     {
+        // arg = (coreIdx << 8) | (mhz & 0xFF)：& 0xFF 会把 >255 的值静默截断
+        // （1000 → 232），写入的不是调用方看到的值 —— 超限必须先拒，不许变形。
+        if (RejectIfBlocked("PerCoreOcClk", mhz) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x1Au, 
             RyzenSmuFamily.FP7_FP8 => 0x1Au, 
@@ -317,6 +340,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetOcVolt(uint millivolts)
     {
+        if (RejectIfBlocked("OcVolt", millivolts) is { } blocked) return blocked;
         uint cmd = CurrentFamily switch { 
             RyzenSmuFamily.FP6 => 0x1Bu, 
             RyzenSmuFamily.FP7_FP8 => 0x1Bu, 
@@ -358,9 +382,7 @@ public class RyzenSmuController : PawnIO
 
     public CommandResult SetCurveOptimizerAll(int value)
     {
-        if (value < CurveOptimizerMin || value > CurveOptimizerMax)
-            return new CommandResult(false,
-                $"核心电压偏移 {value} 超出允许范围 ({CurveOptimizerMin} ~ {CurveOptimizerMax})：仅允许降压，不允许加压");
+        if (RejectIfBlocked("CurveOptimizerAll", value) is { } blocked) return blocked;
 
         uint arg = (uint)value & 0xFFFFFu;
         return CurrentFamily switch {
@@ -391,6 +413,8 @@ public class RyzenSmuController : PawnIO
     #region (Power Telemetry)
     private static LibreHardwareMonitor.Hardware.Computer? _lhmComputer;
     private static readonly object _lhmLock = new();
+    /// <summary>宿主侧上界：遥测同时只允许 1 个在途，拒绝叠加（v4 §7.3）。</summary>
+    private static readonly SemaphoreSlim TelemetryGate = new(1, 1);
     
     private const uint MsrFidvidStatus = 0xC0010293;
 
@@ -462,8 +486,19 @@ public class RyzenSmuController : PawnIO
         }
     }
 
+    private static void InvalidateLhm()
+    {
+        lock (_lhmLock)
+        {
+            try { _lhmComputer?.Close(); } catch { /* 损坏实例，丢弃 */ }
+            _lhmComputer = null;
+        }
+    }
+
     public CommandResult GetSmuTelemetry()
     {
+        if (!TelemetryGate.Wait(0))
+            return new CommandResult(false, "遥测读取进行中，已跳过本轮");
         try
         {
             double ppt = 0;
@@ -474,14 +509,21 @@ public class RyzenSmuController : PawnIO
             int usage = 0;
             try
             {
-                var computer = GetOrCreateLhm();
+                LibreHardwareMonitor.Hardware.Computer computer;
+                lock (_lhmLock)
+                {
+                    computer = GetOrCreateLhm();
+                }
 
                 foreach (var hardware in computer.Hardware)
                 {
                     if (hardware.HardwareType != LibreHardwareMonitor.Hardware.HardwareType.Cpu)
                         continue;
 
-                    hardware.Update();
+                    lock (_lhmLock)
+                    {
+                        hardware.Update();
+                    }
 
                     foreach (var sensor in hardware.Sensors)
                     {
@@ -525,6 +567,7 @@ public class RyzenSmuController : PawnIO
             }
             catch (Exception lhmEx)
             {
+                InvalidateLhm();
                 try
                 {
                     using var searcher = new System.Management.ManagementObjectSearcher(
@@ -581,6 +624,10 @@ public class RyzenSmuController : PawnIO
         catch (Exception ex)
         {
             return new CommandResult(false, $"遥测读取失败: {ex.Message}");
+        }
+        finally
+        {
+            TelemetryGate.Release();
         }
     }
     #endregion

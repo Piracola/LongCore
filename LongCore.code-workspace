@@ -1,0 +1,26 @@
+{
+  "folders": [
+    {
+      "name": "LongCore (app)",
+      "path": "."
+    },
+    {
+      "name": "research (协议研究层)",
+      "path": "research"
+    }
+  ],
+  "settings": {
+    "files.eol": "\n",
+    "editor.formatOnSave": false,
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/bin": true,
+      "**/obj": true,
+      "**/dist": true
+    },
+    "files.exclude": {
+      "**/bin": true,
+      "**/obj": true
+    }
+  }
+}

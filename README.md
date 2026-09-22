@@ -1,4 +1,4 @@
-﻿<h1 align="center">LongCore</h1>
+<h1 align="center">LongCore</h1>
 
 <p align="center">
   <strong>蛟龙 16 PRO 笔记本硬件控制中心</strong><br>
@@ -20,7 +20,7 @@
   <a href="https://qm.qq.com/q/4ase4LoAJi">
     <img src="https://img.shields.io/badge/QQ%20群-蛟龙工具箱问题反馈-EB1923?logo=tencentqq&logoColor=white" alt="QQ Group">
   </a>
-  <img src="https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet" alt=".NET">
+  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET">
   <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs" alt="Vue">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 </p>
@@ -86,12 +86,12 @@
 ## 开发
 
 ```bash
-# 前端开发（需要 Node.js 18+）
+# 前端开发（需要 Node.js 24.15+，见 Client/.nvmrc）
 cd JiaoLongControl/Client
 npm install
 npm run dev
 
-# 后端构建（需要 .NET 8 SDK）
+# 后端构建（需要 .NET 10 SDK）
 dotnet build JiaoLongControl/JiaoLongControl.csproj
 
 # 发布
@@ -99,6 +99,24 @@ dotnet publish JiaoLongControl/JiaoLongControl.csproj -c Release
 ```
 
 前端开发时 Vite dev server 运行在 `localhost:5173`，后端 WebView2 在开发模式下指向该地址。
+
+> **前端命令的工作目录是 `JiaoLongControl/Client`**（仓库根没有 `package.json`）。
+> 完整开发约定见 [AGENTS.md](AGENTS.md)。
+
+---
+
+## 仓库结构
+
+本仓库是**单一 git 根**，应用本体与研究层同仓：
+
+| 路径 | 内容 |
+|---|---|
+| `JiaoLongControl/Client/` | Vue 3 前端（Vite + Arco + ECharts + Pinia） |
+| `JiaoLongControl/Server/` | .NET WPF 宿主（WebView2 Bridge / WMI / EC / SMU） |
+| `installer/` | Inno Setup 打包脚本 |
+| [`research/`](research/README.md) | **协议研究层**：逆向成果、实测数据、上游审计、决策记录 |
+
+研究层原为独立仓库，2026-09 并入本仓，**历史完整保留**。文档入口：[`research/docs/00_索引.md`](research/docs/00_索引.md)。
 
 ---
 

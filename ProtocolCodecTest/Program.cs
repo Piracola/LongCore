@@ -95,6 +95,18 @@ Check("三字节解码 = (1,2,3)", triple.Item1 == 1 && triple.Item2 == 2 && tri
 var maxPair = ProtocolCodec.DecodeUInt16Pair(Hex("00 80 00 00 FF FF FF FF"));
 Check("u16 上界 = (65535, 65535)", maxPair.Item1 == 65535 && maxPair.Item2 == 65535);
 
+Console.WriteLine("== SMU 写入闸门 ==");
+Check("54W STAPM 放行", SmuWriteGate.TryValidate("StapmLimit", 54, out _));
+Check("0W STAPM 拒绝", !SmuWriteGate.TryValidate("StapmLimit", 0, out var zeroReason) && (zeroReason?.Contains("0") ?? false));
+Check("201W STAPM 拒绝", !SmuWriteGate.TryValidate("StapmLimit", 201, out _));
+Check("温度墙 90 放行", SmuWriteGate.TryValidate("TempLimitMp1", 90, out _));
+Check("温度墙 100 放行", SmuWriteGate.TryValidate("TempLimitMp1", 100, out _));
+Check("温度墙 101 拒绝", !SmuWriteGate.TryValidate("TempLimitMp1", 101, out _));
+Check("温度墙 0 拒绝", !SmuWriteGate.TryValidate("TempLimitMp1", 0, out _));
+Check("CO +1 拒绝", !SmuWriteGate.TryValidate("CurveOptimizerAll", 1, out _));
+Check("CO -20 放行", SmuWriteGate.TryValidate("CurveOptimizerAll", -20, out _));
+Check("未知键拒绝", !SmuWriteGate.TryValidate("NotAKey", 1, out _));
+
 Console.WriteLine();
 Console.WriteLine($"通过 {passed} 项, 失败 {failures.Count} 项");
 return failures.Count == 0 ? 0 : 1;

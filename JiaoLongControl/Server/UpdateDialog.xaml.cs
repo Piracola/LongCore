@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
@@ -31,6 +31,53 @@ namespace JiaoLongControl.Server
             TxtReleaseNotes.Text = string.IsNullOrWhiteSpace(releaseNotes)
                 ? "此版本无更新日志。"
                 : releaseNotes;
+
+            ApplyTheme();
+        }
+
+        /// <summary>
+        /// 与主窗 UiTheme / Client CSS 变量对齐: 默认深色, 浅色时覆盖关键画刷。
+        /// 关键背景/边框/次要文字用 DynamicResource, 这里替换 Resources 后即可生效。
+        /// </summary>
+        private void ApplyTheme()
+        {
+            try
+            {
+                var mode = JiaoLongControl.Server.Core.Utils.ConfigSerializer
+                    .Load()?.App?.Theme;
+                if (!JiaoLongControl.Server.Core.Utils.UiTheme.IsLight(mode))
+                    return;
+
+                Foreground = System.Windows.Media.Brushes.Black;
+                Resources["BgBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xF2, 0xF4, 0xF9));
+                Resources["PanelBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Colors.White);
+                Resources["MutedBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x5A, 0x64, 0x78));
+                Resources["LineBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xE5, 0xE7, 0xEB));
+                Resources["AccentBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x25, 0x63, 0xEB));
+                Resources["PrimaryBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x25, 0x63, 0xEB));
+                Resources["SecondaryBrush"] = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xF3, 0xF4, 0xF6));
+
+                // 标题/正文等写死深色主题色的 TextBlock 在浅色下需改黑
+                TxtTitle.Foreground = System.Windows.Media.Brushes.Black;
+                TxtCurrentVersion.Foreground = System.Windows.Media.Brushes.Black;
+                TxtNotesHeader.Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x37, 0x41, 0x51));
+                TxtReleaseNotes.Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0x1F, 0x29, 0x37));
+                NotesHeader.Background = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(0xF9, 0xFA, 0xFB));
+            }
+            catch
+            {
+                // 主题解析失败时保持 XAML 默认深色
+            }
         }
 
         private async void BtnUpdate_Click(object sender, RoutedEventArgs e)

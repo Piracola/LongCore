@@ -28,6 +28,14 @@ export default tseslint.config(
     },
   },
   {
+    // scripts/ 下的 QA 工具: 本体跑在 Node, 但 page.evaluate() 回调在浏览器上下文执行,
+    // 因此 window/document/localStorage 与 Node 的 console 都要声明 (原先只覆盖 ts/vue 导致 no-undef)
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+  },
+  {
     rules: {
       // 显式 any 已全部清除, 禁止再引入
       '@typescript-eslint/no-explicit-any': 'error',

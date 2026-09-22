@@ -9,26 +9,41 @@ const PADDING_X = 40
 const PADDING_Y = 20
 
 // 定义色板（与系统全局风格统一）
-const COLOR_CPU_FAN = '#8A2BE2' // CPU转速：科技紫 (实线)
-const COLOR_GPU_FAN = '#3B82F6' // GPU转速：科技蓝 (虚线)
-const COLOR_CPU_TEMP = '#E11D48' // CPU温度：玫瑰红 (实线)
-const COLOR_GPU_TEMP = '#10B981' // GPU温度：薄荷绿 (虚线)
+const COLOR_CPU_FAN = '#60a5fa' // CPU 转速
+const COLOR_GPU_FAN = '#34d399' // GPU 转速
+const COLOR_CPU_TEMP = '#fb923c' // CPU 温度
+const COLOR_GPU_TEMP = '#f87171' // GPU 温度
 
 const MAX_FAN_RPM = 7800
 const MAX_TEMP_C = 110
 
-// 响应式宽高
+// 宽高：高度由 CSS 钉死，宽度只跟容器走。
+// 禁止给 SVG 预设像素宽（旧值 600）：grid 子项 min-width:auto 会按内尺撑开右栏，
+// ResizeObserver 再把宽度写回去，左右栏就会缓慢互挤。
 const container = ref<HTMLElement | null>(null)
-const width = ref(600)
+const width = ref(0)
 const height = ref(180)
 
-// 初始化预填充 10 个 0
-const cpuFan = ref<number[]>(Array(MAX_POINTS).fill(0))
-const gpuFan = ref<number[]>(Array(MAX_POINTS).fill(0))
-const cpuTemp = ref<number[]>(Array(MAX_POINTS).fill(0))
-const gpuTemp = ref<number[]>(Array(MAX_POINTS).fill(0))
+// 只有可靠读取到的样本才进入图表；空数组明确表示尚无数据，不能伪装成 0。
+const cpuFan = ref<number[]>([])
+const gpuFan = ref<number[]>([])
+const cpuTemp = ref<number[]>([])
+const gpuTemp = ref<number[]>([])
 
-const hasPolled = ref(false)
+const readingState = ref<'loading' | 'ok' | 'stale' | 'error'>('loading')
+const readingStateLabel = computed(() => {
+  if (readingState.value === 'ok') return '数据正常'
+  if (readingState.value === 'stale') return '数据过期'
+  if (readingState.value === 'error') return '读取失败'
+  return '正在读取'
+})
+const hasSamples = computed(
+  () =>
+    cpuFan.value.length > 0 ||
+    gpuFan.value.length > 0 ||
+    cpuTemp.value.length > 0 ||
+    gpuTemp.value.length > 0,
+)
 const hoverIndex = ref<number | null>(null)
 let timer: number | null = null
 let running = true
@@ -43,12 +58,23 @@ const chartW = computed(() => Math.max(0, width.value - PADDING_X * 2))
 const chartH = computed(() => Math.max(0, height.value - PADDING_Y * 2))
 
 const xStep = computed(() => {
-  if (MAX_POINTS <= 1) return 0
-  return chartW.value / (MAX_POINTS - 1)
+  const count = Math.max(
+    cpuFan.value.length,
+    gpuFan.value.length,
+    cpuTemp.value.length,
+    gpuTemp.value.length,
+  )
+  if (count <= 1) return 0
+  return chartW.value / (count - 1)
 })
 
 const xs = computed(() => {
-  const currentLen = cpuFan.value.length
+  const currentLen = Math.max(
+    cpuFan.value.length,
+    gpuFan.value.length,
+    cpuTemp.value.length,
+    gpuTemp.value.length,
+  )
   return Array.from({ length: currentLen }, (_, i) => {
     return PADDING_X + i * xStep.value
   })
@@ -98,16 +124,14 @@ function onMouseMove(e: MouseEvent) {
 async function poll() {
   if (!running) return
 
-  let tempCpuFan = 0
-  let tempGpuFan = 0
-  let tempCpuTemp = 0
-  let tempGpuTemp = 0
+  let anySuccess = false
 
   try {
     const fan = await Fan.GetFanSpeed()
-    if (fan?.Data) {
-      tempCpuFan = fan.Data.CPUFanSpeed ?? 0
-      tempGpuFan = fan.Data.GPUFanSpeed ?? 0
+    if (fan?.Success && fan.Data) {
+      push(cpuFan.value, fan.Data.CPUFanSpeed)
+      push(gpuFan.value, fan.Data.GPUFanSpeed)
+      anySuccess = true
     }
   } catch (e) {
     console.error('读取风扇失败:', e)
@@ -115,8 +139,9 @@ async function poll() {
 
   try {
     const hw = await CPU.GetCPUThermometer()
-    if (hw?.Data !== undefined) {
-      tempCpuTemp = hw.Data ?? 0
+    if (hw?.Success && hw.Data !== undefined) {
+      push(cpuTemp.value, hw.Data)
+      anySuccess = true
     }
   } catch (e) {
     console.error('读取CPU温度失败:', e)
@@ -124,19 +149,15 @@ async function poll() {
 
   try {
     const gpu = await NvidiaGpu.GetGpuTemperature()
-    if (gpu?.Data !== undefined) {
-      tempGpuTemp = Number(gpu.Data)
+    if (gpu?.Success && gpu.Data !== undefined) {
+      push(gpuTemp.value, Number(gpu.Data))
+      anySuccess = true
     }
   } catch (e) {
     console.error('读取GPU温度失败:', e)
   }
 
-  push(cpuFan.value, tempCpuFan)
-  push(gpuFan.value, tempGpuFan)
-  push(cpuTemp.value, tempCpuTemp)
-  push(gpuTemp.value, tempGpuTemp)
-
-  hasPolled.value = true
+  readingState.value = anySuccess ? 'ok' : hasSamples.value ? 'stale' : 'error'
   timer = window.setTimeout(poll, INTERVAL)
 }
 
@@ -145,8 +166,8 @@ onMounted(() => {
   if (container.value) {
     resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        width.value = entry.contentRect.width
-        height.value = entry.contentRect.height
+        const next = Math.floor(entry.contentRect.width)
+        if (next > 0 && next !== width.value) width.value = next
       }
     })
     resizeObserver.observe(container.value)
@@ -161,16 +182,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    class="bg-panel/60 backdrop-blur-md border border-ink/[0.05] rounded-xl p-5 shadow-lg space-y-4"
-  >
+  <div class="fan-speed-root bg-panel border border-hair rounded-lg p-5 space-y-4">
     <!-- 图表顶栏标题 -->
     <div class="flex justify-between items-center select-none">
       <h2 class="text-[13px] font-semibold text-gray-300 flex items-center gap-1.5">
-        <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+        <span class="w-1.5 h-1.5 rounded-full" style="background: var(--accent)"></span>
         实时运行状态遥测
       </h2>
-      <span class="text-[10px] text-gray-500 font-mono">{{ INTERVAL / 1000 }}s 采样间隔</span>
+      <span class="text-[10px] text-gray-500 font-mono"
+        >{{ INTERVAL / 1000 }}s 采样间隔 · {{ readingStateLabel }}</span
+      >
     </div>
     <!-- 图表区域 -->
     <div
@@ -179,17 +200,16 @@ onUnmounted(() => {
       @mousemove="onMouseMove"
       @mouseleave="hoverIndex = null"
     >
-      <svg v-if="width > 0" :width="width" :height="height">
+      <svg v-if="width > 0 && hasSamples" :width="width" :height="height">
         <defs>
-          <!-- 荧光微弱发光滤镜 -->
-          <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="1.5" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
+          <!-- 无滤镜: 曲线实色绘制, 禁 neon glow -->
         </defs>
 
         <!-- 1. 背景网格横线 (CPU 区间) -->
-        <g style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)" stroke-width="1">
+        <g
+          style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)"
+          stroke-width="1"
+        >
           <line :x1="PADDING_X" :x2="width - PADDING_X" :y1="PADDING_Y" :y2="PADDING_Y" />
           <line
             :x1="PADDING_X"
@@ -217,7 +237,10 @@ onUnmounted(() => {
         />
 
         <!-- 3. 背景网格横线 (GPU 区间) -->
-        <g style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)" stroke-width="1">
+        <g
+          style="stroke: color-mix(in srgb, var(--color-text-main) 2%, transparent)"
+          stroke-width="1"
+        >
           <line
             :x1="PADDING_X"
             :x2="width - PADDING_X"
@@ -261,35 +284,21 @@ onUnmounted(() => {
         </text>
 
         <!-- 5. 独立轨道折线路径 -->
-        <polyline
-          :points="cpuFanPath"
-          fill="none"
-          :stroke="COLOR_CPU_FAN"
-          stroke-width="2"
-          filter="url(#neon-glow)"
-        />
+        <polyline :points="cpuFanPath" fill="none" :stroke="COLOR_CPU_FAN" stroke-width="2" />
         <polyline
           :points="gpuFanPath"
           fill="none"
           :stroke="COLOR_GPU_FAN"
           stroke-width="2"
           stroke-dasharray="6,4"
-          filter="url(#neon-glow)"
         />
-        <polyline
-          :points="cpuTempPath"
-          fill="none"
-          :stroke="COLOR_CPU_TEMP"
-          stroke-width="2"
-          filter="url(#neon-glow)"
-        />
+        <polyline :points="cpuTempPath" fill="none" :stroke="COLOR_CPU_TEMP" stroke-width="2" />
         <polyline
           :points="gpuTempPath"
           fill="none"
           :stroke="COLOR_GPU_TEMP"
           stroke-width="2"
           stroke-dasharray="6,4"
-          filter="url(#neon-glow)"
         />
 
         <!-- 6. 数据点拐点微圆点 -->
@@ -387,17 +396,34 @@ onUnmounted(() => {
               width="180"
               height="124"
               rx="8"
-              style="fill: var(--color-popover-bg); stroke: color-mix(in srgb, var(--color-text-main) 8%, transparent)"
+              style="
+                fill: var(--color-popover-bg);
+                stroke: color-mix(in srgb, var(--color-text-main) 8%, transparent);
+              "
               stroke-width="1"
             />
-            <text x="15" y="24" font-size="11" font-weight="bold" style="fill: var(--color-text-main)">
+            <text
+              x="15"
+              y="24"
+              font-size="11"
+              font-weight="bold"
+              style="fill: var(--color-text-main)"
+            >
               时间切片: {{ hoverIndex + 1 }} / 10
             </text>
             <g transform="translate(15, 46)">
               <circle r="3.5" :fill="COLOR_CPU_FAN" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 CPU风扇:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ cpuFan[hoverIndex] }}
                 </tspan>
                 RPM
@@ -405,9 +431,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 66)">
               <circle r="3.5" :fill="COLOR_GPU_FAN" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 GPU风扇:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ gpuFan[hoverIndex] }}
                 </tspan>
                 RPM
@@ -415,9 +449,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 86)">
               <circle r="3.5" :fill="COLOR_CPU_TEMP" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 CPU温度:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ cpuTemp[hoverIndex] }}
                 </tspan>
                 °C
@@ -425,9 +467,17 @@ onUnmounted(() => {
             </g>
             <g transform="translate(15, 106)">
               <circle r="3.5" :fill="COLOR_GPU_TEMP" cy="-3.5" />
-              <text x="14" font-size="11" style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)">
+              <text
+                x="14"
+                font-size="11"
+                style="fill: color-mix(in srgb, var(--color-text-main) 70%, transparent)"
+              >
                 GPU温度:
-                <tspan font-weight="bold" style="fill: var(--color-text-main)" font-family="monospace">
+                <tspan
+                  font-weight="bold"
+                  style="fill: var(--color-text-main)"
+                  font-family="monospace"
+                >
                   {{ gpuTemp[hoverIndex] }}
                 </tspan>
                 °C
@@ -436,19 +486,39 @@ onUnmounted(() => {
           </g>
         </template>
       </svg>
+      <div v-else class="chart-empty">等待可靠遥测样本，读取失败不会显示为 0。</div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.fan-speed-root {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .chart-container {
   width: 100%;
+  height: 180px;
+  min-width: 0;
   position: relative;
   overflow: hidden;
 }
 
+.chart-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--weak);
+  font-size: 11px;
+  text-align: center;
+}
+
 svg {
   display: block;
+  position: absolute;
+  inset: 0;
+  max-width: 100%;
 }
 
 text {

@@ -1,11 +1,94 @@
+<script lang="ts" setup>
+import FanSpeed from '@/components/common/FanSpeed.vue'
+import PageShell from '@/components/common/PageShell.vue'
+import { useFanCurveEditor } from '@/composables/useFanCurveEditor'
+
+const {
+  activeTab,
+  currentPoints,
+  currentTempRange,
+  speedRange,
+  padding,
+  containerRef,
+  width,
+  height,
+  draggingIndex,
+  menuVisible,
+  selectedIndex,
+  showEdit,
+  editForm,
+  isServiceRunning,
+  strategyLabel,
+  locked,
+  serviceLoading,
+  saveState,
+  lastSavedAt,
+  canDelete,
+  isValidRender,
+  onTabChange,
+  handleServiceToggle,
+  handleRemoveFanClick,
+  safeMapX,
+  safeMapY,
+  polylinePoints,
+  polygonPoints,
+  onDragStart,
+  onSvgMouseMove,
+  onDragEnd,
+  menuStyle,
+  openContextMenu,
+  closeMenu,
+  getMinTemp,
+  getMaxTemp,
+  onAddNode,
+  onRemoveNode,
+  openEditModal,
+  onEditConfirm,
+} = useFanCurveEditor()
+
+function formatSavedAt(value: number | null) {
+  if (value === null) return '尚未修改'
+  return new Date(value).toLocaleTimeString('zh-CN', { hour12: false })
+}
+</script>
+
 <template>
-  <div class="h-full overflow-y-auto text-ink p-6 no-scrollbar">
-    <div class="max-w-[1300px] mx-auto space-y-6">
-      <div>
-        <h1 class="text-2xl font-bold tracking-wide">风扇曲线编辑器</h1>
-        <p class="text-[13px] text-gray-500 mt-1">
-          可视化拖动调整不同核心温度下的风扇转速，支持 CPU/GPU 独立配置。
-        </p>
+  <PageShell
+    title="风扇曲线编辑器"
+    subtitle="拖动节点编辑 CPU/GPU 曲线；运行状态、保存结果与当前控制策略始终可见。"
+  >
+    <div class="w-full space-y-6">
+      <div class="curve-status" role="status" aria-live="polite">
+        <div>
+          <span class="k">当前曲线</span>
+          <strong>{{ activeTab }} 曲线</strong>
+        </div>
+        <div>
+          <span class="k">当前策略</span>
+          <strong>{{ strategyLabel }}</strong>
+        </div>
+        <div>
+          <span class="k">配置状态</span>
+          <strong>{{
+            saveState === 'saving'
+              ? '保存中…'
+              : saveState === 'error'
+                ? '保存失败'
+                : saveState === 'saved'
+                  ? '已保存'
+                  : '未保存'
+          }}</strong>
+        </div>
+        <div>
+          <span class="k">最后保存</span>
+          <strong class="tnum">{{ formatSavedAt(lastSavedAt) }}</strong>
+        </div>
+      </div>
+      <div v-if="locked" class="curve-gate">
+        <span>
+          当前为固件档位，风扇由 EC 固件表管理。曲线编辑与手动转速仅对「自定义」档位开放，
+          请先在概览页切换。
+        </span>
       </div>
       <a-card class="fan-curve-card" :bordered="false" @click="closeMenu">
         <div class="header-info">
@@ -22,7 +105,8 @@
                 <a-radio value="GPU">GPU 曲线</a-radio>
               </a-radio-group>
               <button
-                class="tok-btn text-xs font-semibold text-rose-400 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500 hover:text-white px-4 py-1.5 rounded-lg"
+                class="btn-danger btn-apply-sm"
+                :disabled="locked"
                 @click="handleRemoveFanClick"
               >
                 移除转速设置
@@ -39,10 +123,11 @@
               </a-tag>
 
               <a-switch
-                v-model="isServiceRunning"
+                :model-value="isServiceRunning"
                 :loading="serviceLoading"
+                :disabled="locked"
                 :before-change="handleServiceToggle"
-                class="switch-purple"
+                class="switch-accent"
               />
             </a-space>
           </div>
@@ -58,18 +143,9 @@
             @mouseleave="onDragEnd"
           >
             <defs>
-              <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow
-                  dx="0"
-                  dy="0"
-                  stdDeviation="3"
-                  :flood-color="activeTab === 'CPU' ? '#8A2BE2' : '#10B981'"
-                  flood-opacity="0.8"
-                />
-              </filter>
               <linearGradient id="cpu-glow" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#8A2BE2" stop-opacity="0.25" />
-                <stop offset="100%" stop-color="#8A2BE2" stop-opacity="0.0" />
+                <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.18" />
+                <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.0" />
               </linearGradient>
               <linearGradient id="gpu-glow" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="#10B981" stop-opacity="0.25" />
@@ -155,7 +231,7 @@
             <polyline
               :points="polylinePoints"
               fill="none"
-              :stroke="activeTab === 'CPU' ? '#8A2BE2' : '#10B981'"
+              :stroke="activeTab === 'CPU' ? '#60a5fa' : '#10B981'"
               stroke-width="2.5"
               stroke-linejoin="round"
               stroke-linecap="round"
@@ -174,10 +250,10 @@
                 :cx="safeMapX(p.temp)"
                 :cy="safeMapY(p.speed)"
                 r="5"
-                :fill="activeTab === 'CPU' ? '#8A2BE2' : '#10B981'"
+                :fill="activeTab === 'CPU' ? '#60a5fa' : '#10B981'"
                 stroke="#fff"
                 stroke-width="1.5"
-                style="filter: url(#shadow); pointer-events: none"
+                style="pointer-events: none"
               />
               <text
                 v-if="draggingIndex === index"
@@ -254,71 +330,52 @@
       </a-card>
       <FanSpeed></FanSpeed>
     </div>
-  </div>
+  </PageShell>
 </template>
 
-<script lang="ts" setup>
-import FanSpeed from '@/components/common/FanSpeed.vue'
-import { useFanCurveEditor } from '@/composables/useFanCurveEditor'
-
-const {
-  activeTab,
-  currentPoints,
-  currentTempRange,
-  speedRange,
-  padding,
-  containerRef,
-  width,
-  height,
-  draggingIndex,
-  menuVisible,
-  selectedIndex,
-  showEdit,
-  editForm,
-  isServiceRunning,
-  serviceLoading,
-  canDelete,
-  isValidRender,
-  onTabChange,
-  handleServiceToggle,
-  handleRemoveFanClick,
-  safeMapX,
-  safeMapY,
-  polylinePoints,
-  polygonPoints,
-  onDragStart,
-  onSvgMouseMove,
-  onDragEnd,
-  menuStyle,
-  openContextMenu,
-  closeMenu,
-  getMinTemp,
-  getMaxTemp,
-  onAddNode,
-  onRemoveNode,
-  openEditModal,
-  onEditConfirm,
-} = useFanCurveEditor()
-</script>
-
 <style lang="scss" scoped>
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.curve-status {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 12px 14px;
+    border-right: 1px solid var(--hair);
+
+    &:last-child {
+      border-right: 0;
+    }
+  }
+
+  .k {
+    color: var(--weak);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
+  }
 }
 
 .fan-curve-card {
   height: 400px;
   position: relative;
   user-select: none;
-  background: var(--color-card-bg) !important;
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--color-line-soft) !important;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px var(--color-shadow-card);
+  background: var(--bg-panel) !important;
+  border: 1px solid var(--hair) !important;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
 
   :deep(.arco-card-body) {
     height: 100%;
@@ -407,13 +464,23 @@ const {
 .context-menu {
   position: absolute;
   z-index: 999;
-  background: var(--color-popover-bg);
-  backdrop-filter: blur(12px);
+  background: var(--bg-raised);
   border-radius: 6px;
   box-shadow: 0 8px 24px var(--color-shadow-pop);
   border: 1px solid var(--color-line);
   min-width: 140px;
   padding: 4px 0;
+  /* 入场: 从触发点缩放生长(origin 由 menuStyle 内联 transform-origin 指定) */
+  opacity: 1;
+  transform: scale(1);
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 
   .menu-item {
     padding: 8px 16px;
@@ -422,11 +489,16 @@ const {
     color: color-mix(in srgb, var(--color-text-main) 80%, transparent);
     transition:
       background-color var(--dur-fast) var(--ease-out),
-      color var(--dur-fast) var(--ease-out);
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-press) var(--ease-out);
 
     &:hover {
       background: rgba(138, 43, 226, 0.15);
       color: #a855f7;
+    }
+
+    &:active {
+      transform: scale(0.98);
     }
 
     &.disabled {
@@ -462,20 +534,18 @@ const {
     }
 
     &.arco-radio-button-checked {
-      background-color: var(--color-accent-purple) !important;
-      color: #ffffff !important;
+      background-color: var(--accent) !important;
+      color: var(--accent-ink) !important;
     }
   }
 }
 
-:deep(.radio-gpu.arco-radio-group-button) {
+:deep(.arco-radio-group-button) {
   .arco-radio-button.arco-radio-button-checked {
-    background-color: #10b981 !important;
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3) !important;
+    background-color: var(--accent) !important;
+    color: var(--accent-ink) !important;
+    box-shadow: none !important;
   }
-}
-:deep(.switch-purple.arco-switch-checked) {
-  background-color: var(--color-accent-purple) !important;
 }
 
 :deep(.arco-modal) {
@@ -517,6 +587,30 @@ const {
   transition:
     background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.tok-btn:active {
+  transform: scale(0.97);
+}
+
+.svg-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  color: var(--weak);
+  font-size: 12px;
+  text-align: center;
+}
+
+.curve-gate {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
 }
 </style>

@@ -20,7 +20,7 @@ public class SelfStart
     private void CPU()
     {
         var bridge = Bridge.Instance;
-        var cpu = bridge.Config.Cpu.Active;
+        var cpu = bridge.Config.Cpu.Custom;
         // 必须先打开自定义功耗子状态(命令 23 = OpenState), 否则下面三个写入会被 EC 拒绝。
         // 官方 SetSP_CustomMode 把 SPL/SPPT/温度墙 的写入严格包在 if (m == OpenState) 内。
         bridge.CPU.SetCustomMode(true);
