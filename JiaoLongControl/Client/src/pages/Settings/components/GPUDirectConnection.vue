@@ -22,8 +22,7 @@ async function GPUDirectConnection_handleClick() {
       GPUDirectConnection.value ? GPUMode.DiscreteMode : GPUMode.HybridMode,
     )
     if (result.Success) {
-      Message.success(result.Message)
-      Message.info('独显直连应用后需重启')
+      Message.warning('命令已接受，独显/混合输出需重启后生效，当前显示不是最终状态')
     } else {
       Message.error(result.Message)
       GPUDirectConnection.value = !GPUDirectConnection.value
@@ -39,8 +38,8 @@ async function GPUDirectConnection_handleClick() {
 
 <template>
   <setting-card-component
-    title="独显直连（重启生效）"
-    description="强制系统渲染和视频输出始终通过独立显卡（dGPU）运行，以获取最强劲的游戏与专业应用性能。切换后需重启电脑。"
+    title="独显直连（重启后生效）"
+    description="输出模式属 D 级可逆：命令接受 ≠ 已生效。切换后必须重启电脑，当前开关只表示已下发的请求。"
   >
     <template #extra>
       <a-switch

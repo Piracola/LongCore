@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { useConfigStore } from '@/stores/config'
 import { useFanStore } from '@/stores/fan'
+import { useModeStore } from '@/stores/mode'
 import FanSpeed from '@/components/common/FanSpeed.vue'
 import ControlModule from '@/components/common/ControlModule.vue'
 import ApplyBar from '@/components/common/ApplyBar.vue'
 import PageShell from '@/components/common/PageShell.vue'
 import { useApplyState } from '@/composables/useApplyState'
+import { FAN_MAX_RPM, FAN_MIN_RPM } from '@/constants'
 
 const visible = ref(false)
 const configStore = useConfigStore()
 const fanStore = useFanStore()
+const modeStore = useModeStore()
 const apply = useApplyState()
 
 if (!configStore.config) {
@@ -35,12 +38,35 @@ watch(draftSpeed, (v) => {
   apply.markDirty('转速已调整，待应用')
 })
 
-const displaySpeed = computed(() => draftSpeed.value)
+/**
+ * 门禁（2026-09-21）：固件三档的风扇曲线由 EC 自己的表管理，应用不介入。
+ * 只有首页切到「自定义」才解锁手动转速。恢复自动控制不受此限 ——
+ * 那是把控制权交还固件的安全出口，在任何档位下都必须可用。
+ */
+const locked = computed(() => fanStore.customizationLocked)
 
-// 危险确认：超出 1500–5800 闸门值域即弹确认（v4 §11 第 3 项）
+/** 观察值优先：显示真实转速（读不到显示 —），未应用时才退回草稿目标 */
+const observedSpeed = computed(() => {
+  const v = fanStore.speed.value
+  if (!v) return null
+  return Math.max(v.CPUFanSpeed, v.GPUFanSpeed)
+})
+const displaySpeed = computed(() => {
+  if (fanStore.controller === 'manual') return draftSpeed.value
+  return observedSpeed.value
+})
+const speedIsObserved = computed(() => fanStore.controller !== 'manual')
+
 function requestApply() {
   if (!FanPageStore.value) return
-  if (FanPageStore.value.ManualFanSpeed > 5800 || FanPageStore.value.ManualFanSpeed < 1500) {
+  if (locked.value) {
+    Message.warning('固件档位下风扇由 EC 管理，请先在概览页切换到自定义')
+    return
+  }
+  if (
+    FanPageStore.value.ManualFanSpeed > FAN_MAX_RPM ||
+    FanPageStore.value.ManualFanSpeed < FAN_MIN_RPM
+  ) {
     visible.value = true
     return
   }
@@ -50,23 +76,37 @@ function requestApply() {
 async function doApply() {
   if (!FanPageStore.value) return
   visible.value = false
-  const result = await fanStore.applyManualSpeed(FanPageStore.value.ManualFanSpeed, () =>
-    configStore.saveConfig(),
-  )
-  if (result.ok) {
-    Message.success(result.message)
-    apply.markClean()
+  let resultMessage = '手动转速已应用'
+  const ok = await apply.run('正在应用手动转速…', async () => {
+    const result = await fanStore.applyManualSpeed(FanPageStore.value!.ManualFanSpeed, () =>
+      configStore.saveConfig(),
+    )
+    resultMessage = result.message
+    return { Success: result.ok, Message: result.message }
+  })
+  if (ok) {
+    Message.success(resultMessage)
+    await fanStore.refreshSpeed()
   } else {
-    Message.error(result.message)
-    apply.canRetry.value = true
+    Message.error(resultMessage)
   }
 }
 
-// 「恢复自动控制」常驻可达（v4 §11 第 3 项；C 级可逆性唯一出路）
-async function handleRemoveFanClick() {
+/**
+ * 恢复自动控制 —— 与转速设定同处一个板块（2026-09-21）。
+ * 旧布局把它塞进「安全提示」卡，等于把唯一的出路藏进说明文字里；
+ * 用户接管后想交还 EC，最自然的落点就在他当初接管的地方。
+ */
+async function handleRestoreAuto() {
   const result = await fanStore.restoreAuto()
   if (result.ok) {
     Message.success(result.message)
+    apply.reset()
+    // 交还 EC 后：清掉手动设定残留，读数回到真实观察值
+    if (FanPageStore.value) FanPageStore.value.ManualFanSpeed = 0
+    draftSpeed.value = 0
+    await fanStore.refreshSpeed()
+    await fanStore.resolveController()
   } else {
     Message.error(result.message)
   }
@@ -76,20 +116,17 @@ function handleCancel() {
   visible.value = false
 }
 
-// 进入页面：判定当前控制权 + 起四态转速读取
-let pollTimer: ReturnType<typeof setInterval> | null = null
+/**
+ * 重置 = 把风扇交还固件自动温控（2026-09-21）。
+ * 旧实现只把草稿拉回 1500 RPM：既不写硬件也不落盘，页面显示 1500
+ * 而 EC 仍按自己的表转 —— 数字和事实对不上，是该页最反直觉的一处。
+ */
+function handleReset() {
+  void handleRestoreAuto()
+}
+
 onMounted(() => {
   void fanStore.resolveController()
-  void fanStore.refreshSpeed()
-  pollTimer = setInterval(() => {
-    if (!document.hidden) void fanStore.refreshSpeed()
-  }, 2000)
-})
-onUnmounted(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
 })
 </script>
 
@@ -99,10 +136,13 @@ onUnmounted(() => {
       <ControlModule title="目标转速设定" eyebrow="Manual Control" badge="EC">
         <template #readout>
           <div class="big-readout">
-            <span class="num tnum">{{ displaySpeed }}</span>
+            <span class="num tnum">{{ displaySpeed ?? '—' }}</span>
             <span class="unit">RPM</span>
           </div>
-          <div class="readout-meta">范围 1500–5800 · 步进 100</div>
+          <div class="readout-meta">
+            <template v-if="speedIsObserved">实测 · 范围 1500–5800</template>
+            <template v-else>目标值 · 范围 1500–5800 · 步进 100</template>
+          </div>
         </template>
 
         <!-- 当前由谁控制（v4 §10：自动策略接管必须显示） -->
@@ -111,23 +151,54 @@ onUnmounted(() => {
           当前由{{ fanStore.controllerLabel }}控制
         </div>
 
+        <!-- 门禁：固件三档的风扇由 EC 自己的表管理，应用不介入 -->
+        <div v-if="locked" class="gate-note">
+          <span>
+            当前档位为{{ modeStore.firmwareLabel || '固件档位' }}，风扇转速由 EC
+            固件表管理，应用不改写。需要自定义转速或曲线，请先在概览页切到「自定义」。
+          </span>
+        </div>
+
         <a-slider
           v-model="FanPageStore.ManualFanSpeed"
           :min="1500"
           :max="5800"
           :step="100"
+          :disabled="locked"
           class="w-full"
         />
 
-        <p class="hint">手动设定会关闭自动温控后台并锁定转速。重载时过低转速可能导致降频。</p>
+        <p class="hint">手动设定会接管 EC 自动温控并锁定转速。重载时过低转速可能导致降频。</p>
 
         <template #footer>
-          <ApplyBar
-            :apply="apply"
-            apply-label="应用设定"
-            @apply="requestApply"
-            @retry="requestApply"
-          />
+          <div class="fan-actions">
+            <!-- 重置 = 把风扇交还 EC 固件自动温控 -->
+            <button
+              class="btn-restore"
+              type="button"
+              title="把风扇交还 EC 固件自动温控"
+              @click="handleReset"
+            >
+              重置
+            </button>
+            <!-- 交还控制权的出口与接管动作放在一起：在哪里接管，就在哪里交还 -->
+            <button
+              class="btn-restore"
+              type="button"
+              :disabled="fanStore.controller === 'auto'"
+              @click="handleRestoreAuto"
+            >
+              恢复自动控制
+            </button>
+            <ApplyBar
+              :apply="apply"
+              apply-label="应用设定"
+              :disabled="locked"
+              @apply="requestApply"
+              @retry="requestApply"
+            />
+          </div>
+          <p class="reset-note">恢复自动控制 = 把风扇交还 EC 固件温控，手动转速随之失效。</p>
         </template>
       </ControlModule>
 
@@ -142,11 +213,6 @@ onUnmounted(() => {
             <li>长时间超过 5800 RPM 可能缩短电机寿命。</li>
             <li>重载时转速过低会导致过热降频。</li>
           </ul>
-          <template #footer>
-            <button class="btn-ghost-block" type="button" @click="handleRemoveFanClick">
-              恢复自动控制
-            </button>
-          </template>
         </ControlModule>
 
         <ControlModule title="最近活动" eyebrow="Recent" badge="用户操作">
@@ -193,10 +259,15 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .fan-layout {
   display: grid;
-  grid-template-columns: 1.2fr 0.9fr;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr);
   gap: 12px;
   align-items: start;
   flex: 1;
+  min-width: 0;
+}
+
+.fan-layout > * {
+  min-width: 0;
 }
 
 @media (max-width: 1100px) {
@@ -241,6 +312,65 @@ onUnmounted(() => {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
+  line-height: 1.5;
+}
+
+.fan-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.fan-actions :deep(.apply-bar) {
+  flex: 1;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.btn-restore {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hair-strong);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+
+  &:hover:not(:disabled) {
+    color: var(--temp-cool);
+    border-color: color-mix(in srgb, var(--temp-cool) 45%, transparent);
+    background: color-mix(in srgb, var(--temp-cool) 10%, transparent);
+  }
+
+  /* 已经是 EC 自动时没有可交还的东西 —— 置灰而不是消失，位置不跳 */
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.gate-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.reset-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--weak);
   line-height: 1.5;
 }
 

@@ -120,7 +120,8 @@ const handlers = {
   'ConfigCtrl.GetConfig': () => hostOk(window.__qaConfig),
   'ConfigCtrl.SetConfig': () => hostOk(null),
   'CPU.GetPhysicalCoreCount': () => hostOk(16),
-  'CPU.GetCpuInfo': () => hostOk({ Name: 'AMD Ryzen 9 8945HX', Cores: 16, Threads: 32 }),
+  'CPU.GetCpuInfo': () =>
+    hostOk({ Name: 'AMD Ryzen 9 8945HX', Cores: 16, Threads: 32, BaseFreqMhz: 2500 }),
   'CPU.GetCPUThermometer': () => hostOk(68),
   'CPU.GetCpuUsage': () => hostOk(32),
   'CPU.GetCpuFrequency': () => hostOk(4200),
@@ -128,7 +129,18 @@ const handlers = {
   'CPU.GetCustomMode': () => hostOk(true),
   'RyzenSmu.GetSmuTelemetry': () =>
     hostOk({ Ppt: 42.5, Tdc: 48.2, Edc: 72.1, Temp: 74.5, FreqMhz: 4300, Usage: 28 }),
-  'Fan.GetFanSpeed': () => hostOk({ Cpu: 2800, Gpu: 2100, Max: 2800 }),
+  'Fan.GetFanSpeed': () => hostOk({ CPUFanSpeed: 2800, GPUFanSpeed: 2100 }),
+  'NvidiaGpu.GetGpuName': () => hostOk('RTX 4070'),
+  'NvidiaGpu.GetGpuDriverVersion': () => hostOk('560.00'),
+  'NvidiaGpu.GetGpuDriverDate': () => hostOk('2026-01-01'),
+  'NvidiaGpu.GetGpuMemoryTotal': () => hostOk('8 GB'),
+  'NvidiaGpu.GetGpuBusWidth': () => hostOk('128-bit'),
+  'NvidiaGpu.GetGpuUtilization': () => hostOk(18),
+  'NvidiaGpu.GetGpuMemoryUtilization': () => hostOk(22),
+  'NvidiaGpu.GetGpuCoreClock': () => hostOk(1800),
+  'NvidiaGpu.GetGpuMemoryClock': () => hostOk(8000),
+  'NvidiaGpu.GetGpuFanSpeed': () => hostOk(2100),
+  'NvidiaGpu.GetGpuTemperature': () => hostOk(62),
   'AutoFan.IsRunning': () => hostOk(false),
   'AutoFan.Start': () => hostOk(null),
   'AutoFan.Stop': () => hostOk(null),
@@ -256,30 +268,29 @@ async function forceTheme(theme) {
 }
 
 // Prefer click navigation over re-init for each page
-async function gotoPage(n, theme) {
+async function gotoPage(id, theme) {
   await forceTheme(theme)
   await page.evaluate(
-    ({ n, t }) => {
-      localStorage.setItem('jl-ui-page', String(n))
+    ({ id, t }) => {
+      localStorage.setItem('jl-ui-page', id)
       if (window.__qaConfig?.App) window.__qaConfig.App.Theme = t
       document.documentElement.dataset.theme = t
       if (t === 'dark') document.body.setAttribute('arco-theme', 'dark')
       else document.body.removeAttribute('arco-theme')
     },
-    { n, t: theme },
+    { id, t: theme },
   )
-  // click rail button by aria-label
   const labels = {
-    1: '主页',
-    2: '中央处理器',
-    3: '图形处理器',
-    4: 'Ryzen SMU',
-    5: '风扇曲线',
-    6: '风扇',
-    7: '键盘',
-    8: '设置',
+    home: '概览',
+    cpu: 'CPU',
+    gpu: 'GPU',
+    smu: 'SMU',
+    'fan-curve': '风扇曲线',
+    fan: '风扇',
+    keyboard: '灯效',
+    settings: '系统',
   }
-  const btn = page.locator(`button[aria-label="${labels[n]}"]`)
+  const btn = page.locator(`button[aria-label="${labels[id]}"]`)
   if (await btn.count()) await btn.first().click()
   await page.waitForTimeout(700)
 }
@@ -292,7 +303,12 @@ await page.evaluate(() => {
   document.documentElement.dataset.theme = 'dark'
   document.documentElement.setAttribute('arco-theme', 'dark')
 })
-await gotoPage(4, 'dark')
+await gotoPage('home', 'dark')
+await page.mouse.move(400, 400)
+await page.screenshot({ path: path.join(outDir, 'home-dark.png') })
+console.log('saved home-dark')
+
+await gotoPage('smu', 'dark')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'smu-dark.png') })
 console.log('saved smu-dark')
@@ -304,15 +320,22 @@ await page.waitForTimeout(400)
 await page.screenshot({ path: path.join(outDir, 'smu-dark-bottom.png') })
 console.log('saved smu-dark-bottom')
 
-await gotoPage(8, 'dark')
+await gotoPage('settings', 'dark')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'settings-dark.png') })
 console.log('saved settings-dark')
 
-await gotoPage(2, 'dark')
+await gotoPage('cpu', 'dark')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'cpu-dark.png') })
 console.log('saved cpu-dark')
+
+for (const id of ['gpu', 'fan', 'fan-curve', 'keyboard']) {
+  await gotoPage(id, 'dark')
+  await page.mouse.move(400, 400)
+  await page.screenshot({ path: path.join(outDir, `${id}-dark.png`) })
+  console.log(`saved ${id}-dark`)
+}
 
 // Light theme captures
 await page.evaluate(() => {
@@ -320,17 +343,17 @@ await page.evaluate(() => {
   document.documentElement.setAttribute('arco-theme', 'light')
   document.body.removeAttribute('arco-theme')
 })
-await gotoPage(4, 'light')
+await gotoPage('smu', 'light')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'smu-light.png') })
 console.log('saved smu-light')
 
-await gotoPage(8, 'light')
+await gotoPage('settings', 'light')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'settings-light.png') })
 console.log('saved settings-light')
 
-await gotoPage(2, 'light')
+await gotoPage('cpu', 'light')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'cpu-light.png') })
 console.log('saved cpu-light')

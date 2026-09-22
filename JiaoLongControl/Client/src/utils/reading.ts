@@ -11,7 +11,7 @@
  * 本文件是唯一权威源；消费方一律 import 此处类型，不得复制定义。
  */
 
-export type ReadingState = 'ok' | 'stale' | 'unavailable' | 'error'
+export type ReadingState = 'ok' | 'stale' | 'unavailable' | 'error' | 'loading'
 
 /**
  * 四态读数容器。value 仅在 state === 'ok' | 'stale' 时有业务意义：
@@ -35,6 +35,10 @@ export function okReading<T>(value: T): Reading<T> {
 
 export function staleReading<T>(previous: Reading<T>): Reading<T> {
   return { state: 'stale', value: previous.value, lastOkAt: previous.lastOkAt, message: null }
+}
+
+export function freshLoading<T>(): Reading<T> {
+  return { state: 'loading', value: null, lastOkAt: null, message: null }
 }
 
 export function unavailableReading<T>(message = '通道不存在'): Reading<T> {
@@ -99,10 +103,10 @@ export class PollingChannel {
     }
   }
 
-  /** 启动；重复调用幂等。stalled 后需先 reset() 才能再启动。 */
+  /** 启动；重复调用幂等。stalled 后需先 reset() 才能再启动。立即打第一拍，避免首屏空等一个间隔。 */
   start(): void {
     if (this.disposed || this.stalled || this.timer !== null) return
-    this.schedule(this.opts.intervalMs)
+    this.schedule(0)
   }
 
   stop(): void {

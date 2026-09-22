@@ -1,21 +1,35 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-import { SystemInfo } from '@/utils/bridge'
+import {
+  AxisPointerComponent,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+} from 'echarts/components'
+import PageShell from '@/components/common/PageShell.vue'
+import useStore from '@/stores'
 import { useModeStore } from '@/stores/mode'
 import { FIRMWARE_MODE_LABELS, type FirmwareMode } from '@/domain/modes'
-import { ActivityLog } from '@/domain/operations'
 import { useSystemInfoStore } from '@/stores/systemInfo'
+import { useFanStore } from '@/stores/fan'
 import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
 import { storeToRefs } from 'pinia'
 import { Scale, SlidersHorizontal, Volume1, Zap } from '@lucide/vue'
+import { TEMP_HISTORY_INTERVAL_MS } from '@/constants'
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
+use([
+  CanvasRenderer,
+  LineChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  AxisPointerComponent,
+])
 
 const systemInfoStore = useSystemInfoStore()
 // 四态读数 state（Reading<T>）
@@ -28,9 +42,12 @@ const gpuTempGetter = computed(() => systemInfoStore.gpuTemp)
 // 四态读数裸值（v4 §7）：null = 该通道 error/unavailable，显示「—」；禁止回退 0
 const cpuTempN = computed(() => cpuTempReading.value.value)
 const gpuTempN = gpuTempGetter
-const cpuUsageN = computed(() => cpuUsageGetter.value ?? 0)
-const gpuUsageN = computed(() => gpuUsageGetter.value ?? 0)
+const cpuUsageN = computed(() => cpuUsageGetter.value)
+const gpuUsageN = computed(() => gpuUsageGetter.value)
 const fanSpeedN = computed(() => fanSpeedReading.value.value)
+const cpuStale = computed(() => cpuTempReading.value.state === 'stale')
+const gpuStale = computed(() => systemInfoStore.gpuDynamic.state === 'stale')
+const fanStale = computed(() => fanSpeedReading.value.state === 'stale')
 
 const cpuTempLevel = ref<TempLevel>(tempLevel(cpuTempN.value ?? 0))
 const gpuTempLevel = ref<TempLevel>(tempLevel(gpuTempN.value ?? 0))
@@ -45,7 +62,8 @@ watch(gpuTempN, (t) => {
 // 选中 ≠ 已生效 —— pending 状态显式可感知，失败回滚为观察值，不留虚假激活态。
 // 命名映射（Decision 2026-09-17）：办公=静音 · 游戏=平衡 · 狂飙=高性能。
 const modeStore = useModeStore()
-const activityLog = new ActivityLog(200)
+const fanStore = useFanStore()
+const pageStore = useStore()
 
 const modeOptions: Array<{ kind: 'preset'; mode: FirmwareMode; icon: unknown }> = [
   { kind: 'preset', mode: 'performance', icon: Zap },
@@ -55,142 +73,83 @@ const modeOptions: Array<{ kind: 'preset'; mode: FirmwareMode; icon: unknown }> 
 
 function isModeActive(kind: 'preset' | 'custom', mode?: FirmwareMode): boolean | 'pending' {
   const active = modeStore.activeKind
+  // 冷启动 selected 尚未对齐时，直接按硬件观察值点亮，避免四个胶囊全空
+  if (!modeStore.selected) {
+    if (kind === 'custom') return modeStore.customOverride
+    return !modeStore.customOverride && modeStore.observedFirmware === mode
+  }
   if (kind === 'custom') {
-    if (!modeStore.selected || modeStore.selected.kind !== 'custom') return false
+    if (modeStore.selected.kind !== 'custom') return false
     return active === 'custom' ? true : 'pending'
   }
-  if (!modeStore.selected || modeStore.selected.kind !== 'preset') return false
+  if (modeStore.selected.kind !== 'preset') return false
   if (modeStore.selected.mode !== mode) return false
   return active === 'preset' ? true : 'pending'
 }
 
 async function selectPreset(mode: FirmwareMode) {
-  await modeStore.select({ kind: 'preset', mode }, activityLog)
+  await modeStore.select({ kind: 'preset', mode })
 }
 
 async function selectCustom() {
-  await modeStore.select({ kind: 'custom' }, activityLog)
+  await modeStore.select({ kind: 'custom' })
 }
 
-function handleModeChanged(e: MessageEvent) {
-  try {
-    const data: unknown = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
-    if (
-      data &&
-      typeof data === 'object' &&
-      (data as { type?: string }).type === 'mode-changed' &&
-      typeof (data as { mode?: unknown }).mode === 'number'
-    ) {
-      // Fn 热键镜像：detail[2] 只有 0/1/2（冲突 B 裁定：按三档做）
-      modeStore.applyHotkeyMirror((data as { mode: number }).mode, activityLog)
-    }
-  } catch {
-    /* 非 JSON 消息忽略 */
-  }
-}
-
-const maxFanRpm = computed(() =>
-  Math.max(fanSpeedN.value?.CPUFanSpeed ?? 0, fanSpeedN.value?.GPUFanSpeed ?? 0),
-)
 const fanAvailable = computed(
   () => fanSpeedReading.value.state === 'ok' || fanSpeedReading.value.state === 'stale',
 )
-
-const NOISE_CALIBRATION: Array<[rpm: number, dba: number]> = [
-  [1500, 19],
-  [3000, 25],
-  [4800, 40],
-  [5800, 45],
-  [6800, 48],
-]
-const noiseLevel = computed(() => {
-  const rpm = maxFanRpm.value
-  const pts = NOISE_CALIBRATION
-  if (rpm <= pts[0]![0]) return pts[0]![1]
-  for (let i = 1; i < pts.length; i++) {
-    const [hiRpm, hiDba] = pts[i]!
-    if (rpm <= hiRpm) {
-      const [loRpm, loDba] = pts[i - 1]!
-      return Math.round(loDba + ((rpm - loRpm) / (hiRpm - loRpm)) * (hiDba - loDba))
-    }
-  }
-  return pts[pts.length - 1]![1]
+const maxFanRpm = computed(() => {
+  if (!fanAvailable.value || !fanSpeedN.value) return null
+  return Math.max(fanSpeedN.value.CPUFanSpeed, fanSpeedN.value.GPUFanSpeed)
 })
 
 // 包功耗估算: 无直接传感器时按 CPU/GPU 占用粗估, 标注 est.
 const packagePower = computed(() => {
-  return Math.round((cpuUsageN.value / 100) * 45 + (gpuUsageN.value / 100) * 80)
+  if (cpuUsageN.value === null && gpuUsageN.value === null) return null
+  return Math.round(((cpuUsageN.value ?? 0) / 100) * 45 + ((gpuUsageN.value ?? 0) / 100) * 80)
 })
 
-const sysCpuName = ref('Loading...')
-const sysGpuName = ref('Loading...')
-const sysMemory = ref('Loading...')
-const sysOs = ref('Loading...')
-
-const tempHistory = ref<{ cpu: number | null; gpu: number | null }[]>(
-  Array(10).fill({ cpu: null, gpu: null }),
-)
-
-async function fetchStaticInfo() {
-  try {
-    const res = await SystemInfo.GetSystemOverview()
-    if (res.Success && res.Data) {
-      sysCpuName.value = res.Data.CpuName
-      sysGpuName.value = res.Data.GpuName
-      sysMemory.value = res.Data.MemoryInfo
-      sysOs.value = res.Data.OsVersion
-    }
-  } catch (e) {
-    console.error('Failed to fetch system info', e)
-  }
-}
-
-let historyTimer: ReturnType<typeof setInterval> | null = null
-
-function startTimers() {
-  stopTimers()
-  historyTimer = setInterval(() => {
-    tempHistory.value.push({ cpu: cpuTempN.value, gpu: gpuTempN.value })
-    if (tempHistory.value.length > 10) tempHistory.value.shift()
-  }, 2000)
-}
-
-function stopTimers() {
-  if (historyTimer) {
-    clearInterval(historyTimer)
-    historyTimer = null
-  }
-}
-
-function handleVisibilityChange() {
-  if (document.hidden) {
-    stopTimers()
-  } else {
-    startTimers()
-  }
-}
+const { tempHistory } = storeToRefs(systemInfoStore)
+const historyWindowSec = ref(120)
+const historyOptions = [
+  { label: '2 分钟', seconds: 120 },
+  { label: '10 分钟', seconds: 600 },
+  { label: '1 小时', seconds: 3600 },
+]
+const visibleTempHistory = computed(() => {
+  const count = Math.ceil((historyWindowSec.value * 1000) / TEMP_HISTORY_INTERVAL_MS)
+  return tempHistory.value.slice(-count)
+})
+const historySummary = computed(() => {
+  const samples = visibleTempHistory.value
+  const cpuValues = samples.flatMap((sample) => (sample.cpu === null ? [] : [sample.cpu]))
+  const gpuValues = samples.flatMap((sample) => (sample.gpu === null ? [] : [sample.gpu]))
+  const cpuPeak = cpuValues.length ? Math.max(...cpuValues) : null
+  const gpuPeak = gpuValues.length ? Math.max(...gpuValues) : null
+  const abnormal = samples.filter((sample) =>
+    [sample.cpu, sample.gpu].some((value) => {
+      if (value === null) return false
+      const level = tempLevel(value)
+      return level === 'hot' || level === 'critical'
+    }),
+  ).length
+  return { cpuPeak, gpuPeak, abnormal }
+})
 
 onMounted(() => {
-  fetchStaticInfo()
   void modeStore.refreshObserved()
-  startTimers()
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  try {
-    window.chrome?.webview?.addEventListener('message', handleModeChanged)
-  } catch {
-    /* 浏览器预览环境无 WebView 桥 */
-  }
+  void fanStore.resolveController()
 })
 
-onUnmounted(() => {
-  stopTimers()
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-  try {
-    window.chrome?.webview?.removeEventListener('message', handleModeChanged)
-  } catch {
-    /* 浏览器预览环境无 WebView 桥 */
-  }
-})
+function formatClock(at: number) {
+  const d = new Date(at)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function formatTemp(v: number | null) {
+  return v === null ? '—' : `${v}°C`
+}
 
 const LEVEL_LABEL: Record<TempLevel, string> = {
   cool: 'COOL',
@@ -199,262 +158,320 @@ const LEVEL_LABEL: Record<TempLevel, string> = {
   critical: 'CRIT',
 }
 
-const lineChartOption = computed(() => ({
-  animation: false,
-  animationDurationUpdate: 0,
-  grid: { top: 28, bottom: 18, left: 36, right: 8 },
-  legend: {
-    data: ['CPU', 'GPU'],
-    icon: 'roundRect',
-    itemWidth: 12,
-    itemHeight: 3,
-    textStyle: { color: chartTheme.value.legend, fontSize: 10 },
-    top: 0,
-  },
-  xAxis: {
-    type: 'category',
-    data: Array(10).fill(''),
-    axisLine: { show: false },
-    axisTick: { show: false },
-    axisLabel: { show: false },
-  },
-  yAxis: {
-    type: 'value',
-    min: 0,
-    max: 100,
-    interval: 25,
-    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
-    axisLabel: { color: chartTheme.value.axis, fontSize: 10, formatter: '{value}°C' },
-  },
-  series: [
-    {
-      name: 'CPU',
-      data: tempHistory.value.map((i) => i.cpu),
-      type: 'line',
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 5,
-      lineStyle: { color: '#60a5fa', width: 2 },
-      itemStyle: { color: '#60a5fa' },
+const lineChartOption = computed(() => {
+  const samples = visibleTempHistory.value
+  const axis = chartTheme.value.axis
+  const gridLine = chartTheme.value.line
+  return {
+    animation: false,
+    animationDurationUpdate: 0,
+    grid: { top: 28, bottom: 28, left: 44, right: 12, containLabel: false },
+    legend: {
+      data: ['CPU', 'GPU'],
+      icon: 'roundRect',
+      itemWidth: 12,
+      itemHeight: 3,
+      textStyle: { color: chartTheme.value.legend, fontSize: 10 },
+      top: 0,
     },
-    {
-      name: 'GPU',
-      data: tempHistory.value.map((i) => i.gpu),
-      type: 'line',
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 5,
-      lineStyle: { color: '#34d399', width: 2 },
-      itemStyle: { color: '#34d399' },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'line',
+        snap: true,
+        lineStyle: {
+          color: chartTheme.value.cross,
+          width: 1.5,
+        },
+      },
+      backgroundColor: chartTheme.value.tooltipBg,
+      borderColor: chartTheme.value.tooltipBorder,
+      borderWidth: 1,
+      textStyle: { color: chartTheme.value.label, fontSize: 12 },
+      extraCssText: 'box-shadow: none;',
+      formatter: (raw: unknown) => {
+        const items = Array.isArray(raw) ? raw : []
+        const first = items[0] as { dataIndex?: number } | undefined
+        const idx = typeof first?.dataIndex === 'number' ? first.dataIndex : -1
+        const sample = idx >= 0 ? samples[idx] : undefined
+        if (!sample) return ''
+        return [
+          `<div style="font-variant-numeric:tabular-nums;font-size:11px;opacity:.7;margin-bottom:4px">${formatClock(sample.at)}</div>`,
+          `<div style="font-variant-numeric:tabular-nums">CPU: ${formatTemp(sample.cpu)}</div>`,
+          `<div style="font-variant-numeric:tabular-nums">GPU: ${formatTemp(sample.gpu)}</div>`,
+        ].join('')
+      },
     },
-  ],
-}))
+    xAxis: {
+      type: 'category',
+      data: samples.map((s) => formatClock(s.at)),
+      boundaryGap: false,
+      axisLine: { show: true, lineStyle: { color: gridLine, width: 1 } },
+      axisTick: { show: false },
+      axisLabel: {
+        show: true,
+        color: axis,
+        fontSize: 10,
+        hideOverlap: true,
+        formatter: (_value: string, index: number) => {
+          if (samples.length <= 1) return _value
+          const step = Math.max(1, Math.ceil((samples.length - 1) / 4))
+          return index % step === 0 || index === samples.length - 1 ? _value : ''
+        },
+      },
+      splitLine: {
+        show: true,
+        lineStyle: { color: gridLine, type: 'solid', width: 1 },
+      },
+      axisPointer: {
+        show: true,
+        type: 'line',
+        snap: true,
+        lineStyle: { color: chartTheme.value.cross, width: 1.5 },
+        label: { show: false },
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      interval: 20,
+      axisLine: { show: true, lineStyle: { color: gridLine, width: 1 } },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: gridLine, type: 'solid', width: 1 },
+      },
+      splitArea: {
+        show: true,
+        areaStyle: { color: chartTheme.value.band },
+      },
+      axisLabel: { color: axis, fontSize: 10, formatter: '{value}°' },
+    },
+    series: [
+      {
+        name: 'CPU',
+        data: samples.map((i) => i.cpu),
+        type: 'line',
+        smooth: true,
+        showSymbol: samples.length < 24,
+        symbol: 'circle',
+        symbolSize: 6,
+        emphasis: { focus: 'series', itemStyle: { borderWidth: 2 } },
+        lineStyle: { color: '#60a5fa', width: 2 },
+        itemStyle: { color: '#60a5fa' },
+      },
+      {
+        name: 'GPU',
+        data: samples.map((i) => i.gpu),
+        type: 'line',
+        smooth: true,
+        showSymbol: samples.length < 24,
+        symbol: 'circle',
+        symbolSize: 6,
+        emphasis: { focus: 'series', itemStyle: { borderWidth: 2 } },
+        lineStyle: { color: '#34d399', width: 2 },
+        itemStyle: { color: '#34d399' },
+      },
+    ],
+  }
+})
 </script>
 
 <template>
-  <div class="home flex flex-col h-full overflow-hidden">
-    <!-- 状态条: 模式 + 温度 chip + 功耗/风扇/噪音 -->
-    <header class="status-strip">
-      <span class="status-label">Mode</span>
-      <div class="mode-seg" role="tablist" aria-label="性能模式">
-        <button
-          v-for="opt in modeOptions"
-          :key="opt.mode"
-          :class="[
-            'mode-btn',
-            isModeActive('preset', opt.mode) === true ? 'active' : '',
-            isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '',
-          ]"
-          role="tab"
-          :aria-selected="isModeActive('preset', opt.mode) === true"
-          :disabled="modeStore.syncing"
-          @click="selectPreset(opt.mode)"
-        >
-          <component :is="opt.icon" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
-          {{ FIRMWARE_MODE_LABELS[opt.mode] }}
-        </button>
-        <button
-          :class="[
-            'mode-btn',
-            isModeActive('custom') === true ? 'active' : '',
-            isModeActive('custom') === 'pending' ? 'pending' : '',
-          ]"
-          role="tab"
-          :aria-selected="isModeActive('custom') === true"
-          :disabled="modeStore.syncing"
-          @click="selectCustom"
-        >
-          <component :is="SlidersHorizontal" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
-          自定义
-        </button>
-      </div>
-      <div class="temp-pair">
-        <div class="temp-chip" :class="cpuTempN !== null ? cpuTempLevel : ''">
-          <span class="val tnum">{{ cpuTempN !== null ? `${cpuTempN}°C` : '—' }}</span>
-          <span class="tag">CPU</span>
+  <PageShell title="概览" subtitle="查看关键硬件状态，并快速切换性能档位与常用控制。">
+    <div class="home flex flex-col">
+      <!-- 状态条只承载档位选择与硬件观察状态，不重复下方读数 -->
+      <header class="status-strip">
+        <span class="status-label">性能档位</span>
+        <div class="mode-seg" role="tablist" aria-label="性能模式">
+          <button
+            v-for="opt in modeOptions"
+            :key="opt.mode"
+            :class="[
+              'mode-btn',
+              isModeActive('preset', opt.mode) === true ? 'active' : '',
+              isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '',
+            ]"
+            role="tab"
+            :aria-selected="isModeActive('preset', opt.mode) === true"
+            :disabled="modeStore.syncing"
+            @click="selectPreset(opt.mode)"
+          >
+            <component :is="opt.icon" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
+            {{ FIRMWARE_MODE_LABELS[opt.mode] }}
+          </button>
+          <button
+            :class="[
+              'mode-btn',
+              isModeActive('custom') === true ? 'active' : '',
+              isModeActive('custom') === 'pending' ? 'pending' : '',
+            ]"
+            role="tab"
+            title="打开自定义功耗覆盖，具体 SPL/SPPT 在 CPU 页下发"
+            :aria-selected="isModeActive('custom') === true"
+            :disabled="modeStore.syncing"
+            @click="selectCustom"
+          >
+            <component :is="SlidersHorizontal" class="w-3.5 h-3.5 shrink-0" :stroke-width="2" />
+            自定义
+          </button>
         </div>
-        <div class="temp-chip" :class="gpuTempN !== null ? gpuTempLevel : ''">
-          <span class="val tnum">{{ gpuTempN !== null ? `${gpuTempN}°C` : '—' }}</span>
-          <span class="tag">GPU</span>
+        <div class="mode-observed" role="status" aria-live="polite">
+          <span>硬件观察</span>
+          <strong>{{ modeStore.firmwareLabel || '未读取' }}</strong>
+          <em v-if="modeStore.customOverride">自定义覆盖</em>
+          <em v-else-if="modeStore.syncing">确认中</em>
         </div>
-      </div>
-      <div class="status-meta tnum">
-        <span
-          >PWR <b>{{ packagePower }}W</b></span
-        >
-        <span
-          >FAN <b>{{ maxFanRpm }}</b> RPM</span
-        >
-        <span
-          >NOISE <b>{{ noiseLevel }}</b> dBA</span
-        >
-      </div>
-    </header>
+      </header>
 
-    <!-- 内容: 读数机架 -->
-    <div class="content">
-      <div class="readout-grid">
-        <div class="readout">
-          <div class="readout-label">CPU Temp</div>
-          <div class="readout-value tnum" :class="cpuTempN !== null ? cpuTempLevel : ''">
-            <template v-if="cpuTempN !== null">{{ cpuTempN }}<span class="unit">°C</span></template>
-            <span v-else class="unit">—</span>
-          </div>
-          <div class="readout-sub">
-            <div class="meter" :class="cpuTempN !== null ? cpuTempLevel : ''">
-              <i :style="{ width: cpuTempN !== null ? `${Math.min(cpuTempN, 100)}%` : '0' }" />
+      <!-- 内容: 读数机架 -->
+      <div class="content">
+        <div class="readout-grid">
+          <div class="readout">
+            <div class="readout-label">CPU 温度</div>
+            <div class="readout-value tnum" :class="cpuTempN !== null ? cpuTempLevel : ''">
+              <template v-if="cpuTempN !== null"
+                >{{ cpuTempN }}<span class="unit">°C</span></template
+              >
+              <span v-else class="unit">—</span>
             </div>
-            <span>{{ cpuTempN !== null ? LEVEL_LABEL[cpuTempLevel] : '无数据' }}</span>
-          </div>
-        </div>
-        <div class="readout">
-          <div class="readout-label">GPU Temp</div>
-          <div class="readout-value tnum" :class="gpuTempN !== null ? gpuTempLevel : ''">
-            <template v-if="gpuTempN !== null">{{ gpuTempN }}<span class="unit">°C</span></template>
-            <span v-else class="unit">—</span>
-          </div>
-          <div class="readout-sub">
-            <div class="meter" :class="gpuTempN !== null ? gpuTempLevel : ''">
-              <i :style="{ width: gpuTempN !== null ? `${Math.min(gpuTempN, 100)}%` : '0' }" />
+            <div class="readout-sub">
+              <div class="meter" :class="cpuTempN !== null ? cpuTempLevel : ''">
+                <i :style="{ width: cpuTempN !== null ? `${Math.min(cpuTempN, 100)}%` : '0' }" />
+              </div>
+              <span
+                >{{ cpuTempN !== null ? LEVEL_LABEL[cpuTempLevel] : '无数据'
+                }}{{ cpuStale ? ' · 过期' : '' }}</span
+              >
             </div>
-            <span>{{ gpuTempN !== null ? LEVEL_LABEL[gpuTempLevel] : '无数据' }}</span>
           </div>
-        </div>
-        <div class="readout">
-          <div class="readout-label">Fan Max</div>
-          <div class="readout-value tnum">{{ maxFanRpm }}<span class="unit">RPM</span></div>
-          <div class="readout-sub">
-            <div class="meter">
-              <i :style="{ width: `${Math.min((maxFanRpm / 6800) * 100, 100)}%` }" />
+          <div class="readout">
+            <div class="readout-label">GPU 温度</div>
+            <div class="readout-value tnum" :class="gpuTempN !== null ? gpuTempLevel : ''">
+              <template v-if="gpuTempN !== null"
+                >{{ gpuTempN }}<span class="unit">°C</span></template
+              >
+              <span v-else class="unit">—</span>
             </div>
-            <span>CPU+GPU</span>
-          </div>
-        </div>
-        <div class="readout">
-          <div class="readout-label">Package Power</div>
-          <div class="readout-value tnum">{{ packagePower }}<span class="unit">W</span></div>
-          <div class="readout-sub">
-            <div class="meter">
-              <i :style="{ width: `${Math.min((packagePower / 140) * 100, 100)}%` }" />
+            <div class="readout-sub">
+              <div class="meter" :class="gpuTempN !== null ? gpuTempLevel : ''">
+                <i :style="{ width: gpuTempN !== null ? `${Math.min(gpuTempN, 100)}%` : '0' }" />
+              </div>
+              <span
+                >{{ gpuTempN !== null ? LEVEL_LABEL[gpuTempLevel] : '无数据'
+                }}{{ gpuStale ? ' · 过期' : '' }}</span
+              >
             </div>
-            <span>est.</span>
           </div>
-        </div>
-      </div>
-
-      <div class="lower">
-        <section class="panel fan-panel">
-          <div class="panel-head">
-            <h2>Fans & Load</h2>
-            <span class="badge">LIVE</span>
-          </div>
-          <div class="fan-rows">
-            <div class="fan-row">
-              <span class="name">CPU Fan</span>
-              <div class="bar-track">
+          <div class="readout">
+            <div class="readout-label">风扇转速</div>
+            <div class="readout-value tnum">
+              <template v-if="maxFanRpm !== null"
+                >{{ maxFanRpm }}<span class="unit">RPM</span></template
+              >
+              <span v-else class="unit">—</span>
+            </div>
+            <div class="readout-sub">
+              <div class="meter">
                 <i
                   :style="{
-                    width: `${Math.min(((fanSpeedN?.CPUFanSpeed ?? 0) / 6800) * 100, 100)}%`,
+                    width: maxFanRpm !== null ? `${Math.min((maxFanRpm / 6800) * 100, 100)}%` : '0',
                   }"
                 />
               </div>
-              <span class="rpm tnum"
-                >{{ fanAvailable ? (fanSpeedN?.CPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span
-              >
+              <span>{{ fanStale ? '过期' : fanStore.controllerLabel }}</span>
             </div>
-            <div class="fan-row">
-              <span class="name">GPU Fan</span>
-              <div class="bar-track">
+          </div>
+          <div class="readout">
+            <div class="readout-label">封装功耗</div>
+            <div class="readout-value tnum">
+              <template v-if="packagePower !== null"
+                >{{ packagePower }}<span class="unit">W</span></template
+              >
+              <span v-else class="unit">—</span>
+            </div>
+            <div class="readout-sub">
+              <div class="meter">
                 <i
                   :style="{
-                    width: `${Math.min(((fanSpeedN?.GPUFanSpeed ?? 0) / 6800) * 100, 100)}%`,
+                    width:
+                      packagePower !== null ? `${Math.min((packagePower / 140) * 100, 100)}%` : '0',
                   }"
                 />
               </div>
-              <span class="rpm tnum"
-                >{{ fanAvailable ? (fanSpeedN?.GPUFanSpeed ?? 0) : '—' }}<span>RPM</span></span
-              >
-            </div>
-            <div class="fan-row">
-              <span class="name">CPU Use</span>
-              <div class="bar-track">
-                <i :style="{ width: `${cpuUsageN}%` }" />
-              </div>
-              <span class="rpm tnum">{{ cpuUsageN }}<span>%</span></span>
-            </div>
-            <div class="fan-row">
-              <span class="name">GPU Use</span>
-              <div class="bar-track">
-                <i :style="{ width: `${gpuUsageN}%` }" />
-              </div>
-              <span class="rpm tnum">{{ gpuUsageN }}<span>%</span></span>
+              <span>估算 · 非传感器</span>
             </div>
           </div>
-          <div class="noise-line">
-            <span class="num tnum">{{ noiseLevel }}</span>
-            <span class="unit">dBA</span>
-            <span class="lbl">噪音估算</span>
-          </div>
-        </section>
+        </div>
 
-        <section class="panel chart-panel">
-          <div class="panel-head">
-            <h2>Temperature History</h2>
-            <span class="badge">20s</span>
-          </div>
-          <div class="chart-body">
-            <VChart :option="lineChartOption" autoresize />
-          </div>
-        </section>
+        <div class="lower">
+          <section class="panel fan-panel">
+            <div class="panel-head">
+              <h2>运行与控制</h2>
+              <span class="badge">{{ fanStore.controllerLabel }}</span>
+            </div>
+            <div class="fan-rows">
+              <div class="fan-row">
+                <span class="name">CPU 负载</span>
+                <div class="bar-track">
+                  <i :style="{ width: cpuUsageN !== null ? `${cpuUsageN}%` : '0' }" />
+                </div>
+                <span class="rpm tnum"
+                  >{{ cpuUsageN !== null ? cpuUsageN : '—' }}<span>%</span></span
+                >
+              </div>
+              <div class="fan-row">
+                <span class="name">GPU 负载</span>
+                <div class="bar-track">
+                  <i :style="{ width: gpuUsageN !== null ? `${gpuUsageN}%` : '0' }" />
+                </div>
+                <span class="rpm tnum"
+                  >{{ gpuUsageN !== null ? gpuUsageN : '—' }}<span>%</span></span
+                >
+              </div>
+              <div class="quick-actions">
+                <button type="button" @click="pageStore.setPage('cpu')">调整 CPU 参数</button>
+                <button type="button" @click="pageStore.setPage('fan')">管理风扇策略</button>
+              </div>
+            </div>
+          </section>
 
-        <section class="panel sys-panel">
-          <div class="sys-rows">
-            <div class="sys-cell">
-              <span class="k">CPU</span>
-              <span class="v">{{ sysCpuName }}</span>
+          <section class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <h2>温度历史</h2>
+                <p>
+                  CPU 峰值 {{ historySummary.cpuPeak ?? '—' }}° · GPU 峰值
+                  {{ historySummary.gpuPeak ?? '—' }}° · 异常样本 {{ historySummary.abnormal }}
+                </p>
+              </div>
+              <div class="history-range" aria-label="温度历史范围">
+                <button
+                  v-for="option in historyOptions"
+                  :key="option.seconds"
+                  type="button"
+                  :class="{ active: historyWindowSec === option.seconds }"
+                  @click="historyWindowSec = option.seconds"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
             </div>
-            <div class="sys-cell">
-              <span class="k">GPU</span>
-              <span class="v">{{ sysGpuName }}</span>
+            <div class="chart-body">
+              <VChart :option="lineChartOption" autoresize />
             </div>
-            <div class="sys-cell">
-              <span class="k">Memory</span>
-              <span class="v">{{ sysMemory }}</span>
-            </div>
-            <div class="sys-cell">
-              <span class="k">OS</span>
-              <span class="v">{{ sysOs }}</span>
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
     </div>
-  </div>
+  </PageShell>
 </template>
 
 <style scoped lang="scss">
 .home {
   background: var(--bg-app);
+  gap: 12px;
 }
 
 .status-strip {
@@ -522,75 +539,33 @@ const lineChartOption = computed(() => ({
   cursor: wait;
 }
 
-.temp-pair {
-  display: flex;
-  gap: 8px;
-}
-
-.temp-chip {
+.mode-observed {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-sm);
-  font-variant-numeric: tabular-nums;
-  transition:
-    color var(--dur-base) var(--ease-out),
-    background-color var(--dur-base) var(--ease-out);
-
-  .val {
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .tag {
-    font-size: 10px;
-    opacity: 0.75;
-    letter-spacing: 0.04em;
-  }
-
-  &.cool {
-    background: var(--temp-cool-bg);
-    color: var(--temp-cool);
-  }
-
-  &.warm {
-    background: var(--temp-warm-bg);
-    color: var(--temp-warm);
-  }
-
-  &.hot {
-    background: var(--temp-hot-bg);
-    color: var(--temp-hot);
-  }
-
-  &.critical {
-    background: var(--temp-critical-bg);
-    color: var(--temp-critical);
-  }
-}
-
-.status-meta {
   margin-left: auto;
-  display: flex;
-  gap: 18px;
+  gap: 8px;
   font-size: 11px;
   color: var(--weak);
 
-  b {
-    color: var(--muted);
-    font-weight: 500;
+  strong {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  em {
+    font-style: normal;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
   }
 }
 
 .content {
-  flex: 1;
-  padding: 16px 20px 20px;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: auto;
   min-height: 0;
 }
 
@@ -697,10 +672,9 @@ const lineChartOption = computed(() => ({
 }
 
 .lower {
-  flex: 1;
   display: grid;
   grid-template-columns: 1fr 1.2fr;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: minmax(340px, auto);
   gap: 12px;
   min-height: 280px;
 }
@@ -722,11 +696,20 @@ const lineChartOption = computed(() => ({
   border-bottom: 1px solid var(--hair);
 
   h2 {
+    margin: 0;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--muted);
+  }
+
+  p {
+    margin: 4px 0 0;
+    font-size: 10px;
+    color: var(--weak);
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .badge {
@@ -747,11 +730,6 @@ const lineChartOption = computed(() => ({
 .chart-panel {
   grid-column: 2;
   grid-row: 1;
-}
-
-.sys-panel {
-  grid-column: 1 / -1;
-  grid-row: 2;
 }
 
 .fan-row {
@@ -777,6 +755,54 @@ const lineChartOption = computed(() => ({
       color: var(--weak);
       font-weight: 400;
       margin-left: 2px;
+    }
+  }
+}
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px;
+
+  button {
+    flex: 1;
+    height: 32px;
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    font-size: 11px;
+    transition:
+      color var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out);
+
+    &:hover,
+    &:focus-visible {
+      color: var(--accent);
+      border-color: var(--accent-line);
+      background: var(--accent-dim);
+    }
+  }
+}
+
+.history-range {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  background: var(--bg-inset);
+
+  button {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: var(--radius-sm);
+    color: var(--weak);
+    font-size: 10px;
+
+    &.active {
+      color: var(--accent-ink);
+      background: var(--accent);
     }
   }
 }
@@ -825,40 +851,6 @@ const lineChartOption = computed(() => ({
   flex: 1;
   padding: 8px 12px 10px;
   min-height: 160px;
-}
-
-.sys-rows {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.sys-cell {
-  padding: 12px 14px;
-  border-right: 1px solid var(--hair);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-
-  &:last-child {
-    border-right: 0;
-  }
-
-  .k {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--weak);
-    font-weight: 600;
-  }
-
-  .v {
-    font-size: 12px;
-    color: var(--ink);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
 }
 
 .echarts {

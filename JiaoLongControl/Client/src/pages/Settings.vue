@@ -59,14 +59,14 @@ const toggleCards = [
     group: 'system',
     title: 'Fn 性能模式热键',
     description:
-      '接管键盘上的性能模式切换 Fn 键：按下后循环 高性能 → 平衡 → 静音，并在屏幕上方显示 OSD 提示；关闭后保持该键的固件默认行为',
+      '接管键盘上的性能模式切换 Fn 键：按下后循环 狂飙 → 游戏 → 办公，并在屏幕上方显示 OSD 提示；关闭后保持该键的固件默认行为',
     configPath: 'App.HotkeyEnabled',
   },
   {
     group: 'system',
     title: '联动 Windows 电源计划',
     description:
-      '切换性能模式时同步系统电源计划：静音→节电、平衡→平衡、高性能→高性能；关闭后仅改硬件档位，不动 powercfg',
+      '切换性能模式时同步系统电源计划：办公→节电、游戏→平衡、狂飙→高性能；关闭后仅改硬件档位，不动 powercfg',
     configPath: 'App.SyncWindowsPowerPlan',
   },
 ]

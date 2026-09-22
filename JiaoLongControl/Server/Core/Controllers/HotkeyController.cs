@@ -171,11 +171,12 @@ public class HotkeyController : IDisposable
         Logger.Info($"热键镜像性能模式: → {target}");
     }
 
+    // 与前端 FIRMWARE_MODE_LABELS 对齐：办公=Quiet · 游戏=Balance · 狂飙=Performance
     private static string ModeName(SystemPerMode mode) => mode switch
     {
-        SystemPerMode.PerformanceMode => "高性能",
-        SystemPerMode.BalanceMode => "平衡",
-        SystemPerMode.QuietMode => "静音",
+        SystemPerMode.PerformanceMode => "狂飙",
+        SystemPerMode.BalanceMode => "游戏",
+        SystemPerMode.QuietMode => "办公",
         SystemPerMode.CustomMode => "自定义",
         _ => mode.ToString(),
     };

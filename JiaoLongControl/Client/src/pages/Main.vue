@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import RightSide from '@/components/layout/RightSide.vue'
 import TitleBar from '@/components/layout/TitleBar.vue'
-import useStore, { HomeCardType } from '@/stores'
+import ActivityDrawer from '@/components/layout/ActivityDrawer.vue'
+import useStore, { HomeCardType, type PageId } from '@/stores'
 
 const store = useStore()
 
-function onClickMenuItem(key: number) {
-  store.setPage(key)
+function onClickMenuItem(id: PageId) {
+  store.setPage(id)
 }
 
-// 设置固定在轨底, 其余主导航按注册顺序
-const mainNavItems = HomeCardType.filter((item) => item.num !== 8)
-const settingsItem = HomeCardType.find((item) => item.num === 8)
+const mainNavItems = HomeCardType.filter((item) => item.id !== 'settings')
+const settingsItem = HomeCardType.find((item) => item.id === 'settings')
+
+function showDivider(index: number): boolean {
+  if (index <= 0) return false
+  return mainNavItems[index]!.group !== mainNavItems[index - 1]!.group
+}
 </script>
 
 <template>
@@ -19,31 +24,31 @@ const settingsItem = HomeCardType.find((item) => item.num === 8)
     <TitleBar class="z-50" />
 
     <div class="flex flex-1 overflow-hidden">
-      <!-- 60px 图标轨: 仪器面板导航, 替代 240px SaaS 侧栏 -->
       <aside class="rail" aria-label="主导航">
-        <button
-          v-for="item in mainNavItems"
-          :key="item.num"
-          :class="['rail-btn', store.SwitchPages === item.num ? 'active' : '']"
-          :aria-current="store.SwitchPages === item.num ? 'page' : undefined"
-          :aria-label="item.title"
-          @click="onClickMenuItem(Number(item.num))"
-        >
-          <component :is="item.icon" :stroke-width="1.75" class="rail-icon" />
-          <span class="rail-tip">{{ item.title }}</span>
-        </button>
+        <template v-for="(item, index) in mainNavItems" :key="item.id">
+          <div v-if="showDivider(index)" class="rail-div" aria-hidden="true" />
+          <button
+            :class="['rail-btn', store.SwitchPages === item.id ? 'active' : '']"
+            :aria-current="store.SwitchPages === item.id ? 'page' : undefined"
+            :aria-label="item.title"
+            @click="onClickMenuItem(item.id)"
+          >
+            <component :is="item.icon" :stroke-width="1.75" class="rail-icon" />
+            <span class="rail-tip">{{ item.title }}</span>
+          </button>
+        </template>
 
         <div class="rail-spacer" />
 
         <button
           v-if="settingsItem"
-          :class="['rail-btn', store.SwitchPages === 8 ? 'active' : '']"
-          :aria-current="store.SwitchPages === 8 ? 'page' : undefined"
-          aria-label="设置"
-          @click="onClickMenuItem(8)"
+          :class="['rail-btn', store.SwitchPages === 'settings' ? 'active' : '']"
+          :aria-current="store.SwitchPages === 'settings' ? 'page' : undefined"
+          aria-label="系统"
+          @click="onClickMenuItem('settings')"
         >
           <component :is="settingsItem.icon" :stroke-width="1.75" class="rail-icon" />
-          <span class="rail-tip">设置</span>
+          <span class="rail-tip">系统</span>
         </button>
       </aside>
 
@@ -53,6 +58,8 @@ const settingsItem = HomeCardType.find((item) => item.num === 8)
         </div>
       </main>
     </div>
+
+    <ActivityDrawer />
   </div>
 </template>
 
@@ -67,6 +74,13 @@ const settingsItem = HomeCardType.find((item) => item.num === 8)
   gap: 4px;
   background: var(--bg-inset);
   border-right: 1px solid var(--hair);
+}
+
+.rail-div {
+  width: 20px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--hair);
 }
 
 .rail-btn {

@@ -1,8 +1,12 @@
 import { defineStore } from 'pinia'
 import { Fan, AutoFanControl, type FanSpeedInfo } from '@/utils/bridge'
 import { writeGate } from '@/domain/writeGate'
-import { ActivityLog, type ActivityRecord } from '@/domain/operations'
+import { type ActivityRecord } from '@/domain/operations'
+import { useActivityStore } from '@/stores/activity'
+import { useModeStore } from '@/stores/mode'
 import { okReading, staleReading, errorReading, type Reading } from '@/utils/reading'
+import { PollingChannel } from '@/utils/reading'
+import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
 
 /**
  * 风扇策略 store —— 第一个垂直切片（UI重构_最终方案_v4.md §11，Implemented 2026-09-17）。
@@ -20,6 +24,9 @@ import { okReading, staleReading, errorReading, type Reading } from '@/utils/rea
  *
  * 最近活动（v4 §8.5）：200 条环形缓冲，只记用户意图级；
  * 自动风扇曲线 / 温控看门狗的底层写入不得进入（它们的写入不经过本 store）。
+ *
+ * 常驻监控（2026-09-21）：转速与曲线服务状态由 App.vue 全局起调度，
+ * 不再依赖「进入风扇页才开始读」—— 旧实现下切页后曲线页/风扇页读数会假死。
  */
 
 export type FanController = 'auto' | 'manual' | 'curve'
@@ -38,7 +45,14 @@ interface FanState {
   controller: FanController
   /** 状态机判定在途 */
   resolving: boolean
-  /** 最近活动（用户意图级，200 条） */
+  /**
+   * 应用内曲线服务（AutoFanControl）运行状态 —— 四态。
+   * 旧实现只有 isRunning: boolean，读取失败时静默 false，页面于是断言
+   * 「EC 自动控制」，把「读不到」显示成「已确认的事实」（违反 v4 §7）。
+   */
+  curveService: Reading<boolean>
+  /** 常驻调度是否在跑（App.vue 挂载一次） */
+  monitoring: boolean
 }
 
 export const useFanStore = defineStore('fan', {
@@ -46,16 +60,33 @@ export const useFanStore = defineStore('fan', {
     speed: errorReading('尚未读取'),
     controller: 'auto',
     resolving: false,
+    curveService: errorReading('尚未读取'),
+    monitoring: false,
   }),
 
   getters: {
     /** 活动日志（非响应式对象经 getter 暴露快照） */
     activity(): ActivityRecord[] {
-      return activityLog.recent(50)
+      return useActivityStore().recent
     },
     /** 控制权显示名（v4 §10：必须显示「当前由谁控制」） */
     controllerLabel(): string {
       return { auto: 'EC 自动温控', manual: '手动接管', curve: '应用内曲线' }[this.controller]
+    },
+    /**
+     * 自定义风扇控制是否被性能模式挡住。
+     * 固件三档（办公/游戏/狂飙）的风扇曲线由 EC 自己的表管理，应用不介入；
+     * 只有首页切到「自定义」后才允许手动转速与应用内曲线接管。
+     * 注意：即便被挡住，「恢复自动控制」也必须可用 —— 那是安全出口，不是可选项。
+     */
+    customizationLocked(): boolean {
+      const mode = useModeStore()
+      if (mode.customOverride) return false
+      return mode.selected?.kind !== 'custom'
+    },
+    /** 曲线服务是否在跑；读不到返回 null（调用方必须显示「—」而非 false） */
+    curveRunning(): boolean | null {
+      return this.curveService.value
     },
   },
 
@@ -78,15 +109,43 @@ export const useFanStore = defineStore('fan', {
       return false
     },
 
-    /** 判定当前控制权（进入页面时调用；AutoFan.IsRunning 是 curve 的权威） */
+    /** 曲线服务状态四态读取。失败保留旧值转 stale，从未成功转 error。 */
+    async refreshCurveService(): Promise<boolean> {
+      try {
+        const res = await AutoFanControl.IsRunning()
+        if (res.Success && res.Data !== undefined && res.Data !== null) {
+          this.curveService = okReading(!!res.Data)
+          if (res.Data) this.controller = 'curve'
+          return true
+        }
+      } catch {
+        /* 落入 stale/error 分支 */
+      }
+      this.curveService =
+        this.curveService.state === 'ok' || this.curveService.state === 'stale'
+          ? staleReading(this.curveService)
+          : errorReading('曲线服务状态读取失败')
+      return false
+    },
+
+    /** 判定当前控制权（AutoFan.IsRunning 是 curve 的权威） */
     async resolveController(): Promise<void> {
       if (this.resolving) return
       this.resolving = true
       try {
-        const res = await AutoFanControl.IsRunning()
-        if (res.Success && res.Data) {
+        const running = this.curveService.value
+        if (running === true) {
           this.controller = 'curve'
           return
+        }
+        // 曲线服务状态未知时先读一次，不拿 null 当 false 用
+        if (running === null) {
+          const res = await AutoFanControl.IsRunning()
+          if (res.Success && res.Data) {
+            this.curveService = okReading(true)
+            this.controller = 'curve'
+            return
+          }
         }
         // AutoFan 未运行 + 配置里有持久化的手动转速 → 推断 manual（Hypothesis，见文件头）
         const { useConfigStore } = await import('@/stores/config')
@@ -95,6 +154,40 @@ export const useFanStore = defineStore('fan', {
       } finally {
         this.resolving = false
       }
+    },
+
+    /**
+     * 常驻监控：转速 + 曲线服务状态。App.vue 挂载一次，切页不停。
+     * 两个通道共用同一个 PollingChannel 周期，避免各页面再起一套定时器。
+     */
+    startMonitoring(interval = POLL_INTERVAL_FAN_SPEED): () => void {
+      this.stopMonitoring()
+      channel = new PollingChannel(
+        async () => {
+          const [speedOk, curveOk] = await Promise.all([
+            this.refreshSpeed(),
+            this.refreshCurveService(),
+          ])
+          void curveOk
+          return speedOk
+        },
+        { intervalMs: interval },
+      )
+      channel.start()
+      this.monitoring = true
+      return () => this.stopMonitoring()
+    },
+
+    /** 本地已知状态被用户动作改变时同步读数，避免等下一拍轮询才反映 */
+    setCurveService(running: boolean): void {
+      this.curveService = okReading(running)
+      if (running) this.controller = 'curve'
+    },
+
+    stopMonitoring(): void {
+      channel?.dispose()
+      channel = null
+      this.monitoring = false
     },
 
     /** 手动设定转速（C 级可逆）。逐项：writeGate → 停 AutoFan → 写转速 → 保存配置。 */
@@ -107,7 +200,7 @@ export const useFanStore = defineStore('fan', {
       // 闸门（v4 §8.6 前端一致性值域 1500–5800）
       const gate = writeGate.fanManualSpeed(rpm)
       if (!gate.allowed) {
-        activityLog.record({
+        useActivityStore().record({
           source: 'user',
           intent: `风扇手动 ${rpm} RPM`,
           requestedValue: rpm,
@@ -123,7 +216,7 @@ export const useFanStore = defineStore('fan', {
         const stop = await AutoFanControl.Stop()
         steps.push({ label: '停止应用内曲线', ok: !!stop.Success })
         if (!stop.Success) {
-          activityLog.record({
+          useActivityStore().record({
             source: 'user',
             intent: `风扇手动 ${rpm} RPM`,
             requestedValue: rpm,
@@ -140,7 +233,7 @@ export const useFanStore = defineStore('fan', {
       const set = await Fan.SetFanSpeed(rpm)
       steps.push({ label: `设定转速 ${rpm} RPM`, ok: !!set.Success, message: set.Message })
       if (!set.Success) {
-        activityLog.record({
+        useActivityStore().record({
           source: 'user',
           intent: `风扇手动 ${rpm} RPM`,
           requestedValue: rpm,
@@ -158,7 +251,8 @@ export const useFanStore = defineStore('fan', {
       })
 
       this.controller = 'manual'
-      activityLog.record({
+      this.curveService = okReading(false)
+      useActivityStore().record({
         source: 'user',
         intent: `风扇手动 ${rpm} RPM`,
         requestedValue: rpm,
@@ -177,7 +271,7 @@ export const useFanStore = defineStore('fan', {
         const stop = await AutoFanControl.Stop()
         steps.push({ label: '停止应用内曲线', ok: !!stop.Success })
         if (!stop.Success) {
-          activityLog.record({
+          useActivityStore().record({
             source: 'user',
             intent: '恢复自动风扇控制',
             requestedValue: null,
@@ -193,7 +287,7 @@ export const useFanStore = defineStore('fan', {
       const remove = await Fan.RemoveFanSpeed()
       steps.push({ label: '移除手动转速限制', ok: !!remove.Success, message: remove.Message })
       if (!remove.Success) {
-        activityLog.record({
+        useActivityStore().record({
           source: 'user',
           intent: '恢复自动风扇控制',
           requestedValue: null,
@@ -204,7 +298,8 @@ export const useFanStore = defineStore('fan', {
       }
 
       this.controller = 'auto'
-      activityLog.record({
+      this.curveService = okReading(false)
+      useActivityStore().record({
         source: 'user',
         intent: '恢复自动风扇控制',
         requestedValue: null,
@@ -216,5 +311,8 @@ export const useFanStore = defineStore('fan', {
   },
 })
 
-/** 活动环形缓冲：模块级单例（v4 §8.5，200 条，用户意图级） */
-const activityLog = new ActivityLog(200)
+/** PollingChannel 不进 pinia 响应式：模块级单例（App.vue 全局挂载一次） */
+let channel: PollingChannel | null = null
+
+/** 曲线服务轮询间隔：比转速慢一档，够用且不打扰 */
+export const CURVE_SERVICE_INTERVAL = POLL_INTERVAL_SMART_FAN

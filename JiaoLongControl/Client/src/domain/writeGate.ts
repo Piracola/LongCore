@@ -53,14 +53,25 @@ const SMU_RANGES: Record<string, { min: number; max: number }> = {
   VrmCurrentRsmu: { min: 0, max: 300000 },
   EdcLimitMp1: { min: 0, max: 300000 },
   EdcLimitRsmu: { min: 0, max: 300000 },
-  TempLimitMp1: { min: 40, max: 115 },
-  TempLimitRsmu: { min: 40, max: 115 },
+  TempLimitMp1: { min: 40, max: 100 },
+  TempLimitRsmu: { min: 40, max: 100 },
   PboScalar: { min: 1, max: 10 },
   OcClk: { min: -500, max: 500 },
   OcVolt: { min: 0, max: 1550 },
   CurveOptimizerAll: { min: -30, max: 0 },
+  CurveOptimizerPerCore: { min: -30, max: 0 },
+  // Server 端 arg = (coreIdx << 8) | (mhz & 0xFF)：超过 255 会被静默截断，
+  // 写入的将不是用户看到的值 —— 前端必须先把上限卡死在这里。
+  PerCoreOcClk: { min: 0, max: 255 },
 }
 
+/** CPU 功耗参数值域（与 Server CpuPowerData 的 ConfigRange 注解一致） */
+const CPU_POWER_RANGES: Record<string, { min: number; max: number }> = {
+  CpuLongPower: { min: 5, max: 120 },
+  CpuShortPower: { min: 5, max: 120 },
+  CpuTempWall: { min: 40, max: 100 },
+  CpuMaxFrequency: { min: 2000, max: 6000 },
+}
 export interface WriteGateDecision {
   allowed: boolean
   /** 拒绝原因；允许时为 null */
@@ -88,6 +99,19 @@ function check(rule: WriteRule | undefined, value: number): WriteGateDecision {
  * 前端写入闸门。所有 setter 调用前必须过此闸；返回的 reason 应直接展示给用户。
  */
 export const writeGate = {
+  /**
+   * CPU 功耗参数（home 的「自定义」与 CPU 页共用 cpuPowerPlan 下发）。
+   * 之前这条路径完全绕开闸门：滑条 min/max 只挡 UI 输入，挡不住手工改过的
+   * config.yaml 或旧配置残留的越界值 —— 下发前必须同样校验。
+   * 范围与 Server CpuPowerData 的 ConfigRange 属性注解保持一致。
+   */
+  cpuPower(field: string, value: number): WriteGateDecision {
+    const range = CPU_POWER_RANGES[field] ?? null
+    // 睿频是布尔，不走数值值域
+    if (!range) return { allowed: true, reason: null }
+    return check({ range, reversibility: 'b' }, value)
+  },
+
   /** SMU setter（RyzenSmu 页 15+ 项） */
   smu(itemKey: string, value: number): WriteGateDecision {
     const zero = SMU_ZERO_UNWRITABLE.has(itemKey)

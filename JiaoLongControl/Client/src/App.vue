@@ -1,13 +1,30 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useModeStore } from '@/stores/mode'
 import { useSystemInfoStore } from '@/stores/systemInfo'
+import { useFanStore } from '@/stores/fan'
 import { applyTheme } from '@/theme/theme'
 
 const systemInfoStore = useSystemInfoStore()
 const configStore = useConfigStore()
+const modeStore = useModeStore()
+const fanStore = useFanStore()
+
+/** 冷启动读当前固件档位/自定义覆盖，点亮胶囊。桥未就绪时短重试。 */
+async function hydratePerformanceMode() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      if (await modeStore.refreshObserved()) return
+    } catch {
+      /* 桥接尚未就绪 */
+    }
+    await new Promise((r) => setTimeout(r, 250 * (attempt + 1)))
+  }
+}
 
 let stopPolling: () => void
+let stopFanPolling: () => void
 
 function hideAppLoader() {
   const loader = document.getElementById('app-loader')
@@ -22,8 +39,15 @@ function hideAppLoader() {
 function onWebViewMessage(e: MessageEvent) {
   try {
     const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
-    if (data && data.type === 'config-changed') {
+    if (!data || typeof data !== 'object') return
+    const type = (data as { type?: string }).type
+    if (type === 'config-changed') {
       configStore.refresh()
+      return
+    }
+    // Fn / 固件档位变化：任意页面都要同步胶囊，不能只挂在首页
+    if (type === 'mode-changed' && typeof (data as { mode?: unknown }).mode === 'number') {
+      modeStore.applyHotkeyMirror((data as { mode: number }).mode)
     }
   } catch {
     // 来自 WebView2 外部消息, 非 JSON 时忽略
@@ -41,9 +65,12 @@ watch(
 
 onMounted(() => {
   stopPolling = systemInfoStore.startPolling()
+  // 风扇转速 + 曲线服务状态常驻：与温度历史同理，切页不再让读数假死
+  stopFanPolling = fanStore.startMonitoring()
   window.chrome?.webview?.addEventListener('message', onWebViewMessage)
   // 主动拉取一次配置以尽早应用主题(fetchPromise 去重, 不会与页面内请求重复)
   void configStore.fetchConfig()
+  void hydratePerformanceMode()
   setTimeout(() => {
     hideAppLoader()
   }, 300)
@@ -52,6 +79,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (stopPolling) {
     stopPolling()
+  }
+  if (stopFanPolling) {
+    stopFanPolling()
   }
   window.chrome?.webview?.removeEventListener('message', onWebViewMessage)
 })

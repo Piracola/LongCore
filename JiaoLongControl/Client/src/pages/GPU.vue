@@ -2,10 +2,16 @@
 import { ref, computed, onMounted, onUnmounted, type Ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { NvidiaGpu, type OverclockCapabilities } from '@/utils/bridge'
+import { writeGate } from '@/domain/writeGate'
 import { buildSparkline } from '@/utils/chart'
 import { useConfigStore } from '@/stores/config'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { storeToRefs } from 'pinia'
+import { useCompositeWrite } from '@/composables/useCompositeWrite'
+import CompositeSteps from '@/components/common/CompositeSteps.vue'
+import ApplyBar from '@/components/common/ApplyBar.vue'
+import PageShell from '@/components/common/PageShell.vue'
+import { useActivityStore } from '@/stores/activity'
 
 const configStore = useConfigStore()
 const systemInfoStore = useSystemInfoStore()
@@ -22,16 +28,21 @@ const {
   gpuTemp,
   gpuFanSpeed,
 } = storeToRefs(systemInfoStore)
-// 四态读数（v4 §7）：null = 该通道不可显示（error/unavailable），渲染「—」，禁止回退 0
-const num = (v: Ref<number | null>) => computed(() => v.value ?? 0)
-const gpuUtilNum = num(gpuUtilization)
-const gpuMemUtilNum = num(gpuMemoryUtilization)
-const gpuCoreClkNum = num(gpuCoreClock)
-const gpuMemClkNum = num(gpuMemoryClock)
-const gpuTempNum = num(gpuTemp)
-const gpuFanNum = num(gpuFanSpeed)
 const loading = ref(false)
 const showAdvanced = ref(false)
+const composite = useCompositeWrite()
+const activity = useActivityStore()
+// 「还没读到」≠「读不到」。旧实现把首屏的 loading/error 一律判为缺失，
+// 于是在第一次轮询回来之前会闪一张「未检测到独立 GPU」的错卡。
+const gpuMissing = computed(
+  () =>
+    systemInfoStore.gpuStatic.state === 'error' ||
+    systemInfoStore.gpuStatic.state === 'unavailable',
+)
+/** 首屏尚未尝试：显示等待，而不是下结论 */
+const gpuPending = computed(
+  () => systemInfoStore.gpuStatic.state === 'loading' && gpuName.value === null,
+)
 
 if (!configStore.config) {
   await configStore.fetchConfig()
@@ -39,14 +50,15 @@ if (!configStore.config) {
 
 // --- Sparkline Chart History ---
 const historyLength = 20
-const utilHistory = ref<number[]>(Array(historyLength).fill(0))
-const memUtilHistory = ref<number[]>(Array(historyLength).fill(0))
-const coreClockHistory = ref<number[]>(Array(historyLength).fill(0))
-const memClockHistory = ref<number[]>(Array(historyLength).fill(0))
-const tempHistory = ref<number[]>(Array(historyLength).fill(0))
-const fanSpeedHistory = ref<number[]>(Array(historyLength).fill(0))
+const utilHistory = ref<number[]>([])
+const memUtilHistory = ref<number[]>([])
+const coreClockHistory = ref<number[]>([])
+const memClockHistory = ref<number[]>([])
+const tempHistory = ref<number[]>([])
+const fanSpeedHistory = ref<number[]>([])
 
-const updateHistory = (history: Ref<number[]>, value: number, divisor = 1) => {
+const updateHistory = (history: Ref<number[]>, value: number | null, divisor = 1) => {
+  if (value === null || !Number.isFinite(value)) return
   history.value.push(value / divisor)
   if (history.value.length > historyLength) {
     history.value.shift()
@@ -56,20 +68,20 @@ const updateHistory = (history: Ref<number[]>, value: number, divisor = 1) => {
 let unwatch: (() => void) | null = null
 
 onMounted(() => {
-  updateHistory(utilHistory, gpuUtilNum.value)
-  updateHistory(memUtilHistory, gpuMemUtilNum.value)
-  updateHistory(coreClockHistory, gpuCoreClkNum.value, 100)
-  updateHistory(memClockHistory, gpuMemClkNum.value, 100)
-  updateHistory(tempHistory, gpuTempNum.value)
-  updateHistory(fanSpeedHistory, gpuFanNum.value, 100)
+  updateHistory(utilHistory, gpuUtilization.value)
+  updateHistory(memUtilHistory, gpuMemoryUtilization.value)
+  updateHistory(coreClockHistory, gpuCoreClock.value, 100)
+  updateHistory(memClockHistory, gpuMemoryClock.value, 100)
+  updateHistory(tempHistory, gpuTemp.value)
+  updateHistory(fanSpeedHistory, gpuFanSpeed.value, 100)
 
   const stopWatchers = [
-    watch(gpuUtilNum, (v) => updateHistory(utilHistory, v)),
-    watch(gpuMemUtilNum, (v) => updateHistory(memUtilHistory, v)),
-    watch(gpuCoreClkNum, (v) => updateHistory(coreClockHistory, v, 100)),
-    watch(gpuMemClkNum, (v) => updateHistory(memClockHistory, v, 100)),
-    watch(gpuTempNum, (v) => updateHistory(tempHistory, v)),
-    watch(gpuFanNum, (v) => updateHistory(fanSpeedHistory, v, 100)),
+    watch(gpuUtilization, (v) => updateHistory(utilHistory, v)),
+    watch(gpuMemoryUtilization, (v) => updateHistory(memUtilHistory, v)),
+    watch(gpuCoreClock, (v) => updateHistory(coreClockHistory, v, 100)),
+    watch(gpuMemoryClock, (v) => updateHistory(memClockHistory, v, 100)),
+    watch(gpuTemp, (v) => updateHistory(tempHistory, v)),
+    watch(gpuFanSpeed, (v) => updateHistory(fanSpeedHistory, v, 100)),
   ]
   unwatch = () => stopWatchers.forEach((fn) => fn())
 })
@@ -92,6 +104,26 @@ const fanChart = computed(() => generateSvgPath(fanSpeedHistory.value, 40)) // C
 
 // --- Settings and Presets Logic ---
 const GPUData = computed(() => configStore.config?.Gpu)
+
+// 改参数即存盘（只落 config.yaml，不碰硬件）：避免"调完滑条没点应用，重启就没了"。
+// 真正的下发只在「应用」里发生（LockGpuClock / LockMemoryClock）。
+//
+// 关键守卫：本页进入时会按驱动值域**钳制** GpuClock / MemoryClock / PowerLimit，
+// 若不加区分，用户只是浏览页面也会触发 debouncedSave，把他从没动过的值写回配置。
+// 因此只有「用户自己改过」或「明确要求落盘」时才存盘。
+const userTouched = ref(false)
+const clampOnly = ref(false)
+
+watch(
+  () => JSON.stringify(GPUData.value),
+  () => {
+    if (!composite.isBusy.value) composite.reset()
+    if (clampOnly.value) return
+    if (!userTouched.value) return
+    configStore.debouncedSave()
+  },
+)
+
 const gpuClockOffset = ref(0)
 const memClockOffset = ref(0)
 const tempWall = ref(87)
@@ -109,6 +141,9 @@ const ocCaps = ref<OverclockCapabilities>({
 })
 
 async function fetchGpuRanges() {
+  // 钳制期：本函数会把越界的配置值拉回值域内，这属于「按驱动能力修正」，
+  // 不是用户意图，因此期间禁止自动落盘。
+  clampOnly.value = true
   try {
     const [core, mem, power, ocRange, ocOffsets, thermal, caps] = await Promise.all([
       NvidiaGpu.GetGpuCoreClockRange(),
@@ -173,36 +208,101 @@ async function fetchGpuRanges() {
     }
   } catch (err) {
     console.error('Failed to fetch GPU ranges', err)
+  } finally {
+    clampOnly.value = false
   }
 }
-
 await fetchGpuRanges()
 
+const appliedSnapshot = ref(
+  JSON.stringify([GPUData.value?.GpuClock ?? null, GPUData.value?.MemoryClock ?? null]),
+)
+const gpuPendingCount = computed(() => {
+  if (!GPUData.value) return 0
+  const [clock, memory] = JSON.parse(appliedSnapshot.value) as [number | null, number | null]
+  return Number(GPUData.value.GpuClock !== clock) + Number(GPUData.value.MemoryClock !== memory)
+})
+const applyPhase = computed(() => {
+  if (composite.state.value.phase !== 'idle') return composite.state.value.phase
+  return gpuPendingCount.value > 0 ? ('pending' as const) : ('idle' as const)
+})
+const applyStatus = computed(() => {
+  if (applyPhase.value === 'pending') return `待应用 ${gpuPendingCount.value} 项 · 配置已存盘`
+  if (applyPhase.value === 'running') return '正在下发频率设置…'
+  if (applyPhase.value === 'partial') return '部分应用 · 请检查逐项结果'
+  if (applyPhase.value === 'failed') return composite.state.value.message || '应用失败'
+  if (applyPhase.value === 'success') return '命令已接受 · 当前频率以实时监控为准'
+  return '配置已存盘 · 尚未下发新值'
+})
+
 async function handleApplyNormal() {
+  // 前端一致性闸门：NVAPI 侧另有校验，但越界值不该等到驱动才被拒
+  const clockGate = writeGate.gpu(GPUData.value!.GpuClock, {
+    min: coreClockRange.value.Min,
+    max: coreClockRange.value.Max,
+  })
+  const memGate = writeGate.gpu(GPUData.value!.MemoryClock, {
+    min: memClockRange.value.Min,
+    max: memClockRange.value.Max,
+  })
+  if (!clockGate.allowed || !memGate.allowed) {
+    Message.error((!clockGate.allowed ? clockGate.reason : memGate.reason) || '值超出允许范围')
+    return
+  }
+  // 用户明确点了应用：此后允许把当前值落盘
+  userTouched.value = true
   if (!GPUData.value) return
   loading.value = true
-  try {
-    const clockRes = await NvidiaGpu.LockGpuClock(GPUData.value.GpuClock)
-    if (!clockRes.Success) {
-      Message.error(clockRes.Message || 'GPU 频率锁定失败')
-      return
-    }
-    const memClockRes = await NvidiaGpu.LockMemoryClock(GPUData.value.MemoryClock)
-    if (!memClockRes.Success) {
-      Message.error(memClockRes.Message || '显存频率锁定失败')
-      return
-    }
-    const saveRes = await configStore.saveConfig()
-    if (saveRes?.Success) {
-      Message.success('常规设置已应用并保存')
-    } else {
-      Message.error(saveRes?.Message || '设置保存失败')
-    }
-  } catch {
-    Message.error('应用失败，请检查显卡驱动及桥接服务')
-  } finally {
-    loading.value = false
+  const gpuClock = GPUData.value.GpuClock
+  const memClock = GPUData.value.MemoryClock
+  const event = await composite.run({
+    source: 'user',
+    transport: 'nvapi',
+    requestedValue: `${gpuClock}/${memClock} MHz`,
+    reversible: 'b',
+    compensation: '如需改回，请重新设定频率后再次应用',
+    preRead: null,
+    steps: [
+      {
+        label: `锁定核心 ${gpuClock} MHz`,
+        transport: 'nvapi',
+        requestedValue: gpuClock,
+        run: () => NvidiaGpu.LockGpuClock(gpuClock),
+      },
+      {
+        label: `锁定显存 ${memClock} MHz`,
+        transport: 'nvapi',
+        requestedValue: memClock,
+        run: () => NvidiaGpu.LockMemoryClock(memClock),
+      },
+      {
+        label: '保存配置',
+        transport: 'config',
+        requestedValue: 'save',
+        run: async () => {
+          const res = await configStore.saveConfig()
+          return { accepted: !!res?.Success, message: res?.Message }
+        },
+      },
+    ],
+  })
+  const { ok, failed } = composite.summary.value
+  if (event.partialApplied) {
+    Message.warning(`部分应用：${ok} 项已生效，其余未执行。已生效项不会自动撤销。`)
+  } else if (failed) {
+    Message.error(composite.state.value.message || '应用失败')
+  } else {
+    Message.success('常规设置已应用并保存')
+    appliedSnapshot.value = JSON.stringify([gpuClock, memClock])
   }
+  activity.record({
+    source: 'user',
+    intent: `GPU 锁频 ${gpuClock}/${memClock} MHz`,
+    requestedValue: `${gpuClock}/${memClock}`,
+    outcome: event.partialApplied ? 'partial' : failed ? 'failed' : 'applied',
+    reversible: 'b',
+  })
+  loading.value = false
 }
 
 async function handleResetNormal() {
@@ -238,16 +338,35 @@ async function handleResetNormal() {
 </script>
 
 <template>
-  <div v-if="GPUData && gpuName" class="h-full overflow-y-auto text-ink p-6 no-scrollbar">
-    <div class="max-w-[1300px] mx-auto flex flex-col lg:flex-row gap-6">
+  <!-- 首屏尚未读完 GPU 静态信息：显示等待，不得闪「GPU 不可用」的错误卡 -->
+  <PageShell v-if="gpuPending" title="GPU 设置" subtitle="正在读取显卡信息…">
+    <div class="panel-card p-6 max-w-md text-center space-y-3">
+      <a-spin dot />
+      <p class="text-[13px] text-muted leading-relaxed">正在检测独立 GPU 与 NVAPI 通道…</p>
+    </div>
+  </PageShell>
+
+  <PageShell
+    v-else-if="gpuMissing && !gpuName"
+    title="GPU 设置"
+    subtitle="管理独立 GPU 的频率与实时状态。"
+  >
+    <div class="panel-card p-6 max-w-md text-center space-y-2">
+      <h1 class="text-lg font-semibold">GPU 不可用</h1>
+      <p class="text-[13px] text-muted leading-relaxed">
+        未检测到独立 GPU，或 NVAPI
+        通道失败。锁频与遥测仅在独显通路可用；独显/混合输出在系统页，切换后需重启。
+      </p>
+    </div>
+  </PageShell>
+  <PageShell
+    v-else-if="GPUData && gpuName"
+    title="GPU 设置"
+    subtitle="编辑锁频目标并观察实时状态；输出模式切换位于系统设置，重启后生效。"
+  >
+    <div class="w-full flex flex-col lg:flex-row gap-6">
       <!-- ==================== 左中：显卡主要设置区==================== -->
       <div class="flex-1 space-y-6">
-        <!-- 头部标题 -->
-        <div>
-          <h1 class="text-2xl font-bold tracking-wide">GPU 设置</h1>
-          <p class="text-[13px] text-gray-500 mt-1">调整 GPU 的性能参数，发挥显卡最佳性能。</p>
-        </div>
-
         <!-- 1. 选择 GPU 与卡片详。-->
         <div class="panel-card p-5 flex flex-col md:flex-row justify-between gap-6">
           <div class="space-y-3 md:w-1/2">
@@ -323,6 +442,7 @@ async function handleResetNormal() {
                 :min="coreClockRange.Min"
                 :max="coreClockRange.Max"
                 class="w-full"
+                @change="userTouched = true"
               />
             </div>
 
@@ -340,6 +460,7 @@ async function handleResetNormal() {
                 :min="memClockRange.Min"
                 :max="memClockRange.Max"
                 class="w-full"
+                @change="userTouched = true"
               />
             </div>
 
@@ -351,24 +472,30 @@ async function handleResetNormal() {
                 <span class="text-purple-400 font-medium font-mono">{{ GPUData.PowerLimit }} W</span>
               </div>
               <a-slider v-model="GPUData.PowerLimit" :min="powerLimitRange.Min" :max="powerLimitRange.Max" class="w-full"/>
+                @change="userTouched = true"
             </div> -->
           </div>
 
-          <div class="flex justify-between items-center pt-2 border-t border-ink/[0.04]">
+          <div class="flex justify-start items-center pt-2 border-t border-ink/[0.04]">
             <button
               class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"
               @click="handleResetNormal"
             >
               重置
             </button>
-            <button
-              :disabled="loading"
-              class="tok-apply btn-apply text-xs"
-              @click="handleApplyNormal"
-            >
-              {{ loading ? '应用中...' : '应用' }}
-            </button>
           </div>
+          <ApplyBar
+            :phase="applyPhase"
+            :status-text="applyStatus"
+            :busy="loading"
+            apply-label="应用 GPU 设置"
+            @apply="handleApplyNormal"
+          />
+          <CompositeSteps
+            :steps="composite.state.value.steps"
+            :partial="composite.state.value.partialApplied"
+            :message="composite.state.value.message"
+          />
         </div>
 
         <!-- 高级超频面板 -->
@@ -498,7 +625,7 @@ async function handleResetNormal() {
       </div>
 
       <!-- ==================== 右侧：显卡信息与实时监控区==================== -->
-      <div class="w-full lg:w-[360px] shrink-0 space-y-6 lg:pt-[115px]">
+      <div class="w-full lg:w-[360px] shrink-0 space-y-6">
         <!-- 2. 实时监控面板 -->
         <div class="panel-card p-5 space-y-4">
           <div class="flex justify-between items-center">
@@ -512,7 +639,7 @@ async function handleResetNormal() {
               <div>
                 <span class="text-[11px] text-muted block">GPU 使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuUtilization }}
+                  >{{ gpuUtilization != null ? gpuUtilization : '—' }}
                   <span class="text-[10px] text-gray-500 font-bold">%</span></span
                 >
               </div>
@@ -539,7 +666,7 @@ async function handleResetNormal() {
               <div>
                 <span class="text-[11px] text-muted block">显存使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuMemoryUtilization }}
+                  >{{ gpuMemoryUtilization != null ? gpuMemoryUtilization : '—' }}
                   <span class="text-[10px] text-gray-500 font-bold">%</span></span
                 >
               </div>
@@ -566,7 +693,7 @@ async function handleResetNormal() {
               <div>
                 <span class="text-[10px] text-gray-500 block">核心频率</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuCoreClock }}
+                  >{{ gpuCoreClock != null ? gpuCoreClock : '—' }}
                   <span class="text-[9px] text-gray-500 font-bold">MHz</span></span
                 >
               </div>
@@ -587,7 +714,7 @@ async function handleResetNormal() {
               <div>
                 <span class="text-[10px] text-gray-500 block">显存频率</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuMemoryClock }}
+                  >{{ gpuMemoryClock != null ? gpuMemoryClock : '—' }}
                   <span class="text-[9px] text-gray-500 font-bold">MHz</span></span
                 >
               </div>
@@ -608,7 +735,8 @@ async function handleResetNormal() {
               <div>
                 <span class="text-[10px] text-gray-500 block">GPU 温度</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuTemp }} <span class="text-[10px] text-gray-500 font-bold">°C</span></span
+                  >{{ gpuTemp != null ? gpuTemp : '—' }}
+                  <span class="text-[10px] text-gray-500 font-bold">°C</span></span
                 >
               </div>
               <svg
@@ -632,9 +760,9 @@ async function handleResetNormal() {
               class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
             >
               <div>
-                <span class="text-[10px] text-gray-500 block">风扇转。</span>
+                <span class="text-[10px] text-gray-500 block">风扇转速</span>
                 <span class="text-base font-bold text-ink font-mono"
-                  >{{ gpuFanSpeed }}
+                  >{{ gpuFanSpeed != null ? gpuFanSpeed : '—' }}
                   <span class="text-[9px] text-gray-500 font-bold">RPM</span></span
                 >
               </div>
@@ -651,7 +779,7 @@ async function handleResetNormal() {
         </div>
       </div>
     </div>
-  </div>
+  </PageShell>
   <div v-else class="flex items-center justify-center h-full">
     <a-spin dot />
   </div>

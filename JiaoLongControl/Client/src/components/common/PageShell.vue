@@ -25,9 +25,9 @@ defineProps<{
 }
 
 .page-inner {
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 20px 24px 28px;
+  padding: 20px 20px 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;

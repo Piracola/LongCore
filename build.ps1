@@ -1,3 +1,5 @@
+﻿# encoding: UTF-8 with BOM -- required by Windows PowerShell 5.1 (powershell.exe).
+# Saving this file as UTF-8 no-BOM makes build.cmd fail at parse time on Chinese Windows.
 # ============================================================
 # LongCore 一键本地构建
 # 双击 build.cmd 或直接 .\build.ps1  =>  出现菜单, 按数字选择
@@ -48,7 +50,7 @@ $TestProj    = Join-Path $Root 'ProtocolCodecTest\ProtocolCodecTest.csproj'
 $PublishDir  = Join-Path $Root 'bin\publish'
 $WebRoot     = Join-Path $PublishDir 'WebRoot'
 $AssetsJson  = Join-Path $Root 'JiaoLongControl\obj\project.assets.json'
-$HasAssets   = Test-Path $AssetsJson
+$PublishRid  = 'win-x64'
 
 function Write-Step([string]$msg) {
     Write-Host ''
@@ -59,6 +61,24 @@ function Fail([string]$msg) {
     Write-Host ''
     Write-Host "[FAILED] $msg" -ForegroundColor Red
     exit 1
+}
+
+# 资产文件里必须真的含本次 publish 的目标(例: net10.0-windows/win-x64)才能加 --no-restore。
+# 任何不带 -r 的还原(IDE 自动还原 / dotnet restore / dotnet build / CI)都会把
+# project.assets.json 重写成只含 "net10.0-windows" 的版本, 此时 publish --no-restore
+# 会以 NETSDK1047 失败; 只判断"文件存在"就会踩这个坑。
+function Test-AssetsTarget([string]$AssetsPath, [string]$Target) {
+    if (-not $Target) { return $false }
+    if (-not (Test-Path -LiteralPath $AssetsPath)) { return $false }
+    try {
+        $assets = Get-Content -Raw -LiteralPath $AssetsPath | ConvertFrom-Json
+        if ($null -eq $assets.targets) { return $false }
+        return [bool]($assets.targets.PSObject.Properties.Name -contains $Target)
+    }
+    catch {
+        # 资产文件损坏或半写 => 视为不可用, 让 publish 自己还原
+        return $false
+    }
 }
 
 function Show-Menu {
@@ -185,17 +205,27 @@ if ($Frontend) {
 
 # ---------- Backend ----------
 if ($Backend) {
-    Write-Step "Backend: dotnet publish -c Release -r win-x64 -> $PublishDir"
+    Write-Step "Backend: dotnet publish -c Release -r $PublishRid -> $PublishDir"
     $publishArgs = @(
         'publish', $Csproj,
         '-c', 'Release',
-        '-r', 'win-x64',
+        '-r', $PublishRid,
         '--self-contained', 'false',
         '-o', $PublishDir
     )
-    if (-not $Restore -and $HasAssets) {
+    # 目标键 = csproj 的 TargetFramework + RID, 例: net10.0-windows/win-x64
+    $tfm = $null
+    if (Test-Path $Csproj) {
+        $tfmMatch = Select-String -Path $Csproj -Pattern '<TargetFramework>(.+?)</TargetFramework>'
+        if ($tfmMatch) { $tfm = $tfmMatch.Matches[0].Groups[1].Value.Trim() }
+    }
+    $publishTarget = if ($tfm) { "$tfm/$PublishRid" } else { $null }
+    if (-not $Restore -and (Test-AssetsTarget $AssetsJson $publishTarget)) {
         $publishArgs += '--no-restore'
         Write-Host '    (using --no-restore)'
+    }
+    else {
+        Write-Host "    (assets file lacks '$publishTarget', publish will restore)"
     }
     & $Dotnet @publishArgs
     if ($LASTEXITCODE -ne 0) { Fail "dotnet publish failed (exit $LASTEXITCODE)" }

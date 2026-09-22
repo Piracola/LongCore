@@ -55,6 +55,13 @@ function normalize(res: {
   return { accepted: !!res.accepted, message: res.message }
 }
 
+/** 把请求值/回读值格式化为可比对的短字符串（颜色等复合值也能读） */
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined) return '—'
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
+
 export interface CompositeWriteState {
   phase: CompositePhase
   /** 每步实时结果（running 时逐项追加） */
@@ -135,19 +142,29 @@ export function useCompositeWrite() {
           res.accepted && plan.verify
             ? await plan.verify()
             : { verifiable: plan.verify !== undefined, value: null, matches: null }
+
+        // 回读不一致 = 命令被接受但值没生效。旧实现只按 accepted 判成败，
+        // 于是「硬件没吃下颜色」也会显示成功 —— 这正是 v4 §8.4 禁止的伪装成功。
+        // 有可靠 getter 且比对不符时，该步必须判 failed 并给出请求值/实读值。
+        const mismatched = res.accepted && verify.verifiable && verify.matches === false
+        const stepFailed = !res.accepted || mismatched
+        const stepMessage = mismatched
+          ? `已发送但回读不一致：请求 ${formatValue(plan.requestedValue)} / 实读 ${formatValue(verify.value)}`
+          : (res.message ?? null)
+
         steps.push({
           label: plan.label,
           transport: plan.transport,
           requestedValue: plan.requestedValue,
           commandAccepted: res.accepted,
           verify,
-          status: res.accepted ? 'success' : 'failed',
-          message: res.message ?? null,
+          status: stepFailed ? 'failed' : 'success',
+          message: stepMessage,
         })
-        if (!res.accepted) {
+        if (stepFailed) {
           aborted = true
           state.value.failedAt = steps.length - 1
-          state.value.message = res.message || `${plan.label}失败`
+          state.value.message = stepMessage || res.message || `${plan.label}失败`
         }
       } catch (err) {
         steps.push({

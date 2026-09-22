@@ -1,5 +1,9 @@
 <script setup lang="ts">
+import { History } from '@lucide/vue'
 import { Window } from '@/utils/bridge'
+import { useActivityStore } from '@/stores/activity'
+
+const activity = useActivityStore()
 
 function handleMouseDown(e: MouseEvent) {
   if (e.button === 0) {
@@ -16,6 +20,15 @@ function handleMouseDown(e: MouseEvent) {
       <span class="sub">蛟龙 16 Pro · 硬件控制台</span>
     </div>
     <div class="window-actions">
+      <button
+        class="action-btn"
+        :aria-pressed="activity.open"
+        aria-label="最近活动"
+        title="最近活动"
+        @click="activity.toggle"
+      >
+        <History class="w-3.5 h-3.5" :stroke-width="2" />
+      </button>
       <button class="action-btn" aria-label="最小化" @click="Window.Minimize()">
         <icon-minus />
       </button>

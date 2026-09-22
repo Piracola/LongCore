@@ -66,50 +66,27 @@ public class AppSection
     [ConfigComment("界面主题: light / dark / system (默认跟随系统)")]
     public string Theme { get; set; } = "system";
 
-    [ConfigComment("切换性能模式时联动 Windows 电源计划(powercfg): 静音→节电 平衡→平衡 高性能→高性能")]
+    [ConfigComment("切换性能模式时联动 Windows 电源计划(powercfg): 办公→节电 游戏→平衡 狂飙→高性能")]
     public bool SyncWindowsPowerPlan { get; set; } = true;
 
     [ConfigComment("接管 Fn 性能模式热键(HID_EVENT20 事件15): 镜像固件已切换的档位并显示 OSD")]
     public bool HotkeyEnabled { get; set; } = true;
 }
 
+/// <summary>
+/// CPU 功耗参数 —— 只有一套（原"均衡/性能/节能/自定义"四张方案表已废除）。
+///
+/// 语义: 固件三档（办公/游戏/狂飙）由 EC 自己的功耗表管理, 本应用不改其参数;
+/// 用户要自己定功耗就走这一套 —— 首页「自定义」与 CPU 页共用同一份,
+/// 应用时先打开命令 23 自定义功耗子状态, 再下发 SPL/SPPT/温度墙/最大频率。
+/// </summary>
 public class CpuSection
 {
-    [ConfigComment("当前选中档位: default / performance / saving / custom")]
-    public string CpuProfile { get; set; } = "default";
-
-    [ConfigComment("默认档位参数")]
-    public CpuProfileData Default { get; set; } = new()
-    {
-        CpuLongPower = 45, CpuShortPower = 65, CpuTempWall = 80, CpuMaxFrequency = 4400
-    };
-
-    [ConfigComment("高性能档位参数")]
-    public CpuProfileData Performance { get; set; } = new()
-    {
-        CpuLongPower = 65, CpuShortPower = 90, CpuTempWall = 95, CpuMaxFrequency = 4700
-    };
-
-    [ConfigComment("节能档位参数")]
-    public CpuProfileData Saving { get; set; } = new()
-    {
-        CpuLongPower = 30, CpuShortPower = 45, CpuTempWall = 75, CpuMaxFrequency = 3200
-    };
-
-    [ConfigComment("自定义档位参数")]
-    public CpuProfileData Custom { get; set; } = new();
-    
-    [YamlIgnore]
-    public CpuProfileData Active => CpuProfile switch
-    {
-        "performance" => Performance,
-        "saving" => Saving,
-        "custom" => Custom,
-        _ => Default
-    };
+    [ConfigComment("自定义功耗参数（首页「自定义」与 CPU 页共用，持久化保存）")]
+    public CpuPowerData Custom { get; set; } = new();
 }
 
-public class CpuProfileData
+public class CpuPowerData
 {
     [ConfigComment("CPU长期功率限制 (W)")]
     [ConfigRange(5, 120)]
@@ -125,7 +102,7 @@ public class CpuProfileData
 
     [ConfigComment("CPU最大频率 (MHz)")]
     [ConfigRange(2000, 6000)]
-    public uint CpuMaxFrequency { get; set; } = 4800;
+    public uint CpuMaxFrequency { get; set; } = 5400;
 
     [ConfigComment("CPU睿频开关")]
     public bool CpuTurbo { get; set; } = true;

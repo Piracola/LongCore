@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ApplyStateReturn } from '@/composables/useApplyState'
+import type { ApplyPhase, ApplyStateReturn } from '@/composables/useApplyState'
+
+type ExternalApplyPhase = ApplyPhase | 'running' | 'partial' | 'failed'
 
 const props = defineProps<{
-  apply: ApplyStateReturn
+  apply?: ApplyStateReturn
+  phase?: ExternalApplyPhase
+  statusText?: string | null
+  busy?: boolean
+  disabled?: boolean
+  canRetry?: boolean
   applyLabel?: string
   danger?: boolean
 }>()
@@ -13,16 +20,34 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+const currentPhase = computed<ExternalApplyPhase>(
+  () => props.apply?.phase.value ?? props.phase ?? 'idle',
+)
+const currentStatus = computed(
+  () =>
+    props.apply?.statusText.value ||
+    props.statusText ||
+    (currentPhase.value === 'idle' ? '就绪' : ''),
+)
+const isBusy = computed(
+  () => props.apply?.isBusy.value ?? props.busy ?? currentPhase.value === 'running',
+)
+const showRetry = computed(() => props.apply?.canRetry.value ?? props.canRetry ?? false)
+
 const statusClass = computed(() => {
-  switch (props.apply.phase.value) {
+  switch (currentPhase.value) {
     case 'pending':
       return 'st-pending'
     case 'applying':
+    case 'running':
       return 'st-applying'
     case 'success':
       return 'st-success'
     case 'fail':
+    case 'failed':
       return 'st-fail'
+    case 'partial':
+      return 'st-partial'
     default:
       return 'st-idle'
   }
@@ -33,20 +58,18 @@ const statusClass = computed(() => {
   <div class="apply-bar">
     <div class="apply-status" :class="statusClass" role="status" aria-live="polite">
       <span class="dot" aria-hidden="true" />
-      <span class="msg tnum">{{ apply.statusText.value || '就绪' }}</span>
+      <span class="msg tnum">{{ currentStatus }}</span>
     </div>
     <div class="apply-actions">
-      <button v-if="apply.canRetry.value" class="btn-ghost" type="button" @click="emit('retry')">
-        重试
-      </button>
+      <button v-if="showRetry" class="btn-ghost" type="button" @click="emit('retry')">重试</button>
       <button
         class="btn-apply"
         :class="{ 'btn-danger': danger }"
         type="button"
-        :disabled="apply.isBusy.value"
+        :disabled="isBusy || disabled"
         @click="emit('apply')"
       >
-        {{ apply.isBusy.value ? '应用中…' : applyLabel || '应用' }}
+        {{ isBusy ? '应用中…' : applyLabel || '应用' }}
       </button>
     </div>
   </div>
@@ -115,6 +138,14 @@ const statusClass = computed(() => {
 
     .dot {
       background: var(--temp-critical);
+    }
+  }
+
+  &.st-partial {
+    color: var(--temp-hot);
+
+    .dot {
+      background: var(--temp-hot);
     }
   }
 }

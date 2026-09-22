@@ -4,8 +4,8 @@ import { computed } from 'vue'
 
 const store = useStore()
 const currentComponent = computed(() => {
-  for (let i of HomeCardType) {
-    if (i.num === store.$state.SwitchPages) {
+  for (const i of HomeCardType) {
+    if (i.id === store.SwitchPages) {
       return i.page
     }
   }

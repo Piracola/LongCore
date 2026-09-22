@@ -7,8 +7,8 @@ import {
   type FanSpeedInfo,
   type GpuStats,
 } from '@/utils/bridge'
-import { POLL_INTERVAL_SYSTEM_INFO } from '@/constants'
-import { PollingChannel, okReading, type Reading } from '@/utils/reading'
+import { POLL_INTERVAL_SYSTEM_INFO, TEMP_HISTORY_CAP, TEMP_HISTORY_INTERVAL_MS } from '@/constants'
+import { PollingChannel, freshLoading, okReading, type Reading } from '@/utils/reading'
 
 /**
  * 系统信息 store —— 四态读数版（v4 §7，Implemented 2026-09-17）。
@@ -41,6 +41,13 @@ export type GpuStatic = Pick<
   'GpuName' | 'DriverVersion' | 'DriverDate' | 'MemoryTotal' | 'BusWidth'
 >
 
+/** 温度历史采样点。cpu/gpu 为 null 表示该时刻通道不可用，禁止填 0 */
+export interface TempSample {
+  at: number
+  cpu: number | null
+  gpu: number | null
+}
+
 interface SystemInfoState {
   cpuTemp: Reading<number>
   cpuUsage: Reading<number>
@@ -49,6 +56,7 @@ interface SystemInfoState {
   fanSpeed: Reading<FanSpeedInfo>
   gpuStatic: Reading<GpuStatic>
   gpuDynamic: Reading<GpuDynamic>
+  tempHistory: TempSample[]
 }
 
 /** 单通道失败 → 有旧值转 stale，从未成功转 error */
@@ -82,8 +90,9 @@ export const useSystemInfoStore = defineStore('systemInfo', {
     cpuFreq: freshError(),
     cpuVolt: freshError(),
     fanSpeed: freshError(),
-    gpuStatic: freshError(),
-    gpuDynamic: freshError(),
+    gpuStatic: freshLoading(),
+    gpuDynamic: freshLoading(),
+    tempHistory: [],
   }),
 
   getters: {
@@ -223,22 +232,47 @@ export const useSystemInfoStore = defineStore('systemInfo', {
       return { state: 'error', value: null, lastOkAt: null, message }
     },
 
+    /** 把当前读数记入环形缓冲。不额外打硬件，切页也不停。 */
+    snapshotTemps() {
+      this.tempHistory.push({
+        at: Date.now(),
+        cpu: this.cpuTemp.value,
+        gpu: this.gpuDynamic.value?.GpuTemperature ?? null,
+      })
+      if (this.tempHistory.length > TEMP_HISTORY_CAP) {
+        this.tempHistory.splice(0, this.tempHistory.length - TEMP_HISTORY_CAP)
+      }
+    },
+
     /**
      * 启动统一监测（App.vue 全局挂载一次）。返回停止函数，签名与旧版一致。
      */
     startPolling(interval = POLL_INTERVAL_SYSTEM_INFO): () => void {
       this.stopPolling()
-      channel = new PollingChannel(() => this.fetchSystemInfo(), { intervalMs: interval })
+      channel = new PollingChannel(
+        async () => {
+          const ok = await this.fetchSystemInfo()
+          if (this.tempHistory.length === 0) this.snapshotTemps()
+          return ok
+        },
+        { intervalMs: interval },
+      )
       channel.start()
+      historyTimer = setInterval(() => this.snapshotTemps(), TEMP_HISTORY_INTERVAL_MS)
       return () => this.stopPolling()
     },
 
     stopPolling(): void {
       channel?.dispose()
       channel = null
+      if (historyTimer !== null) {
+        clearInterval(historyTimer)
+        historyTimer = null
+      }
     },
   },
 })
 
 /** PollingChannel 不进 pinia 响应式：模块级单例（App.vue 全局挂载一次） */
 let channel: PollingChannel | null = null
+let historyTimer: ReturnType<typeof setInterval> | null = null

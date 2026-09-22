@@ -9,29 +9,30 @@ import Settings_Page from '@/pages/Settings.vue'
 import GPU_Page from '@/pages/GPU.vue'
 import RyzenSmu_Page from '@/pages/RyzenSmu.vue'
 import FanCurveEditor from '@/pages/FanCurveEditor.vue'
+import { migratePageId, type PageGroup, type PageId } from '@/stores/pageIds'
+
+export type { PageGroup, PageId }
+export { migratePageId } from '@/stores/pageIds'
 
 const PAGE_STORAGE_KEY = 'jl-ui-page'
+
 const useStore = defineStore('store', {
   state: () => {
-    // 页面状态持久化：记住上次停留的页面，重启后恢复
-    let initialPage = HomeCardType[0]!.num
+    let initialPage: PageId = 'home'
     try {
-      const saved = Number(localStorage.getItem(PAGE_STORAGE_KEY))
-      if (Number.isInteger(saved) && saved >= 1 && saved <= HomeCardType.length) {
-        initialPage = saved
-      }
+      initialPage = migratePageId(localStorage.getItem(PAGE_STORAGE_KEY))
     } catch {
       /* localStorage 不可用时使用默认页 */
     }
     return {
-      SwitchPages: initialPage,
+      SwitchPages: initialPage as PageId,
     }
   },
   actions: {
-    setPage(page: number) {
+    setPage(page: PageId) {
       this.SwitchPages = page
       try {
-        localStorage.setItem(PAGE_STORAGE_KEY, String(page))
+        localStorage.setItem(PAGE_STORAGE_KEY, page)
       } catch {
         /* 忽略持久化失败 */
       }
@@ -39,30 +40,30 @@ const useStore = defineStore('store', {
   },
 })
 
-// 线性图标统一走 @lucide/vue(组件以 markRaw 包装, 避免响应式代理开销);
-// 隐喻约定: 主页=Home, CPU=Cpu, GPU=MonitorCog, SMU=Microchip, 曲线=ChartLine, 风扇=Fan
 export interface HomeCardItem {
+  id: PageId
   title: string
+  group: PageGroup
   icon: Component
   page: Component
-  num: number
 }
 
-const HomeCardType = (
-  [
-    { title: '主页', icon: markRaw(Home), page: HOME_Page },
-    { title: '中央处理器', icon: markRaw(Cpu), page: CPU_Page },
-    { title: '图形处理器', icon: markRaw(MonitorCog), page: GPU_Page },
-    { title: 'Ryzen SMU', icon: markRaw(Microchip), page: RyzenSmu_Page },
-    { title: '风扇曲线', icon: markRaw(ChartLine), page: FanCurveEditor },
-    { title: '风扇', icon: markRaw(Fan), page: Fan_Page },
-    { title: '键盘', icon: markRaw(Keyboard), page: Keyboard_Page },
-    { title: '设置', icon: markRaw(Settings), page: Settings_Page },
-  ] as Array<Omit<HomeCardItem, 'num'>>
-).map((item, index) => ({
-  ...item,
-  num: index + 1,
-})) as Array<HomeCardItem>
+const HomeCardType: HomeCardItem[] = [
+  { id: 'home', title: '概览', group: 'overview', icon: markRaw(Home), page: HOME_Page },
+  { id: 'cpu', title: 'CPU', group: 'perf', icon: markRaw(Cpu), page: CPU_Page },
+  { id: 'gpu', title: 'GPU', group: 'perf', icon: markRaw(MonitorCog), page: GPU_Page },
+  {
+    id: 'fan-curve',
+    title: '风扇曲线',
+    group: 'thermal',
+    icon: markRaw(ChartLine),
+    page: FanCurveEditor,
+  },
+  { id: 'fan', title: '风扇', group: 'thermal', icon: markRaw(Fan), page: Fan_Page },
+  { id: 'keyboard', title: '灯效', group: 'light', icon: markRaw(Keyboard), page: Keyboard_Page },
+  { id: 'smu', title: 'SMU', group: 'advanced', icon: markRaw(Microchip), page: RyzenSmu_Page },
+  { id: 'settings', title: '系统', group: 'system', icon: markRaw(Settings), page: Settings_Page },
+]
 
 export { HomeCardType }
 export default useStore

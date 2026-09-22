@@ -20,7 +20,8 @@ export interface AppSectionType {
   HotkeyEnabled: boolean
 }
 
-export interface CpuProfileDataType {
+/** CPU 功耗参数 —— 只有一套（原「均衡/性能/节能/自定义」四张方案表已废除） */
+export interface CpuPowerDataType {
   CpuLongPower: number
   CpuShortPower: number
   CpuTempWall: number
@@ -29,11 +30,8 @@ export interface CpuProfileDataType {
 }
 
 export interface CpuSectionType {
-  CpuProfile: string
-  Default: CpuProfileDataType
-  Performance: CpuProfileDataType
-  Saving: CpuProfileDataType
-  Custom: CpuProfileDataType
+  /** 首页「自定义」与 CPU 页共用同一份，随配置持久化 */
+  Custom: CpuPowerDataType
 }
 
 export interface GpuSectionType {

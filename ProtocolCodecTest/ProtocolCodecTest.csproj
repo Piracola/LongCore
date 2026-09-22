@@ -13,6 +13,7 @@
         <!-- 协议层回归测试: 独立编译纯逻辑源文件(同 RyzenSmuControllerTest 约定),
              黄金样本取自 probe/10_wmi_get_probe.txt 真机响应 -->
         <Compile Include="..\JiaoLongControl\Server\Core\Services\ProtocolCodec.cs" Link="Core\ProtocolCodec.cs" />
+        <Compile Include="..\JiaoLongControl\Server\Core\Services\SmuWriteGate.cs" Link="Core\SmuWriteGate.cs" />
         <Compile Include="..\JiaoLongControl\Server\Core\Models\SysEnums.cs" Link="Core\SysEnums.cs" />
     </ItemGroup>
 </Project>
