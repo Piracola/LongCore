@@ -168,14 +168,28 @@ export const useModeStore = defineStore('performanceMode', {
           accepted = !!res.Success
           failure = res.Message || '切换失败'
         }
-        // 命令接受 ≠ 已生效（v4 §8.4）：写后独立重读一次确认
+        // 命令接受 ≠ 已生效（v4 §8.4）：写后独立重读一次确认。
+        // 只有回读后 activeKind 不再是 pending 才算切换成功 —— 否则就是「命令说成功、
+        // 硬件没动」（或读数过期无法确认），必须按失败处理并让调用方显示出来，
+        // 不能返回 true 让 UI 静默弹回原档（第一性原则 2：危险操作不得虚假成功）。
+        let confirmed = false
         if (accepted) {
           await this.refreshObserved()
+          // 判据不能用 activeKind：select() 期间 syncing 恒为真，而 activeKind 把它算成
+          // 'pending' —— 那样连"确实切成功"也会被判成未确认。直接比对回读到的观察值与
+          // 这次请求的目标，才是 v4 §8.4「写后独立重读」的本意。
+          confirmed =
+            sel.kind === 'custom'
+              ? this.customOverride
+              : this.observedFirmware === sel.mode && !this.customOverride
+          if (!confirmed) {
+            this.lastError = '命令已被接受，但回读未确认（读数过期或固件未采纳）'
+          }
         } else {
           this.lastError = failure
         }
         // 失败不留虚假激活态：selected 回滚为观察值
-        if (!accepted || this.activeKind === 'pending') {
+        if (!confirmed) {
           this.syncSelectedFromObserved()
         }
         useActivityStore().record({
@@ -185,10 +199,10 @@ export const useModeStore = defineStore('performanceMode', {
               ? '开启自定义功耗覆盖'
               : `切换性能档位：${FIRMWARE_MODE_LABELS[sel.mode]}`,
           requestedValue: sel.kind === 'custom' ? 'custom' : sel.mode,
-          outcome: accepted ? 'applied' : 'failed',
+          outcome: confirmed ? 'applied' : 'failed',
           reversible: 'b',
         })
-        return accepted
+        return confirmed
       } catch (err) {
         this.lastError = err instanceof Error ? err.message : '切换失败'
         this.syncSelectedFromObserved()

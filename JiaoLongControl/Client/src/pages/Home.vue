@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Message } from '@arco-design/web-vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -12,7 +13,7 @@ import {
 } from 'echarts/components'
 import PageShell from '@/components/common/PageShell.vue'
 import useStore from '@/stores'
-import { useModeStore } from '@/stores/mode'
+import { useModeStore, type ModeSelection } from '@/stores/mode'
 import { FIRMWARE_MODE_LABELS, type FirmwareMode } from '@/domain/modes'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { useFanStore } from '@/stores/fan'
@@ -72,9 +73,12 @@ const modeOptions: Array<{ kind: 'preset'; mode: FirmwareMode; icon: unknown }> 
 ]
 
 function isModeActive(kind: 'preset' | 'custom', mode?: FirmwareMode): boolean | 'pending' {
+  // 激活态只认 store 的 activeKind（此前这里另有一套 selected 判定 —— 两套口径迟早跑偏）。
+  // 'none' = 冷启动且尚未对齐观察值；!selected 兜底是因为 followFirmware 在还没读到档位时
+  // 会把 syncing 置真但不设 selected，此时 activeKind 为 'pending'，直接解引用会崩。
   const active = modeStore.activeKind
-  // 冷启动 selected 尚未对齐时，直接按硬件观察值点亮，避免四个胶囊全空
-  if (!modeStore.selected) {
+  if (active === 'none' || !modeStore.selected) {
+    // 冷启动兜底：按硬件观察值点亮，避免胶囊全空
     if (kind === 'custom') return modeStore.customOverride
     return !modeStore.customOverride && modeStore.observedFirmware === mode
   }
@@ -87,12 +91,39 @@ function isModeActive(kind: 'preset' | 'custom', mode?: FirmwareMode): boolean |
   return active === 'preset' ? true : 'pending'
 }
 
+/**
+ * 切档失败必须被看见。
+ * 此前失败只写进 store 的 lastError 然后回滚 selected —— 胶囊静默弹回原档，
+ * 用户分不清是"没点中"还是"被固件拒绝"（第一性原则 2：不得模糊失败）。
+ * 现在：消费 select() 的返回值 → 弹错误消息 + 该档位显示 3 秒错误态。
+ */
+const failedSelection = ref<string | null>(null)
+let failedTimer: ReturnType<typeof setTimeout> | null = null
+
+function markFailed(key: string) {
+  failedSelection.value = key
+  if (failedTimer) clearTimeout(failedTimer)
+  failedTimer = setTimeout(() => (failedSelection.value = null), 3000)
+}
+
+onBeforeUnmount(() => {
+  if (failedTimer) clearTimeout(failedTimer)
+})
+
+async function runSelection(sel: ModeSelection) {
+  const ok = await modeStore.select(sel)
+  if (ok) return
+  const key = sel.kind === 'custom' ? 'custom' : sel.mode
+  markFailed(key)
+  Message.error(modeStore.lastErrorOr || '切换失败')
+}
+
 async function selectPreset(mode: FirmwareMode) {
-  await modeStore.select({ kind: 'preset', mode })
+  await runSelection({ kind: 'preset', mode })
 }
 
 async function selectCustom() {
-  await modeStore.select({ kind: 'custom' })
+  await runSelection({ kind: 'custom' })
 }
 
 const fanAvailable = computed(
@@ -292,6 +323,7 @@ const lineChartOption = computed(() => {
               'mode-btn',
               isModeActive('preset', opt.mode) === true ? 'active' : '',
               isModeActive('preset', opt.mode) === 'pending' ? 'pending' : '',
+              failedSelection === opt.mode ? 'failed' : '',
             ]"
             role="tab"
             :aria-selected="isModeActive('preset', opt.mode) === true"
@@ -306,6 +338,7 @@ const lineChartOption = computed(() => {
               'mode-btn',
               isModeActive('custom') === true ? 'active' : '',
               isModeActive('custom') === 'pending' ? 'pending' : '',
+              failedSelection === 'custom' ? 'failed' : '',
             ]"
             role="tab"
             title="打开自定义功耗覆盖，具体 SPL/SPPT 在 CPU 页下发"
@@ -322,6 +355,8 @@ const lineChartOption = computed(() => {
           <strong>{{ modeStore.firmwareLabel || '未读取' }}</strong>
           <em v-if="modeStore.customOverride">自定义覆盖</em>
           <em v-else-if="modeStore.syncing">确认中</em>
+          <em v-if="modeStore.observedState === 'stale'" class="warn">读数过期</em>
+          <em v-else-if="modeStore.observedState === 'error'" class="warn">档位未知</em>
         </div>
       </header>
 
@@ -537,6 +572,12 @@ const lineChartOption = computed(() => {
   box-shadow: inset 0 0 0 1px var(--hair-strong);
 }
 
+/* failed = 切换被拒/未确认：显式 3 秒错误态，避免"静默弹回原档" */
+.mode-btn.failed {
+  color: var(--temp-critical);
+  box-shadow: inset 0 0 0 1px var(--temp-critical);
+}
+
 .mode-btn:disabled {
   opacity: 0.6;
   cursor: wait;
@@ -553,6 +594,10 @@ const lineChartOption = computed(() => {
   strong {
     color: var(--ink);
     font-weight: 600;
+  }
+
+  em.warn {
+    color: var(--temp-hot);
   }
 
   em {
