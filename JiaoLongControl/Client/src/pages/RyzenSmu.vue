@@ -12,6 +12,7 @@ import { writeGate } from '@/domain/writeGate'
 import { PollingChannel } from '@/utils/reading'
 import { useCompositeWrite } from '@/composables/useCompositeWrite'
 import CompositeSteps from '@/components/common/CompositeSteps.vue'
+import CollapsibleSection from '@/components/common/CollapsibleSection.vue'
 import ApplyBar from '@/components/common/ApplyBar.vue'
 import PageShell from '@/components/common/PageShell.vue'
 import { useActivityStore } from '@/stores/activity'
@@ -79,13 +80,6 @@ const CONFIG_GROUPS: ConfigGroup[] = [
     ],
   },
   {
-    title: '温度控制 Thermal Control',
-    items: [
-      { label: '温度墙限制 (MP1)', key: 'TempLimitMp1', min: 40, max: 100, unit: '℃' },
-      { label: '温度墙限制 (RSMU)', key: 'TempLimitRsmu', min: 40, max: 100, unit: '℃' },
-    ],
-  },
-  {
     title: '时钟与超频 Clocks & OC',
     items: [
       { label: 'PBO 倍率上限选择', key: 'PboScalar', min: 1, max: 10, unit: 'x' },
@@ -97,14 +91,34 @@ const CONFIG_GROUPS: ConfigGroup[] = [
 
 const limitGroups = CONFIG_GROUPS.filter((g) => !g.title.includes('Clocks'))
 const clockGroup = CONFIG_GROUPS.find((g) => g.title.includes('Clocks'))!
-// 全核 CO 与时钟设置同批提交；滑块本身不再放置独立写入按钮。
-clockGroup.items.push({
-  label: '全核曲线偏移（Curve Optimizer All）',
-  key: 'CurveOptimizerAll',
-  min: -30,
-  max: 0,
-  unit: '',
-})
+/**
+ * 高频单元，置顶且各自独立提交（2026-09-24 机主裁定）。
+ * 在此之前全核 CO 被并进「时钟与超频」组，唯一的提交按钮叫「应用时钟组」，
+ * 控件本体又是只读卡样式 —— 值有没有下发无从判断（v4 第一性原则 1）。
+ */
+const curveGroup: ConfigGroup = {
+  title: '曲线偏移 Curve Offset',
+  items: [
+    {
+      label: '全核曲线偏移（Curve Optimizer All）',
+      key: 'CurveOptimizerAll',
+      min: -30,
+      max: 0,
+      unit: '',
+    },
+  ],
+}
+
+/** 温度墙：同样置顶、独立提交。99 是应用推荐值，不是从固件读回的默认值。 */
+const thermalGroup: ConfigGroup = {
+  title: '温度墙 Thermal Wall',
+  items: [
+    { label: '温度墙限制 (MP1)', key: 'TempLimitMp1', min: 40, max: 100, unit: '℃' },
+    { label: '温度墙限制 (RSMU)', key: 'TempLimitRsmu', min: 40, max: 100, unit: '℃' },
+  ],
+}
+
+const THERMAL_RECOMMENDED = 99
 
 const loadingMap = reactive<Record<string, boolean>>({})
 const composite = useCompositeWrite()
@@ -315,6 +329,66 @@ async function applyPerCore() {
 
 type SmuApplyPhase = 'idle' | 'running' | 'success' | 'partial' | 'failed'
 
+/**
+ * 重置 = 只改表单值并写回配置，不下发硬件（与 CPU 页既有语义一致）。
+ * SMU 无可靠 getter，所以不假装能恢复固件原值。
+ */
+function resetGroupValues(group: ConfigGroup, value: number) {
+  if (!smuData.value) return
+  for (const item of group.items) smuData.value[item.key] = value
+  configStore.debouncedSave()
+  Message.info(`已填入 ${value}${group.items[0]?.unit ?? ''}，点「应用」才会写入固件。`)
+}
+
+/** 收起态必须自己带状态：未读取几项、逐核有几项待应用。 */
+const limitsUnreadCount = computed(
+  () =>
+    limitGroups.reduce(
+      (acc, g) =>
+        acc + g.items.filter((item) => isUnread(item.key, smuData.value?.[item.key])).length,
+      0,
+    ),
+)
+
+const limitsSummary = computed(() => {
+  const total = limitGroups.reduce((acc, g) => acc + g.items.length, 0)
+  return limitsUnreadCount.value > 0
+    ? `未读取 ${limitsUnreadCount.value} · 共 ${total} 项`
+    : `${total} 项已设值`
+})
+
+const limitsTone = computed<'idle' | 'warn'>(() => (limitsUnreadCount.value > 0 ? 'warn' : 'idle'))
+
+const perCoreSummary = computed(() =>
+  perCorePendingCount.value > 0
+    ? `待应用 ${perCorePendingCount.value} 项`
+    : `${perCoreCurve.length} 核 · 无改动`,
+)
+
+const perCoreTone = computed<'idle' | 'pending'>(() =>
+  perCorePendingCount.value > 0 ? 'pending' : 'idle',
+)
+
+/** 逐核清零 = 只改表单并标记待应用，不下发硬件（0 = 不偏移，是本页唯一有效的逐核默认值）。 */
+function resetPerCore() {
+  let changed = 0
+  for (let i = 0; i < perCoreCurve.length; i++) {
+    if (Number(perCoreCurve[i]) !== 0) {
+      perCoreCurve[i] = 0
+      markPerCoreDirty(i, 'curve')
+      changed++
+    }
+    if (Number(perCoreOcClk[i]) !== 0) {
+      perCoreOcClk[i] = 0
+      markPerCoreDirty(i, 'clock')
+      changed++
+    }
+  }
+  Message.info(
+    changed > 0 ? `已清零 ${changed} 项，点「应用逐核设置」才会写入固件。` : '逐核本来就是全 0。',
+  )
+}
+
 function groupApplyPhase(group: ConfigGroup): SmuApplyPhase {
   if (applyingGroup.value === group.title) return 'running'
   if (lastAppliedGroup.value !== group.title) return 'idle'
@@ -478,11 +552,8 @@ function tempClass(celsius: number) {
     <div class="w-full flex flex-col gap-6">
       <div class="smu-split">
         <div class="smu-main space-y-5 min-w-0">
-          <div
-            v-for="group in limitGroups"
-            :key="group.title"
-            class="panel-card p-5 flex flex-col justify-between"
-          >
+          <!-- 高频单元：各自独立提交，置顶（机主裁定 2026-09-24） -->
+          <div v-for="group in [curveGroup, thermalGroup]" :key="group.title" class="panel-card p-5">
             <div>
               <h3 class="section-label">{{ group.title }}</h3>
 
@@ -518,12 +589,79 @@ function tempClass(celsius: number) {
             </div>
 
             <div class="mt-5 pt-4 border-t border-hair space-y-3">
-              <p
-                v-if="group.items.some((item) => isUnread(item.key, smuData?.[item.key]))"
-                class="unread-hint"
-              >
-                「未读取」项当前是 0，先拖动或输入目标值。0 不会下发。
+              <p v-if="group === thermalGroup" class="unread-hint">
+                99 ℃ 是应用推荐值，不是从固件读回的默认值；风扇 98 ℃/10s 保守护栏会先于它动作。
               </p>
+              <ApplyBar
+                :phase="groupApplyPhase(group)"
+                :status-text="groupApplyStatus(group)"
+                :busy="applyingGroup === group.title"
+                :disabled="!!applyingGroup && applyingGroup !== group.title"
+                :apply-label="group === curveGroup ? '应用曲线偏移' : '应用温度墙'"
+                :reset-label="
+                  group === curveGroup ? '重置为 0' : `填入推荐值 ${THERMAL_RECOMMENDED} ℃`
+                "
+                @apply="applyGroup(group)"
+                @reset="resetGroupValues(group, group === curveGroup ? 0 : THERMAL_RECOMMENDED)"
+              />
+              <CompositeSteps
+                v-if="lastAppliedGroup === group.title"
+                :steps="composite.state.value.steps"
+                :partial="composite.state.value.partialApplied"
+                :message="composite.state.value.message"
+              />
+            </div>
+          </div>
+
+          <CollapsibleSection
+            title="高级 · 功耗与电流限制"
+            :summary="limitsSummary"
+            :tone="limitsTone"
+          >
+            <div
+              v-for="(group, gi) in limitGroups"
+              :key="group.title"
+              :class="gi > 0 ? 'mt-6 pt-5 border-t border-hair' : ''"
+            >
+              <h4 class="clocks-kicker">{{ group.title }}</h4>
+
+              <div class="space-y-4">
+                <div v-for="item in group.items" :key="item.key" class="space-y-1.5">
+                  <div class="flex justify-between items-center gap-3 text-xs">
+                    <span class="text-muted min-w-0">{{ item.label }}</span>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span v-if="isUnread(item.key, smuData[item.key])" class="unread-tag"
+                        >未读取</span
+                      >
+                      <a-input-number
+                        v-model="smuData[item.key]"
+                        :min="item.min"
+                        :max="item.max"
+                        :step="item.step || 1"
+                        size="mini"
+                        hide-button
+                        class="smu-num tnum"
+                      />
+                      <span class="text-weak w-7">{{ item.unit }}</span>
+                    </div>
+                  </div>
+                  <a-slider
+                    v-model="smuData[item.key]"
+                    :min="item.min"
+                    :max="item.max"
+                    :step="item.step || 1"
+                    class="w-full"
+                  />
+                </div>
+              </div>
+
+              <div class="mt-5 pt-4 border-t border-hair space-y-3">
+                <p
+                  v-if="group.items.some((item) => isUnread(item.key, smuData?.[item.key]))"
+                  class="unread-hint"
+                >
+                  「未读取」项当前是 0，先拖动或输入目标值。0 不会下发。
+                </p>
               <ApplyBar
                 :phase="groupApplyPhase(group)"
                 :status-text="groupApplyStatus(group)"
@@ -539,7 +677,8 @@ function tempClass(celsius: number) {
                 :message="composite.state.value.message"
               />
             </div>
-          </div>
+            </div>
+          </CollapsibleSection>
         </div>
 
         <aside class="smu-side space-y-5">
@@ -706,36 +845,11 @@ function tempClass(celsius: number) {
             </div>
           </div>
 
-          <div class="panel-card p-5 space-y-2.5">
-            <h2 class="text-sm font-semibold text-ink">名词解释</h2>
-            <div class="text-xs text-muted leading-relaxed space-y-2">
-              <p>
-                <strong>STAPM</strong>：根据设备表面温度自适应调整 CPU
-                功耗分配（在移动端设备和掌机上尤为明显）。
-              </p>
-              <p>
-                <strong>Curve Optimizer (PBO2)</strong>
-                ：通过调校不同内核的电压频率曲线（降压超频），实现在更低温度下达到更高运行频率。
-              </p>
-              <p>
-                <strong>RSMU / MP1</strong>
-                ：芯片内部不同模块的系统级微处理器，两者的限制参数相互协调。
-              </p>
-            </div>
-            <a
-              target="_blank"
-              href="https://www.amd.com/zh-cn/developer/browse-by-resource-type/documentation.html"
-              class="text-xs text-accent hover:opacity-80 cursor-pointer pt-1 inline-flex items-center font-medium transition-opacity"
-            >
-              参考 AMD PBO 手册
-            </a>
-          </div>
         </aside>
       </div>
 
-      <section class="panel-card p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h3 class="section-label !mb-0">时钟、超频与逐核</h3>
+      <CollapsibleSection title="时钟、超频与逐核" :summary="perCoreSummary" :tone="perCoreTone">
+        <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
           <div class="flex items-center gap-2">
             <span class="text-[11px] font-medium text-weak uppercase">Cores</span>
             <a-input-number
@@ -753,7 +867,7 @@ function tempClass(celsius: number) {
           <h4 class="clocks-kicker">{{ clockGroup.title }}</h4>
           <div class="clocks-grid">
             <div
-              v-for="item in clockGroup.items.filter((entry) => entry.key !== 'CurveOptimizerAll')"
+              v-for="item in clockGroup.items"
               :key="item.key"
               class="space-y-1.5"
             >
@@ -813,16 +927,6 @@ function tempClass(celsius: number) {
           />
         </div>
 
-        <div class="bg-inset border border-hair p-3.5 rounded-lg mb-5">
-          <div class="flex justify-between items-center mb-1 text-xs">
-            <span class="font-semibold text-ink">全核曲线偏移（Curve Optimizer All）</span>
-            <span class="tnum text-accent font-semibold">{{ smuData.CurveOptimizerAll }}</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <a-slider v-model="smuData.CurveOptimizerAll" :min="-30" :max="0" class="flex-1" />
-          </div>
-        </div>
-
         <div class="core-grid">
           <div v-for="(_, index) in perCoreCurve" :key="index" class="core-card">
             <div class="core-id">CORE {{ String(index).padStart(2, '0') }}</div>
@@ -866,9 +970,35 @@ function tempClass(celsius: number) {
             perCorePendingCount === 0 || (!!applyingGroup && applyingGroup !== perCoreGroup.title)
           "
           apply-label="应用逐核设置"
+          reset-label="全部清零"
           @apply="applyPerCore"
+          @reset="resetPerCore"
         />
-      </section>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="名词解释与参考">
+        <div class="text-xs text-muted leading-relaxed space-y-2">
+          <p>
+            <strong>STAPM</strong>：根据设备表面温度自适应调整 CPU
+            功耗分配（在移动端设备和掌机上尤为明显）。
+          </p>
+          <p>
+            <strong>Curve Optimizer (PBO2)</strong>
+            ：通过调校不同内核的电压频率曲线（降压超频），实现在更低温度下达到更高运行频率。
+          </p>
+          <p>
+            <strong>RSMU / MP1</strong>
+            ：芯片内部不同模块的系统级微处理器，两者的限制参数相互协调。
+          </p>
+        </div>
+        <a
+          target="_blank"
+          href="https://www.amd.com/zh-cn/developer/browse-by-resource-type/documentation.html"
+          class="text-xs text-accent hover:opacity-80 cursor-pointer pt-1 inline-flex items-center font-medium transition-opacity"
+        >
+          参考 AMD PBO 手册
+        </a>
+      </CollapsibleSection>
     </div>
   </PageShell>
   <div v-else class="flex items-center justify-center h-full">

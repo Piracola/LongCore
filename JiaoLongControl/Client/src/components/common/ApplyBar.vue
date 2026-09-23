@@ -12,12 +12,15 @@ const props = defineProps<{
   disabled?: boolean
   canRetry?: boolean
   applyLabel?: string
+  /** 传了才渲染「重置」按钮；重置语义由调用方定义（本组件不下发任何东西） */
+  resetLabel?: string
   danger?: boolean
 }>()
 
 const emit = defineEmits<{
   apply: []
   retry: []
+  reset: []
 }>()
 
 const currentPhase = computed<ExternalApplyPhase>(
@@ -62,6 +65,15 @@ const statusClass = computed(() => {
     </div>
     <div class="apply-actions">
       <button v-if="showRetry" class="btn-ghost" type="button" @click="emit('retry')">重试</button>
+      <button
+        v-if="resetLabel"
+        class="btn-ghost"
+        type="button"
+        :disabled="isBusy || disabled"
+        @click="emit('reset')"
+      >
+        {{ resetLabel }}
+      </button>
       <button
         class="btn-apply"
         :class="{ 'btn-danger': danger }"
