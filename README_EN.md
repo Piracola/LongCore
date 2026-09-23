@@ -30,41 +30,66 @@ and ACPI/WMI layer directly, and adds safety guardrails on top of what the stock
 ## Features
 
 ### CPU
+
 - Power limits — SPL / SPPT, AC/DC split, max frequency, turbo toggle
 - Temperature wall — 60 °C to 105 °C
 - Ryzen SMU: Curve Optimizer (all-core / per-core), PBO scalar, clocks & voltage
 
 ### GPU
+
 - NVIDIA overclock (core/memory offset) via NVAPI
 - Discrete-only / Hybrid graphics mode switching (requires reboot)
 
 ### Fan
+
 - Custom fan curves (separate CPU/GPU or merged), unit = 100 RPM per step
-- Smart auto-fan with cross-cooling algorithm, ramp-rate limiting and hysteresis
+- Smart auto-fan with dual temperature trackers (fast attack, slow release) and a
+  temperature-domain hysteresis band, so fan speed does not chase 1 °C sensor jitter
 - **EC write guardrails** — address whitelist, redundant-write throttling, and a
   crash watchdog that restores automatic fan control after an abnormal exit
+- Manual speed range 1500–5800 RPM, sharing one source of truth with the driver guardrail
+
+> **Relationship to the EC firmware (important)**: under the three firmware presets
+> (Office / Gaming / Beast) the EC's own thermal table keeps the fans very low at light load
+> and only steps up near the temperature wall (95 °C by default) — its shape cannot be changed
+> from software. **The in-app curve takeover therefore works in all three presets too**, and the
+> toggle lives on the fan-curve page; switching to "Custom" first is not required. Once taken
+> over, the `0xB20` manual mask is set and the EC's own thermal control is bypassed, so the
+> fallbacks become `ThermalWatchdog` (forces 5800 RPM at 98 °C for 10 s) and `EcGuard`
+> (restores EC auto control on the next launch after a crash). Turning the curve toggle off,
+> or applying a manual speed, hands control back to the EC.
+
+### Logging
+
+- **Adjustable in Settings** (applied on save): verbosity, whether to log individual hardware
+  reads, and the write interval. Warnings and errors are always written immediately.
+- **Quieter by default**: only temperature control, protective actions and errors are logged,
+  so log files are roughly one hundredth of their former size. Switch to "Detailed" temporarily
+  when reporting a problem.
 
 ### Performance modes & hotkeys
+
 - Four-state pill switch: Performance / Balance / Quiet / Custom (custom SPL/SPPT overlay)
 - Windows power plan follows the selected mode (configurable, via `powercfg`)
 - **Fn hotkey takeover** — the chassis performance key cycles modes and shows an on-screen
   display; other Fn keys keep firmware default behavior (configurable)
 
 ### UI
+
 - Redesigned single-line status banner with inline mode pills (background video removed)
 - Temperature semantic color scale: ≤70 °C blue → 70–80 °C cyan → 80–90 °C orange → >90 °C red
 - Lucide line-icon set, design tokens, dark/light themes synchronized into Arco Design
 
 ## Supported hardware
 
-| Component | Tested |
-|---|---|
-| Model | MECHREVO Jiaolong 16 Pro 2023 (MRID6), BIOS MRID6_23_V33 |
-| CPU | AMD Ryzen 9 7945HX |
-| GPU | NVIDIA RTX 4060 (laptop) |
-| EC | Chip ID 0x55 family, index protocol at ports 0x4E/0x4F |
+| Component | Tested                                                   |
+| --------- | -------------------------------------------------------- |
+| Model     | MECHREVO Jiaolong 16 Pro 2023 (MRID6), BIOS MRID6_23_V33 |
+| CPU       | AMD Ryzen 9 7945HX                                       |
+| GPU       | NVIDIA RTX 4060 (laptop)                                 |
+| EC        | Chip ID 0x55 family, index protocol at ports 0x4E/0x4F   |
 
-Other Jiaolong 16 Pro [2023] variants are *expected* to work but are untested.
+Other Jiaolong 16 Pro [2023] variants are _expected_ to work but are untested.
 The WMI interface is model-specific (`MICommonInterface.InstanceName='ACPI\PNP0C14\MIFS_0'`);
 on unsupported machines the app starts with monitoring degraded and hardware writes disabled.
 See [SUPPORTED_HARDWARE.md](docs/SUPPORTED_HARDWARE.md) before use.
@@ -94,11 +119,11 @@ CI runs the same checks on GitHub Actions (`.github/workflows/ci.yml`).
 
 This is a **single git root** holding both the app and the research layer:
 
-| Path | Contents |
-|---|---|
-| `JiaoLongControl/Client/` | Vue 3 frontend (Vite + Arco + ECharts + Pinia) |
-| `JiaoLongControl/Server/` | .NET WPF host (WebView2 bridge / WMI / EC / SMU) |
-| `installer/` | Inno Setup packaging scripts |
+| Path                              | Contents                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `JiaoLongControl/Client/`         | Vue 3 frontend (Vite + Arco + ECharts + Pinia)                                                          |
+| `JiaoLongControl/Server/`         | .NET WPF host (WebView2 bridge / WMI / EC / SMU)                                                        |
+| `installer/`                      | Inno Setup packaging scripts                                                                            |
 | [`research/`](research/README.md) | **Protocol research layer**: reverse-engineering, hardware probe data, upstream audit, decision records |
 
 The research layer was formerly a separate repository; it was merged here in 2026-09 with **full history preserved**.
