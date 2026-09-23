@@ -44,10 +44,30 @@ export interface GpuSectionType {
 }
 
 export interface FanSectionType {
+  /** 应用内风扇曲线总开关(跨重启记住用户意图; 关闭则交还 EC 固件温控) */
+  Enabled: boolean
+  /** 两风扇同转速, 消除不同转速产生的拍频调制 */
   FanCurveMerge: boolean
   ManualFanSpeed: number
+  /** 升温跟踪时间常数 (秒, 3~60): 越小跟随越快 */
+  TempAttackS: number
+  /** 降温跟踪时间常数 (秒, 10~300): 越大风扇在高转速保持越久 */
+  TempReleaseS: number
+  /** 温度不灵敏带 (℃, 0~15): 温度变化不足此值时不调整转速 */
+  TempHysteresisC: number
   CpuFanCurve: FanPoint[]
   GpuFanCurve: FanPoint[]
+}
+
+export type LogLevelName = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'OFF'
+
+export interface LogSectionType {
+  /** 最低记录级别 */
+  Level: LogLevelName
+  /** 记录每次数据读取/命令结果 (日志体积的 98% 来源) */
+  CommandDebug: boolean
+  /** 攒批落盘间隔 (秒): 0=每条立即写盘 */
+  FlushIntervalS: number
 }
 
 export interface SmuSectionType {
@@ -78,4 +98,5 @@ export interface JiaoLongConfigType {
   Gpu: GpuSectionType
   Fan: FanSectionType
   Smu: SmuSectionType
+  Log: LogSectionType
 }

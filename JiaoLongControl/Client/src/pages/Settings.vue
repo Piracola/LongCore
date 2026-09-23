@@ -5,6 +5,8 @@ import GPUDirectConnection from './Settings/components/GPUDirectConnection.vue'
 import PawnIODriverMode from './Settings/components/PawnIODriverMode.vue'
 import ThemeSetting from './Settings/components/ThemeSetting.vue'
 import BootAutoStart from './Settings/components/BootAutoStart.vue'
+import FanBehavior from './Settings/components/FanBehavior.vue'
+import LogSettings from './Settings/components/LogSettings.vue'
 import PageShell from '@/components/common/PageShell.vue'
 
 const toggleCards = [
@@ -112,6 +114,7 @@ function inGroup(group: string) {
           :description="card.description"
           :config-path="card.configPath"
         />
+        <FanBehavior />
       </section>
 
       <section class="space-y-3">
@@ -123,6 +126,11 @@ function inGroup(group: string) {
           :description="card.description"
           :config-path="card.configPath"
         />
+      </section>
+
+      <section class="space-y-3">
+        <h2 class="group-title">日志</h2>
+        <LogSettings />
       </section>
 
       <section class="space-y-3">
@@ -172,6 +180,12 @@ function inGroup(group: string) {
 }
 .settings-stack > section:nth-child(6) {
   animation-delay: 200ms;
+}
+.settings-stack > section:nth-child(7) {
+  animation-delay: 240ms;
+}
+.settings-stack > section:nth-child(8) {
+  animation-delay: 280ms;
 }
 
 @keyframes settings-card-in {

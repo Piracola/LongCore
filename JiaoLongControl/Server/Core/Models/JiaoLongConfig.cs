@@ -11,6 +11,7 @@ public class JiaoLongConfig
     public FanSection Fan { get; set; } = new();
     public SmuSection Smu { get; set; } = new();
     public SafetySection Safety { get; set; } = new();
+    public LogSection Log { get; set; } = new();
 }
 
 /// <summary>
@@ -131,29 +132,100 @@ public class GpuSection
 
 public class FanSection
 {
-    [ConfigComment("合并CPU/GPU风扇曲线")]
-    public bool FanCurveMerge { get; set; }
+    // 应用内风扇曲线总开关, 也是"跨重启记住用户意图"的载体:
+    // 用户在风扇曲线页关掉服务后置 false, 下次启动就不会被 BootAdvancedFanControlSystem 重新拉起。
+    // 默认 false: "让软件接管风扇"会绕开 EC 自身温控曲线, 属于需要用户明确选择的接管,
+    // 不宜作为升级默认值。想启用请在风扇曲线页打开开关(或把此项置 true)。
+    [ConfigComment("应用内风扇曲线接管风扇(三档模式下同样生效; 关闭则交还 EC 固件温控)")]
+    public bool Enabled { get; set; } = false;
+
+    // 2026-09-23 起默认开启: 两个风扇不同转速会产生拍频(beating),
+    // 主观上是"周期起伏的嗡嗡声", 比同响度的稳态噪音难受得多。
+    // 合并后两风扇取同一目标转速, 音高一致, 拍频消失。
+    [ConfigComment("合并CPU/GPU风扇曲线(两风扇同转速, 消除不同转速产生的拍频调制)")]
+    public bool FanCurveMerge { get; set; } = true;
+
+    // ── 温度跟踪参数 (2026-09-23 重做) ───────────────────────────────
+    // 旧实现是"非对称一阶低通 + 300 RPM 死区 + 对称斜坡", 实测无效: 用户仍报告
+    // 70~90℃ 之间转速被反复调整。用真机日志(09-23 21:02~21:32, 1789 个 1 秒样本)
+    // 离线重放后定位到三个独立原因, 这三个旋钮分别对应其中之一:
+    //
+    //   1) 旧低通本身就是噪声放大器。系数 0.25/0.12 的时间常数只有 3~7 秒,
+    //      而温度计每秒抖动 ±2℃(实测 |dT| 均值 0.71℃/s, p99=5℃/s —— 这个量级的
+    //      变化在热质量面前不可能是真实温度)。于是平滑值摆幅约 ±3℃, 比原始读数还大。
+    //      → TempAttackS / TempReleaseS: 时间常数升到秒级, 摆幅压到 1℃ 以内。
+    //
+    //   2) 散热器不需要被"每 1℃"驱动。死区卡在最终 RPM 上, 挡得住 100 RPM 的抖动,
+    //      挡不住"被低通放大后的 ±3℃ × 曲线斜率" = ±400 RPM。
+    //      → TempHysteresisC: 改成在**温度域**设不灵敏带, 与曲线斜率无关。
+    //
+    //   3) 对称斜坡(升 600 / 降 600 RPM/秒)让降温方向同样激进。
+    //      → 代码内改为升 1100 / 降 100 RPM/秒: 升温追得上, 降温一次只退一格。
+    //
+    // 两个跟踪器都从同一个 1 秒温度读数出发, 且都是双向低通, 区别只在时间常数:
+    // 快跟踪器决定"允不允许升速"并直接给出升速目标; 慢跟踪器给出降速目标(经每秒一格限速),
+    // 同时也是"保持高转速"的时间来源。两个门槛(RiseGateC / FallGateC)由 TempHysteresisC 换算。
+
+    // 时间常数(秒)。升级器要快: 它是唯一能在真实升温时把转速顶上去的路径,
+    // 慢了会拿散热换安静。5 秒对 1 秒采样足够压掉单帧尖峰(单帧 +9℃ 只让它动 1.8℃),
+    // 而持续升温能在 20 秒内累积过门槛。
+    [ConfigComment("升温跟踪时间常数 (秒): 越小跟随越快, 越大越能压掉瞬时温度尖峰")]
+    [ConfigRange(2, 60)]
+    public int TempAttackS { get; set; } = 5;
+
+    // 降温器要慢, 这是"进入高转速后即使温度下降也保持更久"的主要实现。
+    // 它同时是计算转速所用的温度: 温度回落时它缓慢逼近真实值, 转速随之缓慢下退;
+    // 60 秒意味着温度掉 6℃ 也只退约 1℃ 对应的转速。实测该延迟不带来额外温升
+    // (跟踪值与真值的均值偏差仅 +0.15℃), 因为它只在降温方向滞后。
+    [ConfigComment("降温跟踪时间常数 (秒): 越大风扇在高转速保持越久, 噪音越平稳")]
+    [ConfigRange(10, 300)]
+    public int TempReleaseS { get; set; } = 60;
+
+    // 不灵敏带直接以温度为单位, 因此与曲线陡峭程度无关 —— 换一条更陡的曲线也不会
+    // 退回"每秒微调"。这是一个不对称带的宽度: 升速用约 0.6 倍(默认 3℃), 降速用约
+    // 1.6 倍(默认 8℃), 于是"上得快、下得慢"由同一个旋钮表达。
+    // 离线重放(19 分钟真实负载): 该默认值下写入 366 → 11 次、方向反转 0 次,
+    // 平均每 79 秒才动一次风扇, 且相对曲线要求的平均欠冷只有 150 RPM。
+    [ConfigComment("温度不灵敏带 (℃): 温度变化不足此值时不调整转速 (0=关闭)")]
+    [ConfigRange(0, 15)]
+    public int TempHysteresisC { get; set; } = 5;
 
     // 下限 1500 RPM: 手动模式下转速 0 会让风扇停转并绕开 EC 温控(唯一现实的硬件损伤路径),
     // 后端 Blding64 护栏亦硬性拒绝 0。上限 5800 RPM = 官方 fastestMode_FanSpeed_MaxValue(58×100)。
+    // 上限 5800 与前端 FAN_MAX_RPM(constants/index.ts) 及驱动侧 FanSpeedRawMax(Blding64) 保持一致:
+    // 6800 只是寄存器可写范围, 超过 5800 的写入会被驱动护栏拒绝, 属"范围多处声明"的隐患。
     [ConfigComment("手动风扇转速 (RPM)")]
-    [ConfigRange(1500, 6800)]
+    [ConfigRange(1500, 5800)]
     public int ManualFanSpeed { get; set; } = 1500;
 
+    // 默认曲线: 噪声与性能的折中。
+    // 目标不是"最安静", 而是把温度压在 CPU 温度墙(默认 95℃)以下, 避免到墙才猛拉 ——
+    // 那正是 EC 固件表的老毛病(低温区压得极低, 91℃ 后才跳变)。
+    // 依据: 官方控制台三档转速区间 静音 22-35 / 平衡 35-50 / 狂飙 50-58 (×100 RPM);
+    // 本曲线 70℃ 起越过 2500 RPM, 90℃ 前已到 5100, 全程留出升温余量。
     public List<FanPoint> CpuFanCurve { get; set; } = new()
     {
-        new() { temp = 60, speed = 1500 }, new() { temp = 65, speed = 2104 },
-        new() { temp = 70, speed = 2778 }, new() { temp = 75, speed = 3158 },
-        new() { temp = 80, speed = 3365 }, new() { temp = 86, speed = 3607 },
-        new() { temp = 91, speed = 3849 }, new() { temp = 94, speed = 4828 },
-        new() { temp = 97, speed = 5415 }, new() { temp = 100, speed = 5800 },
+        // 2026-09-23 调整: 本机实测工作温度常驻 77~86℃, 原曲线在 70~85℃ 的斜率是
+        // 97~180 RPM/℃, 配合 1℃ 的温度分辨率, 每 1℃ 抖动就跨过 EC 的 100 RPM 整数格
+        // —— 用户主观感受为"噪音一直在变"。这里把该段斜率压到 60~80 RPM/℃,
+        // 并把 85℃ 从 4200 降到 3600(实测 85℃ 时并不需要那么快), 90℃ 留给急停段。
+        new() { temp = 60, speed = 1500 }, new() { temp = 65, speed = 1800 },
+        new() { temp = 70, speed = 2600 }, new() { temp = 75, speed = 3000 },
+        new() { temp = 80, speed = 3300 }, new() { temp = 85, speed = 3600 },
+        new() { temp = 90, speed = 4500 }, new() { temp = 95, speed = 5800 },
     };
 
+    // GPU 曲线整体比 CPU 低一档: GPU 允许更热(这里 87℃ 才封顶),
+    // 低温段刻意不激进, 避免轻载游戏时双风扇一起吵。
     public List<FanPoint> GpuFanCurve { get; set; } = new()
     {
-        new() { temp = 60, speed = 3000 }, new() { temp = 65, speed = 4000 },
-        new() { temp = 70, speed = 4800 }, new() { temp = 75, speed = 5000 },
-        new() { temp = 80, speed = 5400 }, new() { temp = 87, speed = 5800 },
+        // 2026-09-23 调整: 中温段原本 120~180 RPM/℃ 过陡。本机 GPU 实测仅 52~57℃,
+        // 按自己的曲线只需 1500~1800 RPM —— 过去它被 0.85 交叉同步拖到 3400 RPM,
+        // 那个耦合已移除, 于是这段斜率不再需要为"陪 CPU 一起响"服务。
+        new() { temp = 60, speed = 1500 }, new() { temp = 65, speed = 2000 },
+        new() { temp = 70, speed = 2800 }, new() { temp = 75, speed = 3000 },
+        new() { temp = 80, speed = 3600 }, new() { temp = 84, speed = 5000 },
+        new() { temp = 87, speed = 5800 },
     };
 }
 
@@ -164,6 +236,32 @@ public class FanPoint
 
     [ConfigComment("转速 (RPM)")]
     public int speed { get; set; }
+}
+
+/// <summary>
+/// 日志节。
+/// 背景(仅供维护者, 用户可见文案见下): 旧行为下每次数据读取、每次前端调用都写一行
+/// DEBUG, 实测一天 5.7 万行 / 6.4 MB(约 27 次/秒同步写盘), 其中 98.4% 出自
+/// CommandResult 的构造函数; 而真正有用的控制侧信息(AutoFanControl 转速、看门狗、
+/// EcGuard、HwWriteGate 拦截)只占 1.4%。故把"读取明细"与"控制日志"分开开关,
+/// 并允许攒批落盘。
+/// 注意: 下面 [ConfigComment] 的文字会直接写进 config.yaml 给用户看, 必须说人话;
+/// 上述论证留在 XML 注释里, 不要搬进 ConfigComment。
+/// </summary>
+public class LogSection
+{
+    [ConfigComment("日志详细程度: DEBUG(详细) / INFO(常规) / WARN(精简) / ERROR(仅错误) / OFF(不记录)。改后立即生效")]
+    public string Level { get; set; } = "INFO";
+
+    // 单独开关而非只靠 Level: CommandResult 走的是 Debug, 一旦 Level=DEBUG 会立刻
+    // 退回每天 5 万行; 而排查"某个读取为什么返回空"时又临时需要它。
+    [ConfigComment("记录读取明细: 把每一次硬件数据读取都写进日志(体积的绝大部分来源), 仅在排查读数异常时打开")]
+    public bool CommandDebug { get; set; } = false;
+
+    // 安全信息不靠这个兜底: LogRuntime 挂了一个只做刷盘的 appender, 级别 >= WARN 一律立即落盘。
+    [ConfigComment("写入间隔 (秒): 日志攒够一批再保存, 减少磁盘读写。0=每条立即保存; 警告与错误始终立即保存")]
+    [ConfigRange(0, 60)]
+    public int FlushIntervalS { get; set; } = 3;
 }
 
 public class SmuSection

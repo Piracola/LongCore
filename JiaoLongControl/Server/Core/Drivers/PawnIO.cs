@@ -154,7 +154,7 @@ public class PawnIO : IDisposable
                 InitCore();
                 IsInitialized = true;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 CleanupHandles();
                 throw;

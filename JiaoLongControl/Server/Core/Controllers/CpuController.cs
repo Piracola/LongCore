@@ -129,7 +129,9 @@ namespace JiaoLongControl.Server.Core.Controllers
         {
             try
             {
-                float perfPercent = _cpuFreqCounter.NextValue();
+                // _cpuFreqCounter 由构造函数里的后台 Task 赋值, 首次调用可能还没就绪。
+                // 空引用会抛 NRE, 被下面的 catch 吞成"获取失败"——返回基准频率更诚实。
+                float perfPercent = _cpuFreqCounter != null ? _cpuFreqCounter.NextValue() : 100f;
                 int freqMhz = (int)(perfPercent / 100 * GetBaseFrequency());
                 return new CommandResult(true, "获取成功", freqMhz);
             }

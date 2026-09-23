@@ -15,7 +15,23 @@ public class SelfStart
         if (bridge.Config.App.BootKeyboardGradient) bridge.KeyboardGradient.Start();
     }
 
-    private void Fan() { Bridge.Instance.AutoFan.Start(); }
+    /// <summary>
+    /// 应用内风扇曲线接管。两个条件都满足才启动:
+    ///   · BootAdvancedFanControlSystem —— 开机自启意图;
+    ///   · Fan.Enabled —— 用户在曲线页保留的总开关(关掉服务会置 false, 避免下次开机被强行拉起)。
+    /// 与上游的关键差别: 曲线接管不再限定"自定义档位"。
+    /// 固件三档(办公/游戏/狂飙)的 EC 温控表在低负载区压得极低、临近温度墙才跳变,
+    /// 表现为"平时很静、95℃ 才猛拉"; 要让风扇随温度平缓跟随, 必须由应用接管。
+    /// 接管后 EC 自身温控曲线会被 0xB20 手动掩码绕开, 兜底仅剩 ThermalWatchdog(默认 98℃/10s 拉满)
+    /// 与 EcGuard(崩溃后恢复自动模式), 二者均默认开启。
+    /// </summary>
+    private void Fan()
+    {
+        var bridge = Bridge.Instance;
+        if (!bridge.Config.Fan.Enabled)
+            return;
+        bridge.AutoFan.Start();
+    }
 
     private void CPU()
     {

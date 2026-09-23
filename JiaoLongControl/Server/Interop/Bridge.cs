@@ -25,6 +25,9 @@ namespace JiaoLongControl.Server.Interop
         public Bridge()
         {
             Config = ConfigSerializer.Load();
+            // 日志策略在配置就绪后立即生效。放在 Bridge 构造函数里而不是 App.OnStartup:
+            // ConfigSerializer.Load() 本身就会写日志(越界收敛等), 尽早应用才能覆盖它。
+            LogRuntime.Apply(Config.Log);
             _saveTimer = new Timer(
                 _ => FlushIfDirty(),
                 null,
@@ -38,6 +41,9 @@ namespace JiaoLongControl.Server.Interop
             {
                 Config = config;
             }
+
+            // 设置页保存后即时生效, 无需重启(改日志级别却要重启是很糟的体验)。
+            LogRuntime.Apply(config?.Log);
 
             try
             {
@@ -110,7 +116,7 @@ namespace JiaoLongControl.Server.Interop
         public void Dispose()
         {
             _saveTimer?.Dispose();
-            _saveTimer = null;
+            _saveTimer = null!;   // Dispose 后不再使用, 仅切断 Timer 引用
             FlushIfDirty();
             Hotkey.Dispose();
             CPU.Dispose();

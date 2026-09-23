@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using JiaoLongControl.Server.Core.Drivers;
 using JiaoLongControl.Server.Core.Models;
 using JiaoLongControl.Server.Core.Services;
@@ -23,10 +23,16 @@ public class FanController : Blding64
 
     public CommandResult SetFanSpeed(byte fanSpeed)
     {
-        if ((bool)GetMaxFanSpeedSwitch().Data)
+        // Data 可能为 null(读取失败), 此时按"未开启强冷"处理, 不触发复位
+        if (GetMaxFanSpeedSwitch().Data is bool maxSwitchOn && maxSwitchOn)
         {
-            // 此处为兼容性设置，为避免官方控制台冲突设计
+            // 此处为兼容性设置，为避免官方控制台冲突设计。
+            // 该方法标了 [Obsolete]（官方控制台会与我们抢同一个强冷开关），
+            // 但正是为了避让官方控制台才必须调用它。局部抑制而非整类禁用:
+            // 整类禁用会让本文件将来新增的过时调用一起静默。
+#pragma warning disable CS0618
             SetMaxFanSpeedSwitch(false);
+#pragma warning restore CS0618
         }
 
         if (IsInitialized)
@@ -46,7 +52,9 @@ public class FanController : Blding64
         return new CommandResult(false, "设置失败");
     }
 
-    public CommandResult RemoveFanSpeed()
+    // 有意隐藏基类同名方法: 先调用 base.RemoveFanSpeed() 交还 EC 自动模式,
+    // 再包装成前端需要的 CommandResult。加 new 明确这是有意为之, 不是漏写 override。
+    public new CommandResult RemoveFanSpeed()
     {
         if (IsInitialized)
         {

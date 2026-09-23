@@ -565,7 +565,7 @@ public class RyzenSmuController : PawnIO
                     break;
                 }
             }
-            catch (Exception lhmEx)
+            catch (Exception)
             {
                 InvalidateLhm();
                 try

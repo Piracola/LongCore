@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using JiaoLongControl.Server.Core.Utils;
@@ -108,7 +108,8 @@ public class PowerController
         if (!result.Success)
             return new CommandResult(false, result.Message);
 
-        if (!TryParseLastTwoHex((string)result.Data, out var acVal, out var dcVal))
+        // 与上面 GetTurboEnabled 的姊妹分支保持同一写法: result.Success 为真即代表 Data 有值。
+        if (!TryParseLastTwoHex((string)result.Data!, out var acVal, out var dcVal))
             return new CommandResult(false, "解析失败");
 
         return new CommandResult(

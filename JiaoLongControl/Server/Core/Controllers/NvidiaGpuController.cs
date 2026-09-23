@@ -112,7 +112,8 @@ namespace JiaoLongControl.Server.Core.Controllers
                 string name = obj["Name"]?.ToString() ?? "";
                 if (!name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase))
                     continue;
-                string dateStr = obj["DriverDate"]?.ToString();
+                // WMI 属性缺失时索引器返回 null, 故用 ?? 兜底(IsNullOrEmpty 随后即拦截)。
+                string dateStr = obj["DriverDate"]?.ToString() ?? "";
                 if (string.IsNullOrEmpty(dateStr))
                     continue;
                 var date = ManagementDateTimeConverter.ToDateTime(dateStr);
@@ -192,8 +193,11 @@ namespace JiaoLongControl.Server.Core.Controllers
             {
                 try
                 {
-                    int ecFan = ((FanSpeedInfo)Bridge.Instance.Fan.GetFanSpeed().Data).GPUFanSpeed;
-                    return new CommandResult(true, "获取成功", ecFan);
+                    // 冷启动时 GetFanSpeed 可能还没数据, 强转会抛 NRE 并被外层 catch 吞掉。
+                    // 显式判类型, 让失败原因停在"读取失败"而不是伪装成"成功"。
+                    if (Bridge.Instance.Fan.GetFanSpeed().Data is not FanSpeedInfo info)
+                        return new CommandResult(false, "获取失败");
+                    return new CommandResult(true, "获取成功", info.GPUFanSpeed);
                 }
                 catch (Exception ex) { return new CommandResult(false, ex.Message); }
             }

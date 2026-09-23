@@ -99,7 +99,8 @@ namespace JiaoLongControl.Server.Core.Controllers
                         }
                         if (string.IsNullOrEmpty(speed) && item["Speed"] != null)
                         {
-                            speed = item["Speed"].ToString();
+                            // 上面已判 != null, 但索引器返回 object?, 需显式兜底才能让编译器放心。
+                            speed = item["Speed"]?.ToString() ?? "";
                         }
                     }
                 }

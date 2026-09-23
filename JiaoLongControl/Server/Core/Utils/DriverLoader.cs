@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using JiaoLongControl.Server.Core.Native;
 
@@ -20,13 +20,13 @@ public class DriverLoader
         uint dwServiceType,
         uint dwStartType,
         uint dwErrorControl,
-        string lpBinaryPathName,
-        string lpLoadOrderGroup,
+        string? lpBinaryPathName,
+        string? lpLoadOrderGroup,
         IntPtr lpdwTagId,
-        string lpDependencies,
-        string lpServiceStartName,
-        string lpPassword,
-        string lpDisplayName);
+        string? lpDependencies,
+        string? lpServiceStartName,
+        string? lpPassword,
+        string? lpDisplayName);
 
     public static void LoadDriver(string serviceName, string sysPath)
     {

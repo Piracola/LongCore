@@ -18,14 +18,23 @@ public class CommandResult
 
     public bool Success { get; set; }
     public string Message { get; set; }
-    public object Data { get; set; }
+    public object? Data { get; set; }
 
-    public CommandResult(bool success, string message, object data = null)
+    // data 标 object?: 大量调用点只传两个参数(纯状态查询), 默认值就是 null。
+    public CommandResult(bool success, string message, object? data = null)
     {
         Success = success;
         Message = message;
         Data = data;
-        Logger.Debug($"{success} {message} {data}");
+
+        // 这一行是日志体积的 98% 来源: 每次 WMI/EC 读取、每次前端 IPC 调用都会构造
+        // 一个 CommandResult。实测一天 5.7 万行里 5.6 万行出自这里, 而真正的控制侧
+        // 信息(AutoFanControl 转速/看门狗/护栏)只占 1.4%。
+        // 默认关; 排查"某次读取为什么返回空"时在设置页临时打开。
+        // 外层 IsDebugEnabled 是必需的: 级别不是 DEBUG 时连字符串插值都省掉,
+        // 而不是先拼好字符串再被 log4net 丢弃。
+        if (LogRuntime.VerboseCommandLog && Logger.IsDebugEnabled)
+            Logger.Debug($"{success} {message} {data}");
     }
 
     /// <summary>

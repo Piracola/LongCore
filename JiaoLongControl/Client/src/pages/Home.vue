@@ -20,7 +20,7 @@ import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
 import { storeToRefs } from 'pinia'
 import { Scale, SlidersHorizontal, Volume1, Zap } from '@lucide/vue'
-import { TEMP_HISTORY_INTERVAL_MS } from '@/constants'
+import { FAN_MAX_RPM, TEMP_HISTORY_INTERVAL_MS } from '@/constants'
 
 use([
   CanvasRenderer,
@@ -376,7 +376,10 @@ const lineChartOption = computed(() => {
               <div class="meter">
                 <i
                   :style="{
-                    width: maxFanRpm !== null ? `${Math.min((maxFanRpm / 6800) * 100, 100)}%` : '0',
+                    width:
+                      maxFanRpm !== null
+                        ? `${Math.min((maxFanRpm / FAN_MAX_RPM) * 100, 100)}%`
+                        : '0',
                   }"
                 />
               </div>

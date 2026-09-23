@@ -3,7 +3,6 @@ import { Fan, AutoFanControl, type FanSpeedInfo } from '@/utils/bridge'
 import { writeGate } from '@/domain/writeGate'
 import { type ActivityRecord } from '@/domain/operations'
 import { useActivityStore } from '@/stores/activity'
-import { useModeStore } from '@/stores/mode'
 import { okReading, staleReading, errorReading, type Reading } from '@/utils/reading'
 import { PollingChannel } from '@/utils/reading'
 import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
@@ -74,15 +73,16 @@ export const useFanStore = defineStore('fan', {
       return { auto: 'EC 自动温控', manual: '手动接管', curve: '应用内曲线' }[this.controller]
     },
     /**
-     * 自定义风扇控制是否被性能模式挡住。
-     * 固件三档（办公/游戏/狂飙）的风扇曲线由 EC 自己的表管理，应用不介入；
-     * 只有首页切到「自定义」后才允许手动转速与应用内曲线接管。
-     * 注意：即便被挡住，「恢复自动控制」也必须可用 —— 那是安全出口，不是可选项。
+     * 应用内曲线能否接管风扇。
+     *
+     * 历史上这里按性能档位设限（固件三档交给 EC 的温控表）。实测与官方日志表明：
+     * EC 那张表在低负载区把转速压得极低、临近温度墙（默认 95℃）才跳变，
+     * 表现就是"平时很静、到墙才猛拉"，而这正是本项目要解决的问题。
+     * 因此该限制已取消：三档与自定义档一视同仁，控制权归谁由曲线服务本身决定。
+     * 恒为 false 只是保留调用点的语义，不再参与禁用判断。
      */
     customizationLocked(): boolean {
-      const mode = useModeStore()
-      if (mode.customOverride) return false
-      return mode.selected?.kind !== 'custom'
+      return false
     },
     /** 曲线服务是否在跑；读不到返回 null（调用方必须显示「—」而非 false） */
     curveRunning(): boolean | null {
@@ -244,6 +244,12 @@ export const useFanStore = defineStore('fan', {
       }
 
       // 3. 保存配置（开机恢复）
+      // 手动转速与"应用内曲线接管"互斥: 这里同时把 Fan.Enabled 置 false。
+      // 否则 SelfStart 会在下次开机按 BootAdvancedFanControlSystem 把曲线重新拉起,
+      // 把用户显式设的手动转速悄悄顶掉。
+      const { useConfigStore } = await import('@/stores/config')
+      const cfgStore = useConfigStore()
+      if (cfgStore.config) cfgStore.config.Fan.Enabled = false
       const save = await saveConfig()
       steps.push({
         label: '保存配置',

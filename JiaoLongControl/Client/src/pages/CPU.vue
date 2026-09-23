@@ -331,8 +331,13 @@ async function handleReset() {
                     >{{ activeProfile.CpuTempWall }} °C</span
                   >
                 </div>
-                <a-slider v-model="activeProfile.CpuTempWall" :min="60" :max="105" class="w-full" />
-                :disabled="loading"
+                <a-slider
+                  v-model="activeProfile.CpuTempWall"
+                  :disabled="loading"
+                  :min="60"
+                  :max="105"
+                  class="w-full"
+                />
               </div>
 
               <!-- 最大睿频频。-->

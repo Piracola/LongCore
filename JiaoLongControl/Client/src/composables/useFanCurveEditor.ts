@@ -4,6 +4,7 @@ import { AutoFanControl, Fan } from '@/utils/bridge'
 import { useConfigStore } from '@/stores/config'
 import { useActivityStore } from '@/stores/activity'
 import { useFanStore } from '@/stores/fan'
+import { FAN_MAX_RPM, FAN_MIN_RPM } from '@/constants'
 
 export interface FanCurvePoint {
   temp: number
@@ -20,23 +21,36 @@ export function useFanCurveEditor() {
   const fanStore = useFanStore()
 
   const activeTab = ref<'CPU' | 'GPU'>('CPU')
+  // 占位默认值, 挂载后会立刻被 config.Fan.*FanCurve 覆盖。
+  // 数值与后端 JiaoLongConfig.FanSection 的出厂曲线保持一致, 避免"打开页面先跳一下"。
   const cpuPoints = ref<FanCurvePoint[]>([
     { temp: 60, speed: 1500 },
-    { temp: 80, speed: 3000 },
-    { temp: 100, speed: 5800 },
+    { temp: 65, speed: 1800 },
+    { temp: 70, speed: 2600 },
+    { temp: 75, speed: 3000 },
+    { temp: 80, speed: 3300 },
+    { temp: 85, speed: 3600 },
+    { temp: 90, speed: 4500 },
+    { temp: 95, speed: 5800 },
   ])
 
   const gpuPoints = ref<FanCurvePoint[]>([
     { temp: 60, speed: 1500 },
+    { temp: 65, speed: 2000 },
+    { temp: 70, speed: 2800 },
     { temp: 75, speed: 3000 },
+    { temp: 80, speed: 3600 },
+    { temp: 84, speed: 5000 },
     { temp: 87, speed: 5800 },
   ])
   const currentPoints = computed(() =>
     activeTab.value === 'CPU' ? cpuPoints.value : gpuPoints.value,
   )
-  const currentTempRange = computed(() => (activeTab.value === 'CPU' ? [60, 100] : [60, 87]))
+  const currentTempRange = computed(() => (activeTab.value === 'CPU' ? [60, 95] : [60, 87]))
 
-  const speedRange = [1500, 6800]
+  // 纵轴上限对齐硬件真实上限 5800: 驱动侧 FanSpeedRawMax(Blding64)=58 会拒绝更高值,
+  // 允许拖到 6800 只会得到一个永远不会被下发、还会被 ConfigRange 收敛的假值。
+  const speedRange = [FAN_MIN_RPM, FAN_MAX_RPM]
   const padding = { top: 40, right: 60, bottom: 40, left: 60 }
 
   const containerRef = ref<HTMLDivElement | null>(null)
@@ -80,11 +94,22 @@ export function useFanCurveEditor() {
     await fanStore.refreshCurveService()
   }
 
-  const handleServiceToggle = async (newValue: string | number | boolean): Promise<boolean> => {
-    if (locked.value) {
-      Message.warning('固件档位下风扇由 EC 管理，请先在概览页切换到自定义')
-      return false
+  /**
+   * 把"要/不要应用内曲线"这个用户意图落盘, 供 SelfStart 在下次开机时遵循。
+   * 没有这一步, BootAdvancedFanControlSystem 会在每次开机把用户刚关掉的接管重新拉起。
+   * 落盘失败不阻断本地的启停结果 —— 本地状态才是用户当下看到的真相。
+   */
+  const persistServiceIntent = async (enabled: boolean) => {
+    try {
+      if (!configStore.config) return
+      configStore.config.Fan.Enabled = enabled
+      await configStore.saveConfig()
+    } catch (e) {
+      console.error('风扇曲线接管意图保存失败:', e)
     }
+  }
+
+  const handleServiceToggle = async (newValue: string | number | boolean): Promise<boolean> => {
     serviceLoading.value = true
     try {
       if (newValue) {
@@ -96,6 +121,7 @@ export function useFanCurveEditor() {
         if (!result.Success) throw new Error(result.Message || '自动风扇控制停止失败')
         Message.info('自动风扇控制已停止')
       }
+      await persistServiceIntent(!!newValue)
       await AutoFanControl.IsRunning()
       await fanStore.refreshCurveService()
       const matches = isServiceRunning.value === !!newValue
@@ -389,7 +415,13 @@ export function useFanCurveEditor() {
    * 门禁：固件三档（办公/游戏/狂飙）下风扇由 EC 自己的表管理，曲线编辑不开放。
    * 与风扇页共用同一个判定，避免两处口径不一。
    */
-  const locked = computed(() => fanStore.customizationLocked)
+  /**
+   * 曲线接管不再按性能档位设限。
+   * 固件三档的 EC 温控表在低负载区压得极低、临近温度墙才跳变("平时很静、95℃ 才猛拉"),
+   * 要让风扇随温度平缓跟随, 必须由应用接管; 因此三档与自定义档一视同仁。
+   * 保留这个 computed 只是为了让模板与禁用条件少改一处, 恒为 false。
+   */
+  const locked = computed(() => false)
 
   const strategyLabel = computed(() => {
     const r = fanStore.curveService
