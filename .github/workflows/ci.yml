@@ -32,6 +32,10 @@ jobs:
       - name: Lint (eslint)
         run: npm run lint
 
+      # 前端关键状态测试（模式三分离 / 写入闸门 / 四态读数 / 温度历史）
+      - name: Test (vitest)
+        run: npm run test
+
       - name: Build (vue-tsc + vite build)
         run: npm run build
 

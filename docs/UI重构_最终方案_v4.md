@@ -535,6 +535,38 @@ v3.1 一边推翻"每页三段式"，一边又规定"每页统一三段"——�
 | 失败必须被看见 | 首页胶囊此前失败只回滚、无提示。现在：消费 `select()` 返回值 → `Message.error(lastError)` + 该档位 3 秒错误态；`observedState` 非 ok 时标注「读数过期 / 档位未知」 |
 | Implemented | `domain/modes.ts` 收口、`stores/mode.ts` 判据、`pages/Home.vue` 失败可见、`stores/__tests__/mode.spec.ts`（9 条） |
 
+### 14.6 2026-09-24 · 收尾核对（阶段与主 DoD 逐条）
+
+**阶段**
+
+| Phase | 状态 | 依据 |
+|---|---|---|
+| 0 恢复可信基线 | 已达成 | P0 修复独立提交 `f2eba86`；v3.1 标 Draft；截图 harness 旁挂 provenance manifest |
+| 1 状态真实性与安全边界 | **已达成** | 读数四态化（reading.ts / 各页 ReadingState）；统一调度 PollingChannel；SmuWriteGate + ProtocolCodecTest 11 条闸门用例（CI 跑）；复合写入逐步结果 CompositeSteps；「哪些操作可后读」已裁定（SMU 限制不可回读，§14.3 #6） |
+| 2 领域模型 | **已达成**（§14.5 收口） | stores/mode.ts 三分离 + stores/fan.ts FanPolicy；未落地概念不声明空类型 |
+| 3 验证 IA（不实现） | 按决策豁免 | §14.3 #4：仅机主自用，IA 维持硬件领域型 + 稳定 page id |
+| 4 单个垂直切片（风扇） | 代码已达成；第 7 项待真机 | `ca4a4c8`：FanPolicy「当前由谁控制」/四态转速/危险确认/恢复自动常驻/最近活动；**soak test 未做** |
+| 5 审计与活动形态 | 已达成 | ActivityDrawer 抽屉 + 标题栏入口，未预占一级导航 |
+| 6 视觉与动效收口 | 部分 | 令牌、时长上限 250ms、reduced-motion 已落地；utils/scale.ts 已按 §12 降级重写但**零消费点**；DPI 矩阵与刻度冻结待真机/待决策 |
+
+**主 DoD**
+
+| 维度 | 状态 |
+|---|---|
+| 状态真实性 | 已达成：读取失败不渲染 0；「未读取」/「读数过期」/「档位未知」三处显式标注 |
+| 模式同步 | 已达成：Fn 热键 / 应用内切换 / 启动读取汇入同一 store；失败不留虚假激活态（§14.5 判据） |
+| 复合写入 | 已达成：逐项成功/失败/跳过/部分应用 |
+| 安全边界 | 已达成：SMU 全部 setter 在 Server 侧值域校验，11 条 CI 用例 |
+| 资源稳定性 | **待真机**：soak test（计时器 / 在途数 / 内存） |
+| DPI / 窗口 | **待真机**：目标 2560×1600@150% 已确认，未逐项验收 |
+| 可访问性 | 部分：:focus-visible、aria、键盘可达已覆盖；未做逐页焦点顺序验收 |
+| 自动化 | 已达成：前端 format:check + lint + **vitest（本次补进 CI）** + build；后端 build + 协议/闸门用例 |
+| 迁移 | 已达成：page id 稳定字符串 + 旧值迁移 |
+
+**明确不做（Decision）**：SMU 限制值回读（需传输表协议 + 真机逐 family 验证，见 KNOWN_ISSUES 22）；为未落地概念声明空类型（§14.5）。
+
+**待真机清单**（本环境只能出图，不能验行为）：soak · DPI 矩阵 · 键盘焦点顺序 · 模式失败路径演练（KNOWN_ISSUES 21）· 0.1.4 风扇改动的听感验收 · 电池 DC 场景 · Windows 10。
+
 ---
 
 ## 附录 A · 反模式清单（出现即算失败）
