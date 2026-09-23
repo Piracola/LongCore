@@ -3,5 +3,7 @@ node_modules
 bin
 ../../bin
 package-lock.json
+# 截图产物（脚本生成，已 gitignore）: 其中的 manifest.json 不该被格式检查
+.visual-qa
 # 第三方压缩文件保持原样
 src/assets/magic.min.css

@@ -4,7 +4,8 @@
  */
 import { createServer } from 'vite'
 import { chromium } from 'playwright-core'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
@@ -16,7 +17,15 @@ const EDGE_CANDIDATES = [
 const edgePath = EDGE_CANDIDATES.find((p) => existsSync(p))
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const outDir = path.join(root, '.visual-qa')
+
+// 可选参数(不传时行为与旧版完全一致):
+//   --out=<dir>    输出目录, 相对 Client/(默认 .visual-qa)
+const argv = process.argv.slice(2)
+const argValue = (name) => {
+  const hit = argv.find((a) => a.startsWith(`--${name}=`))
+  return hit ? hit.slice(name.length + 3) : null
+}
+const outDir = path.join(root, argValue('out') ?? '.visual-qa')
 await mkdir(outDir, { recursive: true })
 
 const mockConfig = {
@@ -233,6 +242,8 @@ window.chrome = {
 const server = await createServer({
   root,
   configFile: path.join(root, 'vite.config.ts'),
+  // mode 非 development: 关掉 vite-plugin-vue-devtools 浮层, 否则它会出现在截图里
+  mode: 'test',
   server: { port: 5199, strictPort: true, host: '127.0.0.1' },
   logLevel: 'error',
 })
@@ -360,4 +371,33 @@ console.log('saved cpu-light')
 
 await browser.close()
 await server.close()
+
+// 旁挂元数据: docs/证据清单.md 要求截图的来源 = 提交号 + 主题 + 视口 + DPR + 工具版本,
+// 缺任一项即不可用作证据。缺这个文件, 出的图就还是 "provenance unknown"。
+function gitHead() {
+  try {
+    return execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim()
+  } catch {
+    // 无 git 或受限环境: 不阻塞出图, 但必须显式标记为不可自证
+    return 'unknown'
+  }
+}
+
+const manifest = {
+  commit: gitHead(),
+  themes: ['dark', 'light'],
+  viewport: { width: 1440, height: 900 },
+  deviceScaleFactor: 1,
+  browser: edgePath ?? 'unknown',
+  capturedAt: new Date().toISOString(),
+  tool: 'scripts/visual-shot.mjs',
+  bridge: 'mocked (window.chrome.webview.hostObjects.bridge)',
+  caveat: '静态呈现: 不含真实硬件状态、部分失败、键盘焦点、轮询稳定性',
+}
+await writeFile(
+  path.join(outDir, 'manifest.json'),
+  `${JSON.stringify(manifest, null, 2)}\n`,
+  'utf8',
+)
+
 console.log('done →', outDir)

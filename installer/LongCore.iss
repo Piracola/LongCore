@@ -5,7 +5,7 @@
 ; ============================================================
 
 #define MyAppName "LongCore"
-#define MyAppVersion "0.1.2"
+#define MyAppVersion "0.1.4"
 #define MyAppPublisher "Piracola"
 #define MyAppExeName "LongCore.exe"
 #define MyAppId "{{D4A7C921-6B3E-4F8A-9C1D-2E5B7A8F0C63}"

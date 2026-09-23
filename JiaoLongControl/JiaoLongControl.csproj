@@ -15,7 +15,12 @@
         <Platforms>x64</Platforms>
         <SatelliteResourceLanguages>zh-CN</SatelliteResourceLanguages>
         <!-- 独立起版: fork 后与上游 10.x 版本线脱钩, 从 0.1.0 重新计数 -->
-        <AppVersion>0.1.2</AppVersion>
+        <AppVersion>0.1.4</AppVersion>
+        <!-- CS1668: "LIB 环境变量中的搜索路径无效"。这是机器级残留(指向已卸载的
+             VS Build Tools MSVC 工具集), 与本项目无关, 项目侧无法修复。
+             清除本机 User 作用域里的 LIB/INCLUDE/LIBPATH/Path 残留后即为噪音。
+             抑制它是为了让"0 警告"重新成为有意义的门禁信号。 -->
+        <NoWarn>$(NoWarn);CS1668</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
