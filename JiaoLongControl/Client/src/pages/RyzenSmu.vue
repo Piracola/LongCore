@@ -341,13 +341,12 @@ function resetGroupValues(group: ConfigGroup, value: number) {
 }
 
 /** 收起态必须自己带状态：未读取几项、逐核有几项待应用。 */
-const limitsUnreadCount = computed(
-  () =>
-    limitGroups.reduce(
-      (acc, g) =>
-        acc + g.items.filter((item) => isUnread(item.key, smuData.value?.[item.key])).length,
-      0,
-    ),
+const limitsUnreadCount = computed(() =>
+  limitGroups.reduce(
+    (acc, g) =>
+      acc + g.items.filter((item) => isUnread(item.key, smuData.value?.[item.key])).length,
+    0,
+  ),
 )
 
 const limitsSummary = computed(() => {
@@ -553,7 +552,11 @@ function tempClass(celsius: number) {
       <div class="smu-split">
         <div class="smu-main space-y-5 min-w-0">
           <!-- 高频单元：各自独立提交，置顶（机主裁定 2026-09-24） -->
-          <div v-for="group in [curveGroup, thermalGroup]" :key="group.title" class="panel-card p-5">
+          <div
+            v-for="group in [curveGroup, thermalGroup]"
+            :key="group.title"
+            class="panel-card p-5"
+          >
             <div>
               <h3 class="section-label">{{ group.title }}</h3>
 
@@ -662,21 +665,21 @@ function tempClass(celsius: number) {
                 >
                   「未读取」项当前是 0，先拖动或输入目标值。0 不会下发。
                 </p>
-              <ApplyBar
-                :phase="groupApplyPhase(group)"
-                :status-text="groupApplyStatus(group)"
-                :busy="applyingGroup === group.title"
-                :disabled="!!applyingGroup && applyingGroup !== group.title"
-                apply-label="应用本组"
-                @apply="applyGroup(group)"
-              />
-              <CompositeSteps
-                v-if="lastAppliedGroup === group.title"
-                :steps="composite.state.value.steps"
-                :partial="composite.state.value.partialApplied"
-                :message="composite.state.value.message"
-              />
-            </div>
+                <ApplyBar
+                  :phase="groupApplyPhase(group)"
+                  :status-text="groupApplyStatus(group)"
+                  :busy="applyingGroup === group.title"
+                  :disabled="!!applyingGroup && applyingGroup !== group.title"
+                  apply-label="应用本组"
+                  @apply="applyGroup(group)"
+                />
+                <CompositeSteps
+                  v-if="lastAppliedGroup === group.title"
+                  :steps="composite.state.value.steps"
+                  :partial="composite.state.value.partialApplied"
+                  :message="composite.state.value.message"
+                />
+              </div>
             </div>
           </CollapsibleSection>
         </div>
@@ -844,7 +847,6 @@ function tempClass(celsius: number) {
               </div>
             </div>
           </div>
-
         </aside>
       </div>
 
@@ -866,11 +868,7 @@ function tempClass(celsius: number) {
         <div class="clocks-block">
           <h4 class="clocks-kicker">{{ clockGroup.title }}</h4>
           <div class="clocks-grid">
-            <div
-              v-for="item in clockGroup.items"
-              :key="item.key"
-              class="space-y-1.5"
-            >
+            <div v-for="item in clockGroup.items" :key="item.key" class="space-y-1.5">
               <div class="flex justify-between items-center gap-3 text-xs">
                 <span class="text-muted min-w-0">{{ item.label }}</span>
                 <div class="flex items-center gap-2 shrink-0">
