@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.1.4-blue" alt="Version">
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET">
   <img src="https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs" alt="Vue">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
@@ -133,7 +133,7 @@ The research layer was formerly a separate repository; it was merged here in 202
 ```bat
 :: Requires Inno Setup 6 (iscc on PATH)
 installer\build-installer.cmd
-:: → installer\Output\LongCore-0.1.0-setup.exe
+:: → installer\Output\LongCore-0.1.4-setup.exe
 ```
 
 ## Architecture notes
