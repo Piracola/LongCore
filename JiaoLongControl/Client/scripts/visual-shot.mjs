@@ -102,6 +102,9 @@ const mockConfig = {
     OcClk: 0,
     OcVolt: 1000,
     CurveOptimizerAll: -15,
+    // 逐核只记录、开机不下发：这里放几个非 0 值，用来验证重启后表单确实被填回
+    PerCoreCurve: [-15, -12, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    PerCoreOcClk: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   },
 }
 

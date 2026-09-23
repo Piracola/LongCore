@@ -89,6 +89,10 @@ export interface SmuSectionType {
   OcClk: number
   OcVolt: number
   CurveOptimizerAll: number
+  /** 逐核 CO 偏移（每核一项）。只记录上次成功应用的值，开机不下发 */
+  PerCoreCurve: number[]
+  /** 逐核超频频率偏移（MHz，每核一项）。同上 */
+  PerCoreOcClk: number[]
 }
 
 export interface JiaoLongConfigType {

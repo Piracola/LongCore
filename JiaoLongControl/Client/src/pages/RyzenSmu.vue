@@ -17,9 +17,16 @@ import ApplyBar from '@/components/common/ApplyBar.vue'
 import PageShell from '@/components/common/PageShell.vue'
 import { useActivityStore } from '@/stores/activity'
 
+/**
+ * 滑条组能绑定的键：必须是标量参数。
+ * 逐核字段（PerCoreCurve/PerCoreOcClk）是数组，不属于任何"一组参数" ——
+ * 不排除掉的话，模板里所有 v-model="smuData[item.key]" 都会变成 number | number[]。
+ */
+type ScalarSmuKey = Exclude<keyof SmuSectionType, 'PerCoreCurve' | 'PerCoreOcClk'>
+
 interface ConfigGroupItem {
   label: string
-  key: keyof SmuSectionType
+  key: ScalarSmuKey
   min: number
   max: number
   step?: number
@@ -147,15 +154,24 @@ function markPerCoreDirty(index: number, kind: 'curve' | 'clock') {
   else dirtyPerCoreOcClk.add(index)
 }
 
+/** 配置里记的是"上次成功应用的那套逐核值"；缺失或越界一律按 0（不偏移）处理。 */
+function storedPerCore(list: number[] | undefined, index: number): number {
+  const v = list?.[index]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
 watch(
   coreCount,
   (newCount) => {
     if (newCount <= 0) return
+    const saved = smuData.value
+    const savedCurve = saved?.PerCoreCurve ?? []
+    const savedClk = saved?.PerCoreOcClk ?? []
     const currentLen = perCoreCurve.length
     if (newCount > currentLen) {
       for (let i = currentLen; i < newCount; i++) {
-        perCoreCurve.push(0)
-        perCoreOcClk.push(0)
+        perCoreCurve.push(storedPerCore(savedCurve, i))
+        perCoreOcClk.push(storedPerCore(savedClk, i))
       }
     } else if (newCount < currentLen) {
       perCoreCurve.splice(newCount)
@@ -324,6 +340,12 @@ async function applyPerCore() {
     )
     dirtyPerCoreCurve.clear()
     dirtyPerCoreOcClk.clear()
+    // 记录"上次成功应用的那套值"（仅记录，不在开机下发 —— Decision 2026-09-24）
+    if (smuData.value) {
+      smuData.value.PerCoreCurve = [...perCoreCurve].map((v) => Number(v) || 0)
+      smuData.value.PerCoreOcClk = [...perCoreOcClk].map((v) => Number(v) || 0)
+      configStore.debouncedSave()
+    }
   }
   activity.record({
     source: 'user',
@@ -1014,7 +1036,8 @@ function tempClass(celsius: number) {
           </div>
         </div>
         <p class="unread-hint">
-          逐核值不写入配置：重启后表单回到全 0，需要时重新设置并应用（硬件侧设置不由此页记忆）。
+          逐核值会记住（重启后表单自动填回上次成功应用的那套），但<strong>不会在开机时自动下发</strong>：
+          要生效需点「应用逐核设置」。
         </p>
         <ApplyBar
           :phase="groupApplyPhase(perCoreGroup)"

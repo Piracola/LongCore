@@ -325,4 +325,14 @@ public class SmuSection
     [ConfigComment("Curve Optimizer All (负值为降压, 范围 -30~0)")]
     [ConfigRange(-30, 0)]
     public int CurveOptimizerAll { get; set; }
+
+    // 逐核设置：只记录"上次成功应用的那套值"，供 SMU 页重启后把表单填回去。
+    // **刻意不在启动时下发**（Decision 2026-09-24）：16 核 × 2 参数 = 32 条 SMU 命令，
+    // 无人值守地开机写硬件，手误会被每次开机重放。要生效仍需用户在 SMU 页点「应用逐核设置」。
+    // 长度 = 物理核心数；缺失/较短按 0 补齐，0 = 不偏移。
+    [ConfigComment("逐核 Curve Optimizer 偏移 (负值为降压, 每核一项; 仅记录, 开机不下发)")]
+    public List<int> PerCoreCurve { get; set; } = new();
+
+    [ConfigComment("逐核超频频率偏移 (MHz, 每核一项; 仅记录, 开机不下发)")]
+    public List<int> PerCoreOcClk { get; set; } = new();
 }
