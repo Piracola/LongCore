@@ -524,6 +524,17 @@ v3.1 一边推翻"每页三段式"，一边又规定"每页统一三段"——�
 
 > **收起机制的硬约束（后续复用必须遵守）**：折叠标题必须自带状态摘要。本页正文里的「未读取 / 待应用 / 被闸门跳过」一旦被收起来而不上浮，就等于把「其实没下发」藏起来，违反第一性原则 1。
 
+### 14.5 2026-09-24 · 模式领域模型收口（**Decision**）
+
+| 项 | 内容 |
+|---|---|
+| 事实核对 | v4 §6 的「七个概念」中，**四个已落地**：ObservedFirmwareMode / CustomPowerOverride / SelectedMode（我选了什么）/ FanPolicy —— 均在 `stores/mode.ts`、`stores/fan.ts`。§14.2 冲突 A 点名的「Home.vue 乐观更新」风险在 store 落地后已消除 |
+| 决废除 | `SelectedConfigProfile` / `AppliedConfigProfile`：CPU「均衡/性能/节能/自定义」四方案表已合并为唯一 `Cpu.Custom`（`types/config.ts:32`、`JiaoLongConfig.cs:84`），该轴不存在，类型已删 |
+| 决定不做 | `WindowsPowerPlanState` / `GPUPerformancePolicy`：**不为未落地的概念声明空类型**。电源计划只保留「是否联动」开关（设置页）；GPU 锁频与输出模式由 GPU 页、显卡直连设置页各自管理。真要做时连同权威来源一起补进 §6 清单 |
+| 切档成功判据 | 「命令被接受」**不等于**已生效。判据改为：写后独立重读，且回读到的观察值与本次请求一致（`observedFirmware === 请求档位 && !customOverride`，自定义则看 `customOverride`）。**不得用 `activeKind` 判定** —— `select()` 期间 `syncing` 恒为真，`activeKind` 恒为 `'pending'`（旧代码的 `activeKind === 'pending'` 分支因此恒为真）|
+| 失败必须被看见 | 首页胶囊此前失败只回滚、无提示。现在：消费 `select()` 返回值 → `Message.error(lastError)` + 该档位 3 秒错误态；`observedState` 非 ok 时标注「读数过期 / 档位未知」 |
+| Implemented | `domain/modes.ts` 收口、`stores/mode.ts` 判据、`pages/Home.vue` 失败可见、`stores/__tests__/mode.spec.ts`（9 条） |
+
 ---
 
 ## 附录 A · 反模式清单（出现即算失败）
