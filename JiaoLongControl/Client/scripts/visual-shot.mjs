@@ -41,29 +41,8 @@ const mockConfig = {
     SyncWindowsPowerPlan: true,
     HotkeyEnabled: true,
   },
+  // 只有一份 CPU 参数（原「均衡/性能/节能/自定义」四方案表已废除，见 types/config.ts CpuSectionType）
   Cpu: {
-    CpuProfile: 'Performance',
-    Default: {
-      CpuLongPower: 45,
-      CpuShortPower: 65,
-      CpuTempWall: 95,
-      CpuMaxFrequency: 4800,
-      CpuTurbo: true,
-    },
-    Performance: {
-      CpuLongPower: 75,
-      CpuShortPower: 95,
-      CpuTempWall: 95,
-      CpuMaxFrequency: 5200,
-      CpuTurbo: true,
-    },
-    Saving: {
-      CpuLongPower: 35,
-      CpuShortPower: 45,
-      CpuTempWall: 85,
-      CpuMaxFrequency: 4200,
-      CpuTurbo: false,
-    },
     Custom: {
       CpuLongPower: 55,
       CpuShortPower: 80,
@@ -81,8 +60,12 @@ const mockConfig = {
     VoltageBoostPercent: 0,
   },
   Fan: {
-    FanCurveMerge: false,
+    Enabled: false,
+    FanCurveMerge: true,
     ManualFanSpeed: 2800,
+    TempAttackS: 5,
+    TempReleaseS: 60,
+    TempHysteresisC: 5,
     CpuFanCurve: [
       { temp: 40, speed: 1800 },
       { temp: 60, speed: 2800 },
@@ -94,6 +77,11 @@ const mockConfig = {
       { temp: 70, speed: 3200 },
       { temp: 85, speed: 4800 },
     ],
+  },
+  Log: {
+    Level: 'INFO',
+    CommandDebug: false,
+    FlushIntervalS: 2,
   },
   Smu: {
     StapmLimit: 54,
