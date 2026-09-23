@@ -371,8 +371,19 @@ function gitHead() {
   }
 }
 
+function gitDirty() {
+  try {
+    return execSync('git status --porcelain', { cwd: root }).toString().trim().length > 0
+  } catch {
+    return null
+  }
+}
+
 const manifest = {
   commit: gitHead(),
+  // 脏树出图时 commit 不足以定位代码状态，必须显式标出来
+  dirty: gitDirty(),
+  outDir: path.relative(root, outDir).replaceAll('\\', '/'),
   themes: ['dark', 'light'],
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 1,
