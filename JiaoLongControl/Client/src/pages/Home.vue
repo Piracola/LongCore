@@ -112,8 +112,19 @@ onBeforeUnmount(() => {
 
 async function runSelection(sel: ModeSelection) {
   const ok = await modeStore.select(sel)
-  if (ok) return
   const key = sel.kind === 'custom' ? 'custom' : sel.mode
+  if (ok) {
+    // 成功必须清掉上一次的错误态：否则 3 秒窗口内重试成功会同时挂 active + failed 两个类，
+    // 看起来像"切成功了但报错"
+    if (failedSelection.value === key) {
+      failedSelection.value = null
+      if (failedTimer) {
+        clearTimeout(failedTimer)
+        failedTimer = null
+      }
+    }
+    return
+  }
   markFailed(key)
   Message.error(modeStore.lastErrorOr || '切换失败')
 }

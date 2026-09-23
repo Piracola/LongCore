@@ -3,6 +3,7 @@ import { CPU, PerformanceMode, SystemPerMode } from '@/utils/bridge'
 import { FIRMWARE_MODE_LABELS, toFirmwareMode, type FirmwareMode } from '@/domain/modes'
 import { useActivityStore } from '@/stores/activity'
 import { applySavedCpuPower } from '@/domain/cpuPowerPlan'
+import type { ReadingState } from '@/utils/reading'
 
 /**
  * 性能模式 store —— 预设选择器三分离（v4 §6 + §14.1 答复 1，Decision 2026-09-17；
@@ -37,8 +38,11 @@ interface ModeState {
   syncing: boolean
   /** 最近一次同步失败消息；null = 无失败 */
   lastError: string | null
-  /** 读数四态语义（v4 §7）：观察通道的 ReadingState */
-  observedState: 'ok' | 'stale' | 'error'
+  /**
+   * 读数四态语义（v4 §7）：直接取 reading.ts 的 ReadingState，不复制定义。
+   * 观察通道没有「不可用」与「加载中」两态（命令 8 要么给档位要么失败），故排除。
+   */
+  observedState: Exclude<ReadingState, 'unavailable' | 'loading'>
 }
 
 const PER_MODE_NAMES: Record<string, SystemPerMode> = {
@@ -141,7 +145,11 @@ export const useModeStore = defineStore('performanceMode', {
 
     /** 用户点选。先记 selected（pending），命令被接受后才允许激活态渲染。 */
     async select(sel: ModeSelection): Promise<boolean> {
-      if (this.syncing) return false
+      if (this.syncing) {
+        // 重入：什么都没做。必须说清是"上一次尚未完成"，否则 UI 只能弹一句含糊的「切换失败」
+        this.lastError = '上一次切换尚未完成，请稍候'
+        return false
+      }
       this.syncing = true
       this.lastError = null
       this.selected = sel
@@ -168,21 +176,27 @@ export const useModeStore = defineStore('performanceMode', {
           accepted = !!res.Success
           failure = res.Message || '切换失败'
         }
-        // 命令接受 ≠ 已生效（v4 §8.4）：写后独立重读一次确认。
-        // 只有回读后 activeKind 不再是 pending 才算切换成功 —— 否则就是「命令说成功、
-        // 硬件没动」（或读数过期无法确认），必须按失败处理并让调用方显示出来，
-        // 不能返回 true 让 UI 静默弹回原档（第一性原则 2：危险操作不得虚假成功）。
+        // 命令接受 ≠ 已生效（v4 §8.4）：写后独立重读一次确认。三态区分：
+        //   applied  = 命令被接受 **且** 回读确认（真的切了）
+        //   accepted = 命令被接受，但回读未确认（读数过期 / 固件未采纳）—— 不算成功，也不算失败
+        //   failed   = 命令被拒 / 抛异常
+        //
+        // 两个坑都在这里踩过，别再回退：
+        // 1. 判据不能用 activeKind —— select() 期间 syncing 恒为真，activeKind 恒为 'pending'，
+        //    连"确实切成功"都会被判成未确认。
+        // 2. 光比对状态位不够：**回读本身必须成功**。否则「已处于自定义覆盖态 + 回读失败」时
+        //    customOverride 仍是 true → 把一次根本没确认的切换报成成功。
         let confirmed = false
+        let acceptedUnconfirmed = false
         if (accepted) {
-          await this.refreshObserved()
-          // 判据不能用 activeKind：select() 期间 syncing 恒为真，而 activeKind 把它算成
-          // 'pending' —— 那样连"确实切成功"也会被判成未确认。直接比对回读到的观察值与
-          // 这次请求的目标，才是 v4 §8.4「写后独立重读」的本意。
+          const reread = await this.refreshObserved()
           confirmed =
-            sel.kind === 'custom'
+            reread &&
+            (sel.kind === 'custom'
               ? this.customOverride
-              : this.observedFirmware === sel.mode && !this.customOverride
+              : this.observedFirmware === sel.mode && !this.customOverride)
           if (!confirmed) {
+            acceptedUnconfirmed = true
             this.lastError = '命令已被接受，但回读未确认（读数过期或固件未采纳）'
           }
         } else {
@@ -199,13 +213,24 @@ export const useModeStore = defineStore('performanceMode', {
               ? '开启自定义功耗覆盖'
               : `切换性能档位：${FIRMWARE_MODE_LABELS[sel.mode]}`,
           requestedValue: sel.kind === 'custom' ? 'custom' : sel.mode,
-          outcome: confirmed ? 'applied' : 'failed',
+          outcome: confirmed ? 'applied' : acceptedUnconfirmed ? 'accepted' : 'failed',
           reversible: 'b',
         })
         return confirmed
       } catch (err) {
         this.lastError = err instanceof Error ? err.message : '切换失败'
         this.syncSelectedFromObserved()
+        // 异常也是失败路径：必须和「命令被拒」一样留痕，否则最近活动里会缺一条
+        useActivityStore().record({
+          source: 'user',
+          intent:
+            sel.kind === 'custom'
+              ? '开启自定义功耗覆盖'
+              : `切换性能档位：${FIRMWARE_MODE_LABELS[sel.mode]}`,
+          requestedValue: sel.kind === 'custom' ? 'custom' : sel.mode,
+          outcome: 'failed',
+          reversible: 'b',
+        })
         return false
       } finally {
         this.syncing = false

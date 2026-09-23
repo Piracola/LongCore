@@ -9,7 +9,7 @@ import type { SmuSectionType } from '@/types/config'
 import { POLL_INTERVAL_SMU } from '@/constants'
 import { buildSparkline, type SparklineResult } from '@/utils/chart'
 import { writeGate } from '@/domain/writeGate'
-import { PollingChannel } from '@/utils/reading'
+import { PollingChannel, type ReadingState } from '@/utils/reading'
 import { useCompositeWrite } from '@/composables/useCompositeWrite'
 import CompositeSteps from '@/components/common/CompositeSteps.vue'
 import CollapsibleSection from '@/components/common/CollapsibleSection.vue'
@@ -223,7 +223,9 @@ async function applyGroup(group: ConfigGroup) {
       },
     })),
   })
-  if (event.commandAccepted) configStore.debouncedSave()
+  // 意图与下发解耦：跳过也要落盘。否则用户拖过的值只停在界面上、config.yaml 里没有，
+  // 重启后悄悄回退（旧行为）。下发被闸门拒绝是硬件层的事，与"要不要记住这个意图"无关。
+  configStore.debouncedSave()
   const { ok, failed, skipped } = composite.summary.value
   // 一项都没发出去却报「已提交」是谎报：整组为 0/越界时 skipped 顶满了 ok，
   // 旧实现照旧弹 success，用户以为写进去了，实际一条命令都没发。
@@ -234,14 +236,19 @@ async function applyGroup(group: ConfigGroup) {
       .map((s) => s.label)
       .join('、')
     Message.warning(`未下发任何命令：${skipped} 项被闸门拒绝（${reasons}）。请先设定有效值。`)
-  } else if (event.partialApplied) {
-    Message.warning(`部分应用：${ok} 项已生效，其余未执行。已生效项不会自动撤销。`)
   } else if (failed) {
     Message.error(composite.state.value.message || '本组应用失败')
+  } else if (event.partialApplied) {
+    Message.warning(`部分应用：${ok} 项已生效，其余未执行。已生效项不会自动撤销。`)
+  } else if (skipped > 0) {
+    // 组内被跳过的项不能藏进"成功"里：顶部报成功而实际有几项没发出去，就是谎报
+    const skippedLabels = event.steps
+      .filter((s) => s.status === 'skipped')
+      .map((s) => s.label)
+      .join('、')
+    Message.warning(`已应用 ${ok} 项，跳过 ${skipped} 项（${skippedLabels}）。跳过的值不会下发。`)
   } else {
-    Message.success(
-      `本组已提交（${ok} 项${skipped ? `，跳过 ${skipped} 项` : ''}）。仅命令确认，不可回读。`,
-    )
+    Message.success(`本组已提交（${ok} 项）。仅命令确认，不可回读。`)
   }
   activity.record({
     source: 'user',
@@ -256,6 +263,8 @@ async function applyGroup(group: ConfigGroup) {
           : 'applied',
     reversible: 'b',
   })
+  // 只有"一条没失败、也没被跳过"才算这组值与硬件对齐；否则那些项继续留在「待应用」里
+  if (failed === 0 && !nothingSent) snapshotGroup(group)
   lastAppliedGroup.value = group.title
   applyingGroup.value = null
 }
@@ -340,6 +349,29 @@ function resetGroupValues(group: ConfigGroup, value: number) {
   Message.info(`已填入 ${value}${group.items[0]?.unit ?? ''}，点「应用」才会写入固件。`)
 }
 
+/**
+ * 「待应用」判定：与上次成功应用的快照比对。
+ * 收起标题必须能表达"有未提交的改动"（v4 §14.4 硬约束）—— 只显示"未读取 N 项"会让用户在
+ * 改完滑条、收起区块之后以为已经生效。快照是内存态，不跨重启，也不需要跨重启。
+ */
+const appliedSnapshot = reactive<Record<string, number>>({})
+
+function snapshotGroup(group: ConfigGroup) {
+  if (!smuData.value) return
+  for (const item of group.items) appliedSnapshot[item.key] = Number(smuData.value[item.key])
+}
+
+/** 快照未知（尚未 seed）不算待应用 —— 宁可少报，不要开局就一片待应用。 */
+function groupPendingCount(group: ConfigGroup): number {
+  // 先取出本地常量：computed 的 .value 在闭包里会丢失窄化（TS18048）
+  const data = smuData.value
+  if (!data) return 0
+  return group.items.filter((item) => {
+    const snap = appliedSnapshot[item.key]
+    return snap !== undefined && snap !== Number(data[item.key])
+  }).length
+}
+
 /** 收起态必须自己带状态：未读取几项、逐核有几项待应用。 */
 const limitsUnreadCount = computed(() =>
   limitGroups.reduce(
@@ -349,14 +381,36 @@ const limitsUnreadCount = computed(() =>
   ),
 )
 
+const limitsPendingCount = computed(() =>
+  limitGroups.reduce((acc, g) => acc + groupPendingCount(g), 0),
+)
+
 const limitsSummary = computed(() => {
   const total = limitGroups.reduce((acc, g) => acc + g.items.length, 0)
-  return limitsUnreadCount.value > 0
-    ? `未读取 ${limitsUnreadCount.value} · 共 ${total} 项`
-    : `${total} 项已设值`
+  const parts: string[] = []
+  if (limitsPendingCount.value > 0) parts.push(`待应用 ${limitsPendingCount.value}`)
+  if (limitsUnreadCount.value > 0) parts.push(`未读取 ${limitsUnreadCount.value}`)
+  return parts.length > 0 ? `${parts.join(' · ')} · 共 ${total} 项` : `${total} 项已设值`
 })
 
-const limitsTone = computed<'idle' | 'warn'>(() => (limitsUnreadCount.value > 0 ? 'warn' : 'idle'))
+const limitsTone = computed<'idle' | 'pending' | 'warn'>(() =>
+  limitsPendingCount.value > 0 ? 'pending' : limitsUnreadCount.value > 0 ? 'warn' : 'idle',
+)
+
+const clocksPendingCount = computed(() => groupPendingCount(clockGroup))
+
+const clocksSummary = computed(() =>
+  clocksPendingCount.value > 0
+    ? `待应用 ${clocksPendingCount.value} · 共 ${clockGroup.items.length} 项`
+    : `${clockGroup.items.length} 项 · 无改动`,
+)
+
+const clocksTone = computed<'idle' | 'pending'>(() =>
+  clocksPendingCount.value > 0 ? 'pending' : 'idle',
+)
+
+// 页面就绪时给所有分组拍一次快照；此后只有"成功应用"才会刷新它
+for (const g of [...limitGroups, clockGroup, curveGroup, thermalGroup]) snapshotGroup(g)
 
 const perCoreSummary = computed(() =>
   perCorePendingCount.value > 0
@@ -438,7 +492,7 @@ const applySetting = async (methodName: keyof typeof RyzenSmu, ...args: number[]
 
 const HISTORY_LEN = 24
 const telemetry = ref<SmuTelemetry | null>(null)
-const telemetryState = ref<'loading' | 'ok' | 'stale' | 'error'>('loading')
+const telemetryState = ref<ReadingState>('loading')
 const telemetryStateLabel = computed(() => {
   switch (telemetryState.value) {
     case 'ok':
@@ -604,6 +658,7 @@ function tempClass(celsius: number) {
                 :reset-label="
                   group === curveGroup ? '重置为 0' : `填入推荐值 ${THERMAL_RECOMMENDED} ℃`
                 "
+                :reset-disabled="false"
                 @apply="applyGroup(group)"
                 @reset="resetGroupValues(group, group === curveGroup ? 0 : THERMAL_RECOMMENDED)"
               />
@@ -850,21 +905,7 @@ function tempClass(celsius: number) {
         </aside>
       </div>
 
-      <CollapsibleSection title="时钟、超频与逐核" :summary="perCoreSummary" :tone="perCoreTone">
-        <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
-          <div class="flex items-center gap-2">
-            <span class="text-[11px] font-medium text-weak uppercase">Cores</span>
-            <a-input-number
-              v-model="coreCount"
-              :min="1"
-              :max="64"
-              size="mini"
-              class="!w-14 !bg-ink/5 !border-ink/10 !text-ink rounded-md"
-              hide-button
-            />
-          </div>
-        </div>
-
+      <CollapsibleSection title="时钟与超频" :summary="clocksSummary" :tone="clocksTone">
         <div class="clocks-block">
           <h4 class="clocks-kicker">{{ clockGroup.title }}</h4>
           <div class="clocks-grid">
@@ -924,6 +965,22 @@ function tempClass(celsius: number) {
             :message="composite.state.value.message"
           />
         </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="逐核 CO / OC" :summary="perCoreSummary" :tone="perCoreTone">
+        <div class="flex flex-wrap items-center justify-end gap-3 mb-4">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-medium text-weak uppercase">Cores</span>
+            <a-input-number
+              v-model="coreCount"
+              :min="1"
+              :max="64"
+              size="mini"
+              class="!w-14 !bg-ink/5 !border-ink/10 !text-ink rounded-md"
+              hide-button
+            />
+          </div>
+        </div>
 
         <div class="core-grid">
           <div v-for="(_, index) in perCoreCurve" :key="index" class="core-card">
@@ -956,6 +1013,9 @@ function tempClass(celsius: number) {
             </div>
           </div>
         </div>
+        <p class="unread-hint">
+          逐核值不写入配置：重启后表单回到全 0，需要时重新设置并应用（硬件侧设置不由此页记忆）。
+        </p>
         <ApplyBar
           :phase="groupApplyPhase(perCoreGroup)"
           :status-text="
@@ -969,6 +1029,7 @@ function tempClass(celsius: number) {
           "
           apply-label="应用逐核设置"
           reset-label="全部清零"
+          :reset-disabled="false"
           @apply="applyPerCore"
           @reset="resetPerCore"
         />
@@ -1013,9 +1074,7 @@ function tempClass(celsius: number) {
 }
 
 .clocks-block {
-  margin-bottom: 20px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--hair);
+  /* 独立折叠区的正文：分隔由折叠区自己负责，这里不再画内部分隔线 */
 }
 
 .clocks-kicker {

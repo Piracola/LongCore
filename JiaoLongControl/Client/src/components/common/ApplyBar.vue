@@ -14,6 +14,11 @@ const props = defineProps<{
   applyLabel?: string
   /** 传了才渲染「重置」按钮；重置语义由调用方定义（本组件不下发任何东西） */
   resetLabel?: string
+  /**
+   * 重置按钮的禁用条件。默认跟随 disabled，但"重置只改表单、不下发硬件"的页面
+   * 不该被别的组在途阻塞，可显式传 false（此时仍受本组 busy 约束）。
+   */
+  resetDisabled?: boolean
   danger?: boolean
 }>()
 
@@ -69,7 +74,7 @@ const statusClass = computed(() => {
         v-if="resetLabel"
         class="btn-ghost"
         type="button"
-        :disabled="isBusy || disabled"
+        :disabled="isBusy || (resetDisabled ?? disabled)"
         @click="emit('reset')"
       >
         {{ resetLabel }}
@@ -200,5 +205,17 @@ const statusClass = computed(() => {
 
 [data-theme='light'] .btn-ghost:hover {
   background: rgba(13, 14, 21, 0.04);
+}
+
+/* 禁用必须有可见反馈：此前按钮只是"点不动"，看不出是被禁用还是坏了 */
+.btn-ghost:disabled,
+.btn-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ghost:disabled:hover {
+  color: var(--muted);
+  background: transparent;
 }
 </style>

@@ -27,11 +27,6 @@ import { SystemPerMode } from '@/utils/bridge'
 /** 固件观察档位 —— 命令 8 只有 0/1/2 三档；CustomMode=3 是本地逻辑态，固件不回传 */
 export type FirmwareMode = 'balance' | 'performance' | 'quiet'
 
-/** 命令 23 子状态：自定义功耗覆盖，开/关 —— 不是固件第四档 */
-export interface CustomPowerOverride {
-  active: boolean
-}
-
 /**
  * 风扇控制权状态机（v4 §6 FanPolicy + §10「自动策略接管必须显示当前由谁控制」）。
  * - auto    EC 固件自动温控（默认；无手动转速寄存器值且 AutoFan 未运行）

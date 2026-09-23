@@ -5,6 +5,7 @@ import { type ActivityRecord } from '@/domain/operations'
 import { useActivityStore } from '@/stores/activity'
 import { okReading, staleReading, errorReading, type Reading } from '@/utils/reading'
 import { PollingChannel } from '@/utils/reading'
+import type { FanController } from '@/domain/modes'
 import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
 
 /**
@@ -28,7 +29,10 @@ import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
  * 不再依赖「进入风扇页才开始读」—— 旧实现下切页后曲线页/风扇页读数会假死。
  */
 
-export type FanController = 'auto' | 'manual' | 'curve'
+// 控制权枚举的单一源在 domain/modes.ts（v4 §6 FanPolicy）；这里只做转出，
+// 避免出现第二份定义（两处各写一次，迟早分叉）。
+// 注意：只写 export type {…} from 不会建立本地绑定，本文件自己要用就得再 import 一次。
+export type { FanController }
 
 export interface FanApplyResult {
   ok: boolean
