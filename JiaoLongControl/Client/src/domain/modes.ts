@@ -1,21 +1,25 @@
 /**
  * 领域状态对象契约（UI重构_最终方案_v4.md §6，Decision 2026-09-17）。
  *
- * 七个状态对象各自的权威来源（v4 §6 + §14.1 答复 1：模式 = 预设选择器）：
+ * 状态对象清单（v4 §6 + §14.1 答复 1：模式 = 预设选择器）。**只列真实存在的契约**：
+ * 没落地的概念写在下面第二段里，不在这里声明空类型（2026-09-24 收口）。
  *
- * | 对象                    | 权威来源                          | 说明 |
- * |-------------------------|-----------------------------------|------|
- * | ObservedFirmwareMode    | EC 命令 8 / Fn 热键事件 15        | 固件真实档位，只有三档（v4 §14.2 冲突 B 裁定：按三档做） |
- * | CustomPowerOverride     | EC 命令 23 子状态                 | 自定义功耗覆盖：开/关，是命令 23 的子状态，不是固件第四档 |
- * | SelectedConfigProfile   | 前端本地（用户点选）              | 我选了什么 ≠ 已应用；选择即记，不产生任何虚假激活态 |
- * | AppliedConfigProfile    | config.yaml（后端持久化）         | 上次完整应用成功的那份配置块 |
- * | WindowsPowerPlanState   | powercfg 查询                     | 独立、可失败；是模式切换的可选联动副作用 |
- * | FanPolicy               | EC 手动转速寄存器 + AutoFan 运行态| 手动接管/自动/曲线，显示"当前由谁控制" |
- * | GPUPerformancePolicy    | NVAPI（锁频/输出模式）            | 输出模式切换需重启，属 D 级可逆性 |
+ * | 对象                     | 权威来源                           | 落地位置 |
+ * |--------------------------|------------------------------------|----------|
+ * | ObservedFirmwareMode     | EC 命令 8 / Fn 热键事件 15         | stores/mode.ts `observedFirmware`（只有三档，见 v4 §14.2 冲突 B 裁定） |
+ * | CustomPowerOverride      | EC 命令 23 子状态                  | stores/mode.ts `customOverride`（不是固件第四档） |
+ * | SelectedMode（我选了什么）| 前端本地（用户点选）               | stores/mode.ts `selected` + `activeKind`（pending 不冒充已生效） |
+ * | FanPolicy                | EC 手动转速寄存器 + AutoFan 运行态 | stores/fan.ts（手动/自动/曲线，显示"当前由谁控制"） |
+ *
+ * **未落地**（2026-09-24 决定：不为它们声明空类型）：`WindowsPowerPlanState`（powercfg 状态）、
+ * `GPUPerformancePolicy`（NVAPI 锁频/输出模式）。设置页只保留「是否联动电源计划」开关；
+ * GPU 锁频与输出模式由 GPU 页、显卡直连设置页各自管理。真要接上时，连同权威来源一起补进上表。
+ *
+ * **已废除**：`SelectedConfigProfile` / `AppliedConfigProfile` —— CPU「均衡/性能/节能/自定义」
+ * 四方案表已合并为唯一的 `Cpu.Custom`，这个轴不存在了。
  *
  * 命名映射（Decision 2026-09-17，用户确认）：办公=静音(QuietMode=2) · 游戏=平衡(BalanceMode=0) ·
  * 狂飙=高性能(PerformanceMode=1)。UI 文案层用「办公/游戏/狂飙」，协议层与代码层保留枚举名。
- * 本文件只定义类型与映射常量，不改任何现有行为（v4 §13 Phase 2 的落地在步骤 2 完成）。
  */
 
 import { SystemPerMode } from '@/utils/bridge'
@@ -28,25 +32,6 @@ export interface CustomPowerOverride {
   active: boolean
 }
 
-/** 预设档位的持久化配置块（CPU.vue 的 Default/Performance/Saving/Custom），≠ 当前硬件状态 */
-export type ConfigProfileKey = 'Default' | 'Performance' | 'Saving' | 'Custom'
-
-/** 我选了什么 —— 用户点选即记录；与「已应用」必须分离（v4 §6） */
-export interface SelectedConfigProfile {
-  key: ConfigProfileKey
-  /** 该选择是否已经成功应用；false = 有未应用的选中变更 */
-  applied: boolean
-}
-
-/** 已完整应用成功的配置块 —— 写后独立重读或保存成功才可置位 */
-export interface AppliedConfigProfile {
-  key: ConfigProfileKey
-  appliedAt: number
-}
-
-/** Windows 电源计划 —— 独立可失败的联动副作用，不阻止固件切换 */
-export type WindowsPowerPlanState = 'follow-mode' | 'manual' | 'unavailable'
-
 /**
  * 风扇控制权状态机（v4 §6 FanPolicy + §10「自动策略接管必须显示当前由谁控制」）。
  * - auto    EC 固件自动温控（默认；无手动转速寄存器值且 AutoFan 未运行）
@@ -57,14 +42,6 @@ export type FanController = 'auto' | 'manual' | 'curve'
 
 export interface FanPolicy {
   controller: FanController
-}
-
-/** GPU 性能策略 —— 锁频可逆；输出模式需重启（D 级可逆性，v4 §8.2） */
-export interface GPUPerformancePolicy {
-  coreClockLocked: boolean
-  memoryClockLocked: boolean
-  /** hybrid | discrete —— 切换需重启生效，不得伪装即时成功 */
-  outputModePendingReboot: boolean
 }
 
 /** 固件档位 → UI 显示名（命名映射 Decision 2026-09-17；桥接枚举为权威数值） */
