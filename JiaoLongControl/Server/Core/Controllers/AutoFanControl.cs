@@ -107,26 +107,54 @@ public class AutoFanControl : IDisposable
         return new CommandResult(true, "自动风扇控制启动");
     }
 
+    /// <summary>
+    /// 停止自动风扇控制。三态语义, 三态都要保住(2026-10-06 修, 别再写反):
+    ///   1. 本来就没在跑              → Success = true (幂等, 调用方可以无脑调用)
+    ///   2. 真停成功(循环已在 2s 内退出) → Success = true
+    ///   3. 2s 内没退出来(循环卡在硬件读取, 或异常分支的 2s 退避里) → Success = false, Message 如实说明
+    /// 旧实现把 finally 之后的 _isRunning 当返回值, 于是「真停成功」报 false、「本来没跑」报 true,
+    /// 语义正好反了: 前端按 Success 判步骤成败, 于是停止这一步判 failed、后续撤 0xB20 掩码
+    /// 与落盘 Fan.Enabled=false 永不执行 —— EC 温控接不回来, 风扇停在最后一次写入的转速上。
+    /// 返回值只是命令侧证据: 调用方仍须独立回读 IsRunning() 才敢动掩码(useFanCurveEditor/useAppliedFeatures)。
+    /// </summary>
     public CommandResult Stop()
     {
         if (!_isRunning)
-            return new CommandResult(!_isRunning, "自动风扇控制没有在运行中");
+            return new CommandResult(true, "自动风扇控制没有在运行中");
         Logger.Info("Auto Fan Control stopping...");
         _cts?.Cancel();
-        try
+
+        var task = _controlTask;
+        var exited = task == null;
+        if (task != null)
         {
-            _controlTask?.Wait(2000);
+            try
+            {
+                // Wait(timeout) 返回 true = 任务在超时内结束; false = 控制循环还活着
+                exited = task.Wait(2000);
+            }
+            catch (AggregateException ex)
+            {
+                // 循环以异常结束: 任务确实已退出(服务停了), 但原因要记下来
+                exited = true;
+                Logger.Error($"Auto Fan Control loop faulted: {ex.InnerException?.Message ?? ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex.Message);
+            }
         }
-        catch (AggregateException) { }
-        catch (Exception ex)
+
+        if (!exited)
         {
-            Logger.Error(ex.Message);
+            // 循环没退出来 = 它随时可能再写硬件。这里**绝不能**清 _isRunning 装成已停:
+            // 调用方一旦误以为停成功就会去撤手动掩码, 而曲线下一拍又把掩码写回来。
+            Logger.Warn("Auto Fan Control stop timed out: control loop still running.");
+            return new CommandResult(false, "自动风扇控制停止超时：控制循环仍在运行，请重试", _isRunning);
         }
-        finally
-        {
-            _isRunning = false;
-        }
-        return new CommandResult(_isRunning, "自动风扇控制已停止");
+
+        _isRunning = false;
+        return new CommandResult(true, "自动风扇控制已停止");
     }
 
     private void ControlLoop(CancellationToken token)
