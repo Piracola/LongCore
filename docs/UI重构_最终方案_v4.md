@@ -1,6 +1,6 @@
 # LongCore UI 重构 · 最终方案 v4.0（RFC）
 
-> **状态：执行中（2026-09-17）。** 机主已确认自用、三档命名、5.4 GHz、2560×1600@150%、风扇页与胶囊冷启动。本文档自身仍受 §1 状态分类法约束。
+> **状态：执行中（2026-09-17）。** 机主已确认自用、三档命名、5.4 GHz、2560×1600@150%、风扇页与胶囊冷启动（其中**风扇页已于 2026-10-06 删除**，见 §14.9）。本文档自身仍受 §1 状态分类法约束。
 > 日期 2026-09-17 · 承接 `UI重构_v3_计划.md`（**已降级为「观察集」**，见 §0）
 > 合并来源：**A 线**（本仓调查）提供**证据**；**B 线**（外部评审）提供**判据**。
 > **合并原则：任何只有"想法"、没有"证据或判据"的条目，一律进 §14 未决问题，不进实现。**
@@ -98,7 +98,7 @@ A 线补充第 6 条（源自本次 P0 事故）：
 | `stores/systemInfo.ts:112` | `if (fSpeed.Success) this.fanSpeed = fSpeed.Data` —— **全场唯一没被污染的读取** | 正确写法项目里已有，只用在了一处 |
 | `stores/systemInfo.ts:124-128` | `startPolling()` = 裸 `setInterval`，无可见性暂停、无在途锁、无失败停止 | 违反原则 4；**我只修了页面轮询，没修这里** |
 | `pages/Home.vue:49-58` | `setMode()` **先改 UI，再 `void` 发出，不 await、不看结果、无回滚** | 违反原则 1、2。**若模式升格为全局主轴，即是虚假成功** |
-| `stores/index.ts:22-31` | 页面持久化 = `Number(localStorage['jl-ui-page'])` 校验 `1..length`，靠**数组下标**恢复 | **IA 一改，老用户恢复到错误页面**。必然发生，A 线原先漏掉 |
+| `stores/index.ts:21-30` | 页面持久化 = `Number(localStorage['jl-ui-page'])` 校验 `1..length`，靠**数组下标**恢复 | **IA 一改，老用户恢复到错误页面**。必然发生，A 线原先漏掉 |
 | `Server/MainWindow.xaml:9-10` | `Width=1300 Height=820 MinWidth=1300 MinHeight=820` 写死 | **1920×1080@150% 逻辑 1280×720 装不下**；200% 下更甚 |
 | `Client/package.json` | `build = npm run type-check && npm run build-only`（无 lint、无 test）；`*.spec.ts`/`*.test.ts` **零个** | 现有"验证"远不足以支撑 DoD |
 | 工作树 | **42 项**：26 修改 + 1 删除 + 15 未跟踪 | v3.1 写的"23 项"已过期 |
@@ -224,7 +224,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 - `CustomPowerOverride` —— 命令 23 子状态
 - `SelectedConfigProfile` / `AppliedConfigProfile` —— **必须分开**（选了 ≠ 应用了）
 - `WindowsPowerPlanState` —— 独立、可失败
-- `FanPolicy` —— 手动接管 / 自动 / 曲线，有独立状态机
+- `FanPolicy` —— 自动 / 曲线（2026-10-06 前还有「手动接管」，随功能删除，见 §14.9），有独立状态机
 - `GPUPerformancePolicy` —— 锁频、输出模式（可能需要重启）
 
 **在 UI 讨论"模式"代表什么之前，这七个必须先在代码里分开。** 三者不可混用：预设、硬件观察值、待应用配置。
@@ -286,7 +286,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 |---|---|---|
 | **A 可安全逆转** | 键盘颜色（有 getter + setter） | 「撤销」 |
 | **B 只能重新应用** | SMU 限制（原值未必可读） | 「改回 …」 |
-| **C 只能恢复默认/自动** | 风扇手动接管 | 「恢复自动控制」 |
+| **C 只能恢复默认/自动** | 风扇曲线接管（2026-10-06 前是「手动接管」） | 「交还 EC 固件温控」 |
 | **D 需要重启** | GPU 输出模式 | 「重启后生效」+ 重启引导 |
 | **E 不可逆** | （如有） | 前置二次确认，**不得提供撤销** |
 
@@ -354,7 +354,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 
 ### 迁移约束（A 线发现，**必须前置**）
 
-`stores/index.ts:22` 用**数组下标**持久化当前页 —— **IA 一改，老用户恢复到错误页面**。
+`stores/index.ts:21` 用**数组下标**持久化当前页 —— **IA 一改，老用户恢复到错误页面**。
 改 IA 之前必须先把 page id 换成**稳定字符串 ID**，并做旧值迁移。
 
 ---
@@ -367,7 +367,7 @@ v3.1 一边推翻"每页三段式"，一边又规定"每页统一三段"——�
 | 类别 | 例子 | 交互模型 |
 |---|---|---|
 | 即时且可逆 | 灯光颜色 | 即时预览 + 显式保存 |
-| 即时但有风险 | 风扇手动接管 | 危险确认 + 「恢复自动」常驻可达 |
+| 即时但有风险 | 风扇曲线接管（2026-10-06 前含「手动接管」） | 「交还 EC 固件温控」常驻可达 |
 | 暂存后提交 | CPU 多参数 | 待应用集合 + 批量提交 + 逐项结果 |
 | 多步骤复合 | CPU 保存配置 | 逐步结果 + 部分应用状态 |
 | 需要重启 | GPU 输出模式 | 重启引导，**不得伪装即时成功** |
@@ -386,9 +386,9 @@ v3.1 一边推翻"每页三段式"，一边又规定"每页统一三段"——�
 
 **切片必须验证的七项**：
 
-1. `FanPolicy` 状态机（手动 / 自动 / 曲线 —— **当前由谁控制**）
+1. `FanPolicy` 状态机（自动 / 曲线 —— **当前由谁控制**；2026-10-06 前还有「手动」，见 §14.9）
 2. 四态读数（ok / stale / unavailable / error）；风扇 RPM 读取失败**不得显示 0**
-3. 危险操作确认 + 「恢复自动控制」常驻可达
+3. 危险操作确认 + 「交还 EC 固件温控」常驻可达（原「恢复自动控制」）
 4. 提交反馈：逐项结果 + 部分应用状态
 5. 最近活动记录（含来源标注）
 6. DPI 矩阵下的可达性（含 §3.2 的窗口最小尺寸问题）
@@ -611,7 +611,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 概览页下半页新增「已应用功能」看板：每行两栏 —— **意图** = `Config.GetConfig()` 读到的 `config.yaml` 字段路径，
 **实测** = 桥接 getter 的回读值；两者不一致时显式标出「配置开着·硬件没写进去」。逐行「移除」+ 页内「全部还原」，
 让「软件改过哪些硬件、还生不生效、能不能退出」第一次可以看见。
-唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（50 项：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由），
+唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（49 项：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由；
+2026-10-06 由 50 项删去 `fan.manual-speed`，见 §14.9），
 组件只遍历注册表，不做任何功能清单硬编码。
 
 **依据**
@@ -622,12 +623,14 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 4. §8.4 回读校验约束：命令被接受 ≠ 已生效。移除步骤走既有的 `composables/useCompositeWrite.ts`，
    末尾追加显式「复核：独立重读 `<getter>()`」步骤；回读失败即判 failed，界面只能说「未确认移除成功」。
 5. Observation（本轮实测）：各页「重置」语义不一致 —— `pages/CPU.vue:184-194` 与 `pages/RyzenSmu.vue:363-372` 只改表单+存盘、
-   **不下发硬件**；`pages/Fan.vue:119-126` 与 `pages/GPU.vue:308-337` 真下发。同一个词两种含义是本轮的直接动因。
-6. Observation（本轮 grep，全仓 29 处 `reversible:'x'`，`src/` 内 25 处）此前**没有任何按钮**消费该分级。
+   **不下发硬件**；`composables/useFanCurveEditor.ts:399-466`（曲线页「交还 EC 固件温控」；2026-10-06 前为已删除的 `pages/Fan.vue:119-126`）
+   与 `pages/GPU.vue:308-337` 真下发。同一个词两种含义是本轮的直接动因。
+6. Observation（本轮 grep，全仓 26 处 `reversible:'x'`，`src/` 内 22 处）此前**没有任何按钮**消费该分级。
 
 **反证条件（Reject if）**
 - 真机上任一行的回读值与硬件实况不符（getter 口径不对）→ 该行必须换 getter 或降级为「不可回读」，不得保留错误结论。
-- EC 若提供手动转速掩码查询命令 → `fan.manual-speed` 行的「推断」标注必须改成直读（依据 `stores/fan.ts:20-22` 自述的 Hypothesis）。
+- EC 若提供手动转速掩码查询命令 → 该问句随「风扇手动设定风速档位」于 2026-10-06 删除而**失去对象**：
+  注册表里 `推断（inferred）` 已归零，`fan.manual-speed` 行不存在（见 §14.9）。将来若重新引入手动档位，本反证条件随之复活。
 - 若看板在真机上「读取失败」频次高到无法使用（每次刷新并发 17 次 getter），则必须先补 getter / 加刷新门禁，再谈「一键还原」。
   → **2026-10-05 已补门禁**（`loading` 期间禁用「重新读取」+ `refresh()` 在途去重，见 §14.8 FIX-6）；真机频次行为仍未验证。
 - 「全部还原」若在真机上出现"漏了正生效的项"或"动了别的工具设的值" → 覆盖判据必须回到注册表逐项复核（§14.8 FIX-1 已按此改）。
@@ -635,6 +638,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 **边界（本轮刻意不做）**
 - 只出结论不删功能：`HomeCardType` 仍 8 项（`stores/index.ts:51-66`）、`PAGE_IDS` 未变（`stores/pageIds.ts:6-15`）；
   `cut` 只作为看板标签与 `docs/功能必要性与架构梳理.md` 的结论存在。
+  → **2026-10-06 部分取代**：机主拍板删除「风扇手动设定风速档位」，`HomeCardType` 8 → 7 项（`stores/index.ts:50-64`）、
+  `PAGE_IDS` 8 → 7 项（`stores/pageIds.ts:6-14`）；`Server` 侧只删了 `FanSection.ManualFanSpeed` 一个字段。见 §14.9。
 - `Server/**` 的 C# 源码零改动（唯一例外：`RyzenSmuControllerTest/RyzenSmuControllerTest.csproj` 补 `Compile Include` 修既有编译红灯，未改任何 `.cs`）。
 - 未实现 SMU 回读（KNOWN_ISSUES 第 24 条），20 个 SMU 项在看板上恒为「不可回读」。
 
@@ -642,7 +647,7 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - `c24d03f` feat(client)：注册表 + 看板 + 28 个用例（含反向验证：让 getter 失败 → 该行显示「读取失败」，移除只报「未确认移除成功」，
   全文不出现「已移除」）。
 - `9d01a64` fix(test)：探针工程补齐编译依赖（SmuWriteGate / LogRuntime / Models / YamlDotNet），0 错误。
-- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（50 项：keep 39 / review 5 / cut 6）。
+- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（49 项：keep 38 / review 5 / cut 6；2026-10-06 由 50 项删去 `fan.manual-speed`）。
 - `714b249` fix(client)（复查整改，见 §14.8）：`observedActive` 一等字段 + 覆盖范围说明 + 移除判据自洽 + 文案去重 + 刷新门禁。
 
 **Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过（`c24d03f` 时点）；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
@@ -671,7 +676,7 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 4. **「移除」判据必须与恢复动作自洽**：`cpu.turbo` 的「已生效」改为「限制被施加」
    （`equals:false`，行名「关闭睿频（Turbo 限制）」）；`keyboard.color` / `keyboard.brightness` 没有可证明「已还原」的
    回读判据 → `removalConfirm: 'command-only'`，文案「仅命令确认，未确认已恢复」，**不渲染成失败态**。
-   新增普查用例：14 个有「移除」按钮的项，移除后要么 `judgeRemoval === true`，要么明确 `command-only` —— 不允许存在"永不成功"的项。
+   新增普查用例：13 个有「移除」按钮的项，移除后要么 `judgeRemoval === true`，要么明确 `command-only` —— 不允许存在"永不成功"的项。
 5. **文案不重复**：33 个不可回读行的原因只留在「实测」栏（`不可回读 · <原因>`），状态栏不再重复同一段长文。
 6. **先算后提交**：配置移除步骤改为改克隆副本、保存成功才让共享对象变成新值；失败回滚显示值并强制重拉配置。
 7. **刷新要有上界**（不引入新机制）：`loading` 期间禁用「重新读取」+ `refresh()` 在途 Promise 去重。
@@ -692,7 +697,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 
 - 用例数 **60 → 72**（9 文件 / 72 通过 / 0 跳过；新增 12 条，无 `.skip`/`.only`，未放宽任何既有断言）。
 - FIX-1 复现命令：修前 `[]` → 修后 `[ 'cpu.custom-override' ]`。
-- 移除普查：14 项中 12 项可回读确认、2 项（键盘颜色/亮度）明确 `command-only`、0 项永不成功。
+- 移除普查：`714b249` 时点 14 项中 12 项可回读确认、2 项（键盘颜色/亮度）明确 `command-only`、0 项永不成功；
+  2026-10-06 删掉 `fan.manual-speed` 后为 **13 项中 11 项**（见 §14.9）。
 - 截图（mock 桥）：`全部还原（8 项）`，chip「不一致 1 / 读取失败 0 / 不可回读 33 / 无下发路径 5」，
   覆盖说明行逐项列出 8 项覆盖 + 4 项「非本软件下发」+ 2 项「当前未生效」+ 36 项「本行不提供移除」。
 - 后端门禁：`dotnet build --no-incremental` 0 警告 0 错误；`ProtocolCodecTest` 29 通过 0 失败。
@@ -703,3 +709,54 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - 真机（WebView2 桥）行为：`observedActive` 的取值依赖各 getter 的真实返回结构，只在 mock 桥下验证。
 - 刷新门禁（FIX-6）没有单测：并发点难以在组件用例里观测。
 - 键盘颜色/亮度仍无法证明"用户原先的灯效已被还原"（`command-only` 的来源）。
+
+---
+
+### 14.9 2026-10-06 · 删除「风扇手动设定风速档位」（**Decision**；机主拍板）
+
+**Decision（负责人：机主，2026-10-06）**
+
+机主原话：「直接删风扇手动设定风速档位，之后都走自动控制或者机器档位」。风扇此后只有两种控制权：
+**应用内曲线接管**（`Fan.Enabled` + `AutoFanControl` 运行中）或 **EC 固件自动温控 / 机器三档**。
+「手动钉住一个固定转速」这个第三种状态从界面、配置、闸门与桥接包装里一并删除。
+
+**依据**
+1. 机主直接指示（2026-10-06）。
+2. §6 FanPolicy 原本的三态（`auto` / `curve` / `manual`）里，`manual` 的控制权**只能推断**：
+   EC 没有「手动掩码」getter，区分不出「固件自动」与「残留手动值」（`docs/功能必要性与架构梳理.md` H1）。
+   删掉 `manual` 后 FanPolicy 收敛为两态，判定全部落在可直读的 `AutoFanControl.IsRunning()` 上，H1 随之终结。
+3. 安全出口不降级：原「风扇控制」页的「恢复自动控制」挪到风扇曲线页，成为「**交还 EC 固件温控**」，
+   行为反而更完整 —— 停曲线服务 → `Fan.RemoveFanSpeed` → `Fan.Enabled=false` **真落盘**，
+   三步逐项报告、失败不报成功（§8.3 + §8.4 口径，复用 `composables/useCompositeWrite.ts`）。
+   `stores/fan.ts` 的 `restoreAuto()` 保留为 store 侧同一出路。
+
+**删除面（Implemented）**
+- 前端：`Client/src/pages/Fan.vue` 整页删除（侧栏 8 → 7 项）；`writeGate.fanManualSpeed`；
+  `utils/bridge.ts` 导出对象的 `Fan.SetFanSpeed` 包装（**`BridgeApi` 类型声明保留** —— 后端方法真实存在，
+  且 `ThermalWatchdog` 在用，声明与包装本就不必一一对应，见 §O4）；`types/config.ts` 的 `FanSectionType.ManualFanSpeed`；
+  `stores/fan.ts` 的 `applyManualSpeed()` 与基于 `config.Fan.ManualFanSpeed > 0` 的 manual 推断；`controllerLabel` 去掉「手动接管」。
+- 注册表：删 `fan.manual-speed` 项 —— **50 → 49 项**、可移除 **14 → 13**、`推断（inferred）` **1 → 0**、
+  bridge 方法名 29 → 27；`fan.curve` 的移除步骤（停服务 + 清 `Fan.Enabled`）保持完整。
+- 后端：`JiaoLongConfig.FanSection.ManualFanSpeed` 连同 `ConfigComment` / `ConfigRange` 删除（其余 C# 未动）。
+  **`FanController.SetFanSpeed(byte)` 必须保留** —— `ThermalWatchdog` 过温兜底（98℃/10s 拉满 5800）靠它。
+- 落点迁移（必须）：`localStorage['jl-ui-page']` 的旧字符串 `'fan'` 与旧下标 `6` 都迁到 `fan-curve`
+  （`stores/pageIds.ts` 的 `LEGACY_PAGE_ID_ALIAS` / `LEGACY_INDEX_TO_ID`）；旧下标数字键 1..8 **不重新编号**。
+- 截图工具：`scripts/visual-shot.mjs` 去掉 fan 页截图项与 mock 配置里的 `ManualFanSpeed`。
+
+**反证条件（Reject if）**
+- 「交还 EC 固件温控」在真机上「三步都报成功、风扇却仍由曲线控制」→ 该出口的实现或回读口径必须重做。
+- 老用户升级后落点不是 `fan-curve`（被弹回概览页）→ 迁移映射有漏，必须补齐。
+- 若将来重新引入手动档位 → 必须重建 配置字段 / 闸门 / 桥接包装 / 页面，并按**当时证据**重新立 H1（§14.7 的反证条件随之复活）。
+
+**Implemented 提交**：`72b1325` refactor(client)（2026-10-06）。
+
+**Verified（本机实测输出，`72b1325` 时点）**
+- 前端门禁：`npm run format:check` / `lint` / `type-check` / `build` 全通过；`npm run test` **10 文件 / 75 通过 / 0 跳过**（删 3 条功能绑定用例、增 6 条，72 → 75）。
+- 后端门禁：`dotnet build -c Release --no-incremental` **0 警告 0 错误**；`ProtocolCodecTest` **29 通过 0 失败**。
+- 反向验证：`JiaoLongControl/**` 内 `ManualFanSpeed` / `applyManualSpeed` / `fanManualSpeed` **零命中**；
+  `migratePageId('fan')` 与 `migratePageId('6')` 手工运行均返回 `fan-curve`。
+- 截图：`node scripts/visual-shot.mjs --out=.visual-qa` 通过，日志 `nav items: 7`，不再产出 `fan-dark.png`
+  （只产出 `fan-curve-dark.png`；旧残留截图已删）。
+
+**未 Verified**：真机（WebView2 桥）行为 —— 只做了 mock 桥单测与 `scripts/visual-shot.mjs` 截图验证；
+`Fan.RemoveFanSpeed` 是否真的撤掉 EC 侧 0xB20 手动掩码，仍以 `research/docs/08_硬件安全架构.md` 的既有证据为准，本轮未新增真机证据。
