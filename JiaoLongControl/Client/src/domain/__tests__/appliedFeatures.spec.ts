@@ -7,6 +7,7 @@ import {
   REMOVAL_BLOCKED_NEEDS_REBOOT,
   REMOVAL_BLOCKED_NO_READBACK,
   allBridgeMethods,
+  bridgeMethodsOf,
   bulkRemovalPlan,
   groupFeatures,
   judgeAll,
@@ -424,6 +425,52 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
       expect(item.removalConfirm, id).toBe('command-only')
       expect(judgeRemoval(item, readOk(AFTER[id])), id).toBe(false)
     }
+  })
+})
+
+describe('fan.curve 的「移除」必须真正交还 EC（2026-10-06 WS1 安全补丁）', () => {
+  /**
+   * 少 Fan.RemoveFanSpeed 的假绿：停服务后 AutoFanControl.IsRunning() 必然为 false，
+   * 回读判据会通过、界面报「已移除」—— 而 0xB20 手动掩码仍置位，
+   * EC 自身温控没接回来，风扇停在最后一次写入的转速上。
+   */
+  it('移除步骤含 AutoFanControl.Stop 与 Fan.RemoveFanSpeed，且顺序是「停服务 → 交还 EC」', () => {
+    const fanCurve = featureById('fan.curve')
+    const bridgeSteps = fanCurve.removal.filter((step) => step.kind === 'bridge')
+    expect(bridgeSteps.map((step) => step.method)).toEqual([
+      'AutoFanControl.Stop',
+      'Fan.RemoveFanSpeed',
+    ])
+    // 交还 EC 必须在停服务之后：反过来的话曲线下一拍就把掩码写回去
+    const order = fanCurve.removal.map((step) => (step.kind === 'bridge' ? step.method : 'config'))
+    expect(order).toEqual(['AutoFanControl.Stop', 'Fan.RemoveFanSpeed', 'config'])
+    // 两个方法名都要能在真实桥接导出里解析到（不手抄名单）
+    expect(bridgeMethodsOf(fanCurve)).toEqual(
+      expect.arrayContaining(['AutoFanControl.Stop', 'Fan.RemoveFanSpeed']),
+    )
+    expect(resolveBridgeMethod(bridgeNamespace, 'Fan.RemoveFanSpeed')).not.toBeNull()
+    // 判据仍是回读：交还结果由独立重读确认，不是"命令被接受就算数"
+    expect(fanCurve.readback?.method).toBe('AutoFanControl.IsRunning')
+    expect(fanCurve.removalConfirm).toBe('readback')
+  })
+
+  it('任一交还步骤失败都不得报成功：后续步骤不执行，移除后回读仍算「生效」', () => {
+    const fanCurve = featureById('fan.curve')
+    // 组合写入口径（useCompositeWrite.run）：遇失败中止、已生效项不撤销
+    for (const failedAt of [0, 1]) {
+      expect(judgeRemoval(fanCurve, readOk(true)), `中断于第 ${failedAt} 步`).toBe(false)
+      expect(judgeRemoval(fanCurve, readFailed()), `中断于第 ${failedAt} 步`).toBe(false)
+    }
+    // 停服务成功但掩码没撤 → 服务已停（回读 false），仍不算交还成功
+    const stepsAfterStopOnly = fanCurve.removal.slice(0, 2)
+    expect(stepsAfterStopOnly.map((s) => (s.kind === 'bridge' ? s.method : 'config'))).toEqual([
+      'AutoFanControl.Stop',
+      'Fan.RemoveFanSpeed',
+    ])
+    // 掩码已撤但落盘失败 → 本次生效，但下次开机会被 SelfStart 重新拉起 = 部分应用
+    const stepsWithoutPersist = fanCurve.removal.filter((step) => step.kind === 'bridge')
+    expect(stepsWithoutPersist).toHaveLength(2)
+    expect(fanCurve.removal[fanCurve.removal.length - 1]!.kind).toBe('config')
   })
 })
 

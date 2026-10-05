@@ -745,15 +745,33 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     intentRule: { kind: 'truthy' },
     observedRule: { kind: 'truthy' },
     exact: true,
+    // 三步缺一不可，顺序即语义（与 useFanCurveEditor.handleHandoffToEc 同一口径）：
+    // 1. 停服务 —— 否则下一步撤掉的掩码会被曲线下一拍重新写回；
+    // 2. Fan.RemoveFanSpeed —— **撤掉 0xB20 手动掩码**，EC 固件温控才真正接回来。
+    //    少了这一步，「已移除」是假绿：AutoFanControl.IsRunning() 确实变 false（判据通过），
+    //    但 EC 温控仍被绕开，风扇停在最后一次写入的转速上（AGENTS.md 风扇控制边界、
+    //    KNOWN_ISSUES 第 5 条）。停服务 ≠ 交还控制权。
+    // 3. 清 Fan.Enabled —— 否则下次开机 SelfStart 按 BootAdvancedFanControlSystem 重新拉起曲线。
     removal: [
       { kind: 'bridge', method: 'AutoFanControl.Stop', args: [], label: '停止应用内曲线服务' },
-      { kind: 'config', path: 'Fan.Enabled', value: false, label: '清掉「开机自动拉起」意图' },
+      {
+        kind: 'bridge',
+        method: 'Fan.RemoveFanSpeed',
+        args: [],
+        label: '移除转速设置（撤掉手动掩码，EC 温控重新生效）',
+      },
+      {
+        kind: 'config',
+        path: 'Fan.Enabled',
+        value: false,
+        label: '关闭「开机自动拉起曲线」意图并保存配置',
+      },
     ],
     removalConfirm: 'readback',
     writePath: 'src/composables/useFanCurveEditor.ts:112-151',
     conclusion: 'keep',
     conclusionReason:
-      'KNOWN_ISSUES 第 5 条的刻意取舍：固件温控表形状不可改，接管是唯一手段；有兜底（ThermalWatchdog + EcGuard）与真实还原路径',
+      'KNOWN_ISSUES 第 5 条的刻意取舍：固件温控表形状不可改，接管是唯一手段；有兜底（ThermalWatchdog + EcGuard）与真正的还原路径（停服务 + 交还 EC 掩码 + 落盘意图）',
   },
   {
     id: 'fan.curve-merge',

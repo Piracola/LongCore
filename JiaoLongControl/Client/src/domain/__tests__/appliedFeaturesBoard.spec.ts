@@ -80,6 +80,8 @@ const RAW_DATA: Record<string, unknown> = {
 }
 
 let shouldFail: (namespace: string, method: string) => boolean = () => false
+/** 宿主被真正调用到的方法（按 namespace.method 记录，用于断言「移除到底下发了什么」） */
+let hostCalls: string[] = []
 
 function hostOk(data: unknown) {
   return {
@@ -100,6 +102,7 @@ beforeAll(() => {
         get: (_target, method) => {
           if (typeof method !== 'string' || method === 'then') return undefined
           return () => {
+            hostCalls.push(`${namespace}.${method}`)
             if (shouldFail(namespace, method)) return hostFail('注入的读取失败')
             return hostOk(RAW_DATA[`${namespace}.${method}`])
           }
@@ -131,6 +134,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   shouldFail = () => false
+  hostCalls = []
 })
 
 function mountBoard(): VueWrapper {
@@ -300,5 +304,45 @@ describe('已应用功能看板', () => {
     expect(rowOf(wrapper, '应用内风扇曲线接管').text()).toContain('读取失败')
     // 复合写入把"回读不一致"记为 failed，而不是成功
     expect(steps).toContain('失败')
+  })
+
+  it('移除 fan.curve 会依次下发停服务 + 撤手动掩码（交还 EC 缺一不可）', async () => {
+    const wrapper = mountBoard()
+    await flushPromises()
+
+    hostCalls = []
+    await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+    await flushPromises()
+
+    // 掩码必须先于失败判据被撤掉：这一步以前整个缺失，界面却是绿的
+    const removalCalls = hostCalls.filter((c) => c !== 'AutoFan.IsRunning')
+    expect(removalCalls).toEqual([
+      'AutoFan.Stop',
+      'Fan.RemoveFanSpeed',
+      'ConfigCtrl.SetConfig',
+    ])
+    const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
+    expect(steps).toContain('移除转速设置（撤掉手动掩码，EC 温控重新生效）')
+    expect(steps).toContain('关闭「开机自动拉起曲线」意图并保存配置')
+  })
+
+  it('撤手动掩码失败 → 中止后续步骤，界面绝不报「已移除」', async () => {
+    shouldFail = (namespace, method) => namespace === 'Fan' && method === 'RemoveFanSpeed'
+    const wrapper = mountBoard()
+    await flushPromises()
+
+    await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+    await flushPromises()
+
+    const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
+    const result = wrapper.find('.board-result').text()
+    console.log(`[掩码失败] 移除步骤: ${steps}`)
+    console.log(`[掩码失败] 移除结论: ${result.replace(/\s+/g, ' ')}`)
+
+    expect(steps).toContain('失败')
+    // 第三步没执行：意图不能显示成"已清掉"
+    expect(steps).not.toContain('关闭「开机自动拉起曲线」意图并保存配置')
+    expect(result).toContain('未确认移除成功')
+    expect(wrapper.text()).not.toContain('已移除并回读确认')
   })
 })
