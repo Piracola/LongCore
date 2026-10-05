@@ -602,3 +602,46 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 6. 把"独特性"当作产品价值证明
 7. 未定位根因就先锁定技术解法
 8. 在领域模型不存在时先建**全局脊柱**
+
+---
+
+### 14.7 2026-10-05 · 已应用功能看板与「可逆性门禁」（**Decision**；本节按要求追加在文末）
+
+**Decision（负责人：实施者（AI），2026-10-05）**
+概览页下半页新增「已应用功能」看板：每行两栏 —— **意图** = `Config.GetConfig()` 读到的 `config.yaml` 字段路径，
+**实测** = 桥接 getter 的回读值；两者不一致时显式标出「配置开着·硬件没写进去」。逐行「移除」+ 页内「全部还原」，
+让「软件改过哪些硬件、还生不生效、能不能退出」第一次可以看见。
+唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（50 项：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由），
+组件只遍历注册表，不做任何功能清单硬编码。
+
+**依据**
+1. 本轮任务书硬规则 + §2 第一性原则 1（用户必须能区分「我想设置的值」/「命令已发送」/「硬件实际值」）。
+2. §7.1 状态真实性契约：读不到写「不可回读 / 读取失败」，**不得回退 0/false**。看板对 33 项无可回读接口的项如此处理。
+3. §8.2 可逆性分级 + `Client/src/domain/operations.ts:21-29` 的五级定义 —— 本轮把它从「日志标签」变成**真门禁**：
+   回读方法 = `null` 或级别 = `e` 的项禁止挂可点的「移除」，只能显示「无法还原 + 原因」。
+4. §8.4 回读校验约束：命令被接受 ≠ 已生效。移除步骤走既有的 `composables/useCompositeWrite.ts`，
+   末尾追加显式「复核：独立重读 `<getter>()`」步骤；回读失败即判 failed，界面只能说「未确认移除成功」。
+5. Observation（本轮实测）：各页「重置」语义不一致 —— `pages/CPU.vue:184-194` 与 `pages/RyzenSmu.vue:363-372` 只改表单+存盘、
+   **不下发硬件**；`pages/Fan.vue:119-126` 与 `pages/GPU.vue:308-337` 真下发。同一个词两种含义是本轮的直接动因。
+6. Observation（本轮 grep，全仓 29 处 `reversible:'x'`，`src/` 内 25 处）此前**没有任何按钮**消费该分级。
+
+**反证条件（Reject if）**
+- 真机上任一行的回读值与硬件实况不符（getter 口径不对）→ 该行必须换 getter 或降级为「不可回读」，不得保留错误结论。
+- EC 若提供手动转速掩码查询命令 → `fan.manual-speed` 行的「推断」标注必须改成直读（依据 `stores/fan.ts:20-22` 自述的 Hypothesis）。
+- 若看板在真机上「读取失败」频次高到无法使用（每次刷新并发 17 次 getter），则必须先补 getter / 加刷新门禁，再谈「一键还原」。
+
+**边界（本轮刻意不做）**
+- 只出结论不删功能：`HomeCardType` 仍 8 项（`stores/index.ts:51-66`）、`PAGE_IDS` 未变（`stores/pageIds.ts:6-15`）；
+  `cut` 只作为看板标签与 `docs/功能必要性与架构梳理.md` 的结论存在。
+- `Server/**` 的 C# 源码零改动（唯一例外：`RyzenSmuControllerTest/RyzenSmuControllerTest.csproj` 补 `Compile Include` 修既有编译红灯，未改任何 `.cs`）。
+- 未实现 SMU 回读（KNOWN_ISSUES 第 24 条），20 个 SMU 项在看板上恒为「不可回读」。
+
+**Implemented**
+- `c24d03f` feat(client)：注册表 + 看板 + 28 个用例（含反向验证：让 getter 失败 → 该行显示「读取失败」，移除只报「未确认移除成功」，
+  全文不出现「已移除」）。
+- `9d01a64` fix(test)：探针工程补齐编译依赖（SmuWriteGate / LogRuntime / Models / YamlDotNet），0 错误。
+- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（50 项：keep 39 / review 5 / cut 6）。
+
+**Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
+`home-dark-bottom.png`（mock 桥，含一行「配置开着·硬件没写进去」与 `--fail-readback` 的失败态）。
+**未 Verified**：真机硬件行为（本轮无真机复现，见该文档 §8）。
