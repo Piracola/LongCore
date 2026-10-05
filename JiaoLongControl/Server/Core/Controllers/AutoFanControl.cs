@@ -86,9 +86,18 @@ public class AutoFanControl : IDisposable
         { FanType.GPU, new FanState() }
     };
 
+    /// <summary>
+    /// 曲线服务是否在运行。**这是查询: 恒 Success = true, 运行态在 Data。**
+    /// 契约: `CommandResult.Success` 只表达"这次查询/命令本身成不成功", 业务取值一律进 Data;
+    /// **不要**把运行态塞进 Success —— 2026-10-06 修过一次。前端 `useAppliedFeatures.readOne`
+    /// 把 `Success !== true` 当"读取失败", `judgeRemoval` 又要求 state === 'ok', 于是旧写法
+    /// (`Success = _isRunning`) 让看板 fan.curve 行在曲线没跑(正常态)时显示"读取失败",
+    /// 点「移除」时三步真下发却判"未确认移除成功" —— 两个方向都是假红。
+    /// 同族第二处(FanController.GetMaxFanSpeedSwitch)一并修; 见 docs/UI重构_最终方案_v4.md §14.11。
+    /// </summary>
     public CommandResult IsRunning()
     {
-        return new CommandResult(_isRunning, _isRunning ? "自动风扇控制正在运行" : "自动风扇控制没有在运行中", _isRunning);
+        return new CommandResult(true, _isRunning ? "自动风扇控制正在运行" : "自动风扇控制没有在运行中", _isRunning);
     }
 
     public CommandResult Start()

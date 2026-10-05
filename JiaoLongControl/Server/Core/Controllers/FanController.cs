@@ -71,9 +71,16 @@ public class FanController : Blding64
         return MethodServices.SetValue(MethodName.MaxFanSpeedSwitch, (byte)(maxFanSpeedSwitch ? 1 : 0));
     }
 
+    /// <summary>
+    /// 强冷开关是否开启。**这是查询: 恒 Success = true, 取值在 Data** —— 与
+    /// AutoFanControl.IsRunning 同一契约(见 docs/UI重构_最终方案_v4.md §14.11):
+    /// `CommandResult.Success` 只表达"这次查询/命令本身成不成功", 业务取值一律进 Data。
+    /// 别照抄旧写法(Success 与 Data 都传那个 bool): 它把取值塞进 Success, 而前端把
+    /// `Success !== true` 当读取失败, 取值 false 时会被判成"读取失败"。
+    /// </summary>
     public CommandResult GetMaxFanSpeedSwitch()
     {
         var res = MethodServices.GetValue<byte>(MethodName.MaxFanSpeedSwitch) == 1;
-        return new CommandResult(res, "获取成功",res);
+        return new CommandResult(true, "获取成功", res);
     }
 }
