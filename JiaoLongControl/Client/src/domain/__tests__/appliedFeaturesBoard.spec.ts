@@ -18,10 +18,6 @@ const RAW_DATA: Record<string, unknown> = {
   'Power.GetCPUMaxFrequency': { ac: 5400, dc: 5400 },
   'Power.GetTurboEnabled': { ac: true, dc: true },
   'AutoFan.IsRunning': true,
-  'Keyboard.GetColor': { red: 138, green: 43, blue: 226 },
-  'Keyboard.GetLightBrightness': 2,
-  'Keyboard.GetMode': 2,
-  'KeyboardGradient.IsRunning': false,
   'LogoLight.Get': 1,
   'AutoStart.IsEnabled': true,
   'PerformanceMode.Get': 2,
@@ -42,7 +38,6 @@ const RAW_DATA: Record<string, unknown> = {
       BootAdvancedCPUSystem: true,
       BootAdvancedGPUSystem: true,
       BootSetRyzenSumCurveOptimizerAll: false,
-      BootKeyboardGradient: false,
       Theme: 'dark',
       SyncWindowsPowerPlan: true,
       HotkeyEnabled: true,
@@ -238,37 +233,39 @@ describe('已应用功能看板', () => {
     expect(row.find('button').exists()).toBe(false)
   })
 
-  it('command-only 的行（键盘颜色）移除后只报「仅命令确认，未确认已恢复」，不是失败态', async () => {
+  it('不可回读的行没有移除按钮：只给原因，不给一个永远不会成功的按钮', async () => {
+    // 2026-10-06：本条原为「command-only 的行（键盘颜色）」，该行随灯效页删除。
+    // 现注册表里可移除的项全部是 removalConfirm=readback（command-only 分支已无行消费，
+    // 只留作后续新增项的口径）。这里钉住硬规则的反面：不可回读 → 不给按钮。
     const wrapper = mountBoard()
     await flushPromises()
-    const row = rowOf(wrapper, '键盘背光颜色')
-    expect(row.find('button').attributes('title')).toContain('仅命令确认，未确认已恢复')
-    await row.find('button').trigger('click')
-    await flushPromises()
-    const result = wrapper.find('.board-result').text()
-    expect(result).toContain('仅命令确认，未确认已恢复')
-    expect(result).not.toContain('未确认移除成功')
-    expect(wrapper.text()).not.toContain('已移除')
+    for (const name of ['风扇曲线合并', '长时功耗 SPL']) {
+      const row = rowOf(wrapper, name)
+      expect(row.text()).toContain('不可回读')
+      expect(row.text()).toContain('无法还原')
+      expect(row.find('button').exists(), name).toBe(false)
+    }
+    // 可移除的行必须写明结果要被独立重读确认，而不是"点一下就算成功"
+    expect(rowOf(wrapper, '应用内风扇曲线接管').find('button').attributes('title')).toContain(
+      '写后独立重读',
+    )
   })
 
   it('配置步骤保存失败 → 先算后提交：意图栏不显示没落盘的值', async () => {
-    const base = RAW_DATA['ConfigCtrl.GetConfig'] as { App: Record<string, unknown> }
-    RAW_DATA['ConfigCtrl.GetConfig'] = {
-      ...base,
-      App: { ...base.App, BootKeyboardGradient: true },
-    }
+    const base = RAW_DATA['ConfigCtrl.GetConfig'] as { Fan: Record<string, unknown> }
+    RAW_DATA['ConfigCtrl.GetConfig'] = { ...base, Fan: { ...base.Fan, Enabled: true } }
     shouldFail = (namespace, method) => namespace === 'ConfigCtrl' && method === 'SetConfig'
     try {
       const wrapper = mountBoard()
       await flushPromises()
-      const before = rowOf(wrapper, '键盘渐变（色相循环）').findAll('td')[1]!.text()
-      expect(before).toContain('App.BootKeyboardGradient = true')
+      const before = rowOf(wrapper, '应用内风扇曲线接管').findAll('td')[1]!.text()
+      expect(before).toContain('Fan.Enabled = true')
 
-      await rowOf(wrapper, '键盘渐变（色相循环）').find('button').trigger('click')
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
       await flushPromises()
 
       // 保存失败 → 回滚显示值 + 重拉配置；绝不让意图栏显示一个没落盘的值
-      const after = rowOf(wrapper, '键盘渐变（色相循环）').findAll('td')[1]!.text()
+      const after = rowOf(wrapper, '应用内风扇曲线接管').findAll('td')[1]!.text()
       expect(after).toBe(before)
       expect(wrapper.find('.board-result').text()).toContain('未确认移除成功')
     } finally {
@@ -316,11 +313,7 @@ describe('已应用功能看板', () => {
 
     // 掩码必须先于失败判据被撤掉：这一步以前整个缺失，界面却是绿的
     const removalCalls = hostCalls.filter((c) => c !== 'AutoFan.IsRunning')
-    expect(removalCalls).toEqual([
-      'AutoFan.Stop',
-      'Fan.RemoveFanSpeed',
-      'ConfigCtrl.SetConfig',
-    ])
+    expect(removalCalls).toEqual(['AutoFan.Stop', 'Fan.RemoveFanSpeed', 'ConfigCtrl.SetConfig'])
     const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
     expect(steps).toContain('移除转速设置（撤掉手动掩码，EC 温控重新生效）')
     expect(steps).toContain('关闭「开机自动拉起曲线」意图并保存配置')

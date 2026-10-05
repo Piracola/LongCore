@@ -14,7 +14,6 @@ export interface AppSectionType {
   BootAdvancedCPUSystem: boolean
   BootAdvancedGPUSystem: boolean
   BootSetRyzenSumCurveOptimizerAll: boolean
-  BootKeyboardGradient: boolean
   Theme: ThemeMode
   SyncWindowsPowerPlan: boolean
   HotkeyEnabled: boolean

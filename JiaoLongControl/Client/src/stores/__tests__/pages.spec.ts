@@ -16,17 +16,22 @@ describe('migratePageId', () => {
     expect(migratePageId('5')).toBe('fan-curve')
     // 旧 6 号位是「风扇」页，页已删 → 落到它的继任者「风扇曲线」
     expect(migratePageId('6')).toBe('fan-curve')
-    expect(migratePageId('7')).toBe('keyboard')
+    // 旧 7 号位是「灯效」页，2026-10-06 整页删除且**没有继任页** → 显式映射到概览。
+    // 8 号位仍是「系统」：数字键不重新编号，否则存着 '8' 的人会落到别的页面。
+    expect(migratePageId('7')).toBe('home')
     expect(migratePageId('8')).toBe('settings')
   })
 
-  it('migrates the removed fan page id to fan-curve', () => {
-    // 老用户 localStorage 里存的就是字符串 'fan'（内容不可控），必须显式迁移
+  it('migrates removed page ids explicitly', () => {
+    // 老用户 localStorage 里存的就是字符串 'fan'（内容不可控），必须显式迁移到继任页
     expect(migratePageId('fan')).toBe('fan-curve')
+    // 'keyboard' 是已删页面（已知输入），也必须写成显式映射，不靠"未知就回落 home"的兜底
+    expect(migratePageId('keyboard')).toBe('home')
   })
 
-  it('has 7 pages', () => {
-    expect(PAGE_IDS.length).toBe(7)
+  it('has 6 pages', () => {
+    expect(PAGE_IDS.length).toBe(6)
+    expect(PAGE_IDS).not.toContain('keyboard')
   })
 
   it('falls back to home', () => {

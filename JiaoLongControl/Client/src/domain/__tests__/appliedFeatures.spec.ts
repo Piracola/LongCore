@@ -77,7 +77,7 @@ describe('注册表：bridge 方法必须真实存在', () => {
   it('分组渲染覆盖全部注册项，顺序稳定', () => {
     const grouped = groupFeatures()
     expect(grouped.flatMap((g) => g.items).length).toBe(APPLIED_FEATURES.length)
-    expect(grouped.map((g) => g.id)).toEqual(['cpu', 'smu', 'gpu', 'fan', 'keyboard', 'system'])
+    expect(grouped.map((g) => g.id)).toEqual(['cpu', 'smu', 'gpu', 'fan', 'lighting', 'system'])
   })
 })
 
@@ -260,16 +260,12 @@ describe('「全部还原」的覆盖范围（审查 FIX-1：既不许漏正生�
   )
   const OBSERVED_ON: Record<string, ObservedRead> = {
     'cpu.custom-override': readOk(true),
-    'keyboard.color': readOk({ red: 138, green: 43, blue: 226 }),
-    'keyboard.brightness': readOk(2),
     'keyboard.logo-light': readOk(1),
     'system.autostart': readOk(true),
   }
   /** 同一批项、实测"没生效"（present 判据下 null = 没有有效值） */
   const OBSERVED_OFF: Record<string, ObservedRead> = {
     'cpu.custom-override': readOk(false),
-    'keyboard.color': readOk(null),
-    'keyboard.brightness': readOk(null),
     'keyboard.logo-light': readOk(0),
     'system.autostart': readOk(false),
   }
@@ -306,13 +302,11 @@ describe('「全部还原」的覆盖范围（审查 FIX-1：既不许漏正生�
       'gpu.core-offset': configOn(120),
       'gpu.memory-offset': configOn(600),
       'gpu.voltage-boost': configOn(15),
-      'keyboard.mode': configOn(2),
     }
     const observed: Record<string, ObservedRead> = {
       'gpu.core-offset': readOk({ CoreMhz: 120, MemoryMhz: 0 }),
       'gpu.memory-offset': readOk({ CoreMhz: 0, MemoryMhz: 600 }),
       'gpu.voltage-boost': readOk(15),
-      'keyboard.mode': readOk(2),
     }
     expect(bulkRemovalPlan(APPLIED_FEATURES, intents, observed).map((item) => item.id)).toEqual([])
     for (const item of noWritePath) {
@@ -325,20 +319,18 @@ describe('「全部还原」的覆盖范围（审查 FIX-1：既不许漏正生�
       'fan.curve': configOn(true),
       'gpu.core-offset': configOn(120),
       'gpu.voltage-boost': configOn(15),
-      'keyboard.gradient': configOn(false),
+      'keyboard.logo-light': configOn(1),
     }
     const observed: Record<string, ObservedRead> = {
       'fan.curve': readOk(true),
       'gpu.core-offset': readOk({ CoreMhz: 120, MemoryMhz: 0 }),
       'gpu.voltage-boost': readOk(15),
-      'keyboard.gradient': readOk(false),
       'keyboard.logo-light': readOk(1),
     }
     const scope = removalScope(APPLIED_FEATURES, intents, observed)
     expect(scope.covered).toEqual(['应用内风扇曲线接管', 'Logo 灯'])
     expect(scope.notWrittenByUs).toEqual(expect.arrayContaining(['核心频率偏移', '核心电压提升']))
-    expect(scope.notActive).toEqual(['键盘渐变（色相循环）'])
-    expect(scope.noRemovalPath.length).toBeGreaterThan(20) // 33 项不可回读等
+    expect(scope.noRemovalPath.length).toBeGreaterThan(20) // 29 项不可回读等
     // 四类 + 覆盖 = 注册表全部项，没有"算漏"
     expect(
       scope.covered.length +
@@ -360,10 +352,6 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
     'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 600 },
     'gpu.voltage-boost': 15,
     'fan.curve': true,
-    'keyboard.color': { red: 138, green: 43, blue: 226 },
-    'keyboard.brightness': 3,
-    'keyboard.mode': 2,
-    'keyboard.gradient': true,
     'keyboard.logo-light': 1,
     'system.autostart': true,
   }
@@ -376,10 +364,6 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
     'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 0 },
     'gpu.voltage-boost': 0,
     'fan.curve': false,
-    'keyboard.color': { red: 138, green: 43, blue: 226 }, // present 恒真：只能命令确认
-    'keyboard.brightness': 2,
-    'keyboard.mode': 0,
-    'keyboard.gradient': false,
     'keyboard.logo-light': 0,
     'system.autostart': false,
   }
@@ -392,7 +376,7 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
     const ids = removable()
       .map((item) => item.id)
       .sort()
-    expect(ids.length).toBeGreaterThan(10)
+    expect(ids.length).toBeGreaterThan(5)
     expect(Object.keys(ACTIVE).sort()).toEqual(ids)
     expect(Object.keys(AFTER).sort()).toEqual(ids)
   })
@@ -414,16 +398,25 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
         )
       }
     }
-    expect(confirmed).toBeGreaterThan(5)
-    expect(commandOnly).toBeGreaterThan(0)
+    // 2026-10-06：键盘颜色/亮度（唯二可移除的 command-only 项）随灯效页删除，
+    // 现在可移除的 9 项全部靠独立重读确认 —— 这是更强的口径，不是放宽。
+    // commandOnly 仍参与判定（分支保留给后续新增项），只是当前为 0。
+    expect(confirmed).toBe(removable().length)
+    expect(commandOnly).toBe(0)
   })
 
-  it('键盘颜色/亮度：没有能证明「已还原」的回读判据 → 明确 command-only，不假装能确认', () => {
-    for (const id of ['keyboard.color', 'keyboard.brightness']) {
-      const item = featureById(id)
-      expect(item.removal.length, id).toBeGreaterThan(0) // 仍提供下发，不是把按钮删掉
-      expect(item.removalConfirm, id).toBe('command-only')
-      expect(judgeRemoval(item, readOk(AFTER[id])), id).toBe(false)
+  it('无可靠回读判据的项必须显式标 command-only，不假装能确认', () => {
+    // 2026-10-06：键盘颜色/亮度（唯二"有回读但证明不了已还原"的项）随灯效页删除后，
+    // 注册表里**没有**可移除的 command-only 项 —— 可移除的 9 项全部有 readback 复核。
+    // 这是更强的口径，不是放宽；用例钉住它，免得将来新增项悄悄退回"命令被接受=已移除"。
+    const removableCommandOnly = removable().filter((i) => i.removalConfirm === 'command-only')
+    expect(removableCommandOnly.map((i) => i.id)).toEqual([])
+
+    // 口径本身仍要成立：凡挂了移除步骤又标 command-only 的项，必须真的读不到回读。
+    // 有回读却证明不了"已还原"，正确做法是补 readback 判据，而不是标 command-only 蒙混。
+    for (const item of APPLIED_FEATURES) {
+      if (item.removalConfirm !== 'command-only' || item.removal.length === 0) continue
+      expect(item.readback, `${item.id} 标 command-only 却有回读，说明它本可回读确认`).toBeNull()
     }
   })
 })

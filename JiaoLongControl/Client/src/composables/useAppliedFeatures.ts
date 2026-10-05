@@ -36,7 +36,8 @@ const GROUP_TRANSPORT: Record<AppliedFeature['group'], OperationTransport> = {
   smu: 'smu',
   gpu: 'nvapi',
   fan: 'ec',
-  keyboard: 'wmi',
+  // Logo 灯走 EC 的 Ambientlight 命令(15)，即 WMI 通道
+  lighting: 'wmi',
   system: 'config',
 }
 

@@ -36,7 +36,6 @@ const mockConfig = {
     BootAdvancedCPUSystem: false,
     BootAdvancedGPUSystem: false,
     BootSetRyzenSumCurveOptimizerAll: true,
-    BootKeyboardGradient: false,
     Theme: 'dark',
     SyncWindowsPowerPlan: true,
     HotkeyEnabled: true,
@@ -160,15 +159,6 @@ const handlers = {
   'AutoStart.IsEnabled': () => hostOk(true),
   'AutoStart.Enable': () => hostOk(null),
   'AutoStart.Disable': () => hostOk(null),
-  'Keyboard.GetColor': () => hostOk({ R: 20, G: 180, B: 220 }),
-  'Keyboard.SetColor': () => hostOk(null),
-  'Keyboard.GetMode': () => hostOk(1),
-  'Keyboard.SetMode': () => hostOk(null),
-  'Keyboard.GetLightBrightness': () => hostOk(3),
-  'Keyboard.SetLightBrightness': () => hostOk(null),
-  'KeyboardGradient.IsRunning': () => hostOk(false),
-  'KeyboardGradient.Start': () => hostOk(null),
-  'KeyboardGradient.Stop': () => hostOk(null),
   'NvidiaGpu.GetGpuName': () => hostOk('RTX 4070'),
   'NvidiaGpu.GetGpuDriverVersion': () => hostOk('560.70'),
   'NvidiaGpu.GetGpuDriverDate': () => hostOk('2025-01-01'),
@@ -210,10 +200,6 @@ Object.assign(handlers, {
   // mockConfig 的 CpuTurbo=true，这里故意回读 false → 看板演示「配置开着、硬件没写进去」
   'Power.GetTurboEnabled': () => qaRead('Power.GetTurboEnabled', { ac: false, dc: false }),
   'AutoFan.IsRunning': () => qaRead('AutoFan.IsRunning', false),
-  'Keyboard.GetColor': () => qaRead('Keyboard.GetColor', { red: 138, green: 43, blue: 226 }),
-  'Keyboard.GetLightBrightness': () => qaRead('Keyboard.GetLightBrightness', 2),
-  'Keyboard.GetMode': () => qaRead('Keyboard.GetMode', 2),
-  'KeyboardGradient.IsRunning': () => qaRead('KeyboardGradient.IsRunning', false),
   'LogoLight.Get': () => qaRead('LogoLight.Get', 1),
   'AutoStart.IsEnabled': () => qaRead('AutoStart.IsEnabled', true),
   'PerformanceMode.Get': () => qaRead('PerformanceMode.Get', 2),
@@ -232,10 +218,6 @@ Object.assign(handlers, {
   'Power.ResetCPUMaxFrequency': () => hostOk(null),
   'Power.EnableTurbo': () => hostOk(null),
   'Fan.RemoveFanSpeed': () => hostOk(null),
-  'Keyboard.SetColor': () => hostOk(null),
-  'Keyboard.SetLightBrightness': () => hostOk(null),
-  'Keyboard.SetMode': () => hostOk(null),
-  'KeyboardGradient.Stop': () => hostOk(null),
   'LogoLight.Set': () => hostOk(null),
   'AutoStart.Disable': () => hostOk(null),
   'NvidiaGpu.ResetClockOffsets': () => hostOk(null),
@@ -340,7 +322,6 @@ async function gotoPage(id, theme) {
     gpu: 'GPU',
     smu: 'SMU',
     'fan-curve': '风扇曲线',
-    keyboard: '灯效',
     settings: '系统',
   }
   const btn = page.locator(`button[aria-label="${labels[id]}"]`)
@@ -351,10 +332,10 @@ async function gotoPage(id, theme) {
 await page.goto(url, { waitUntil: 'networkidle' })
 await page.waitForTimeout(1000)
 
-// 侧栏项数：2026-10-06 删掉「风扇」页后应为 7（截图不能自证项数，这里直接数 DOM）
+// 侧栏项数：2026-10-06 删掉「风扇」页与整个「灯效」页后应为 6（截图不能自证项数，这里直接数 DOM）
 const navCount = await page.locator('aside[aria-label="主导航"] button.rail-btn').count()
 console.log(`nav items: ${navCount}`)
-if (navCount !== 7) throw new Error(`侧栏项数应为 7，实际 ${navCount}`)
+if (navCount !== 6) throw new Error(`侧栏项数应为 6，实际 ${navCount}`)
 
 // Dark theme captures
 await page.evaluate(() => {
@@ -397,7 +378,7 @@ await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'cpu-dark.png') })
 console.log('saved cpu-dark')
 
-for (const id of ['gpu', 'fan-curve', 'keyboard']) {
+for (const id of ['gpu', 'fan-curve']) {
   await gotoPage(id, 'dark')
   await page.mouse.move(400, 400)
   await page.screenshot({ path: path.join(outDir, `${id}-dark.png`) })

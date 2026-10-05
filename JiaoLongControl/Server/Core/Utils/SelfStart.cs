@@ -12,7 +12,6 @@ public class SelfStart
         if (bridge.Config.App.BootAdvancedGPUSystem) GPU();
         if (bridge.Config.App.BootSetRyzenSumCurveOptimizerAll)
             bridge.RyzenSmu.SetCurveOptimizerAll(bridge.Config.Smu.CurveOptimizerAll);
-        if (bridge.Config.App.BootKeyboardGradient) bridge.KeyboardGradient.Start();
     }
 
     /// <summary>

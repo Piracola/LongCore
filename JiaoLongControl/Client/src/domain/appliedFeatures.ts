@@ -24,14 +24,16 @@ import type { ReadingState } from '@/utils/reading'
 /** 结论：本轮只出结论不删功能，cut = 建议移除 */
 export type FeatureConclusion = 'keep' | 'review' | 'cut'
 
-export type FeatureGroup = 'cpu' | 'smu' | 'gpu' | 'fan' | 'keyboard' | 'system'
+export type FeatureGroup = 'cpu' | 'smu' | 'gpu' | 'fan' | 'lighting' | 'system'
 
 export const FEATURE_GROUP_LABELS: Record<FeatureGroup, string> = {
   cpu: 'CPU 功耗覆盖',
   smu: 'Ryzen SMU / PawnIO',
   gpu: 'GPU / NVAPI',
   fan: '风扇 / EC',
-  keyboard: '键盘与灯效',
+  // 2026-10-06：键盘颜色/亮度/灯效/渐变整个功能已删，原「键盘与灯效」组只剩 Logo 灯。
+  // 组名改成它实际装的东西 —— 叫「键盘与灯效」而列表里一行键盘都没有才是撒谎。
+  lighting: 'Logo 灯 / 环境光',
   system: '系统与开机行为',
 }
 
@@ -792,114 +794,15 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
       '消除两风扇拍频的既定手段（Settings.vue:20-26 开关 + 曲线服务消费）；无可回读接口，故只显示意图',
   },
 
-  // ---------------------------------------------------------------- 键盘与灯效
-  {
-    id: 'keyboard.color',
-    name: '键盘背光颜色',
-    group: 'keyboard',
-    intentPath: null,
-    readback: { method: 'Keyboard.GetColor', kind: 'direct' },
-    readbackNote:
-      'Keyboard.GetColor 直接读硬件当前 RGB；但它读不出「这值是不是本软件写的」（固件原色无处可查），移除只能命令确认',
-    reversibility: 'a',
-    intentRule: { kind: 'present' },
-    observedRule: { kind: 'present' },
-    removal: [
-      {
-        kind: 'bridge',
-        method: 'Keyboard.SetColor',
-        args: [138, 43, 226],
-        label: '写回应用默认色 #8A2BE2（KeyBoard.vue:244 的页面默认值，非固件原值）',
-      },
-    ],
-    // 回读判据是 present：任何颜色都 present → 移除后回读永远"仍然生效"。
-    // 没有可靠的出厂默认色可写回，所以只能命令确认，不得渲染成失败态（2026-10-05 审查 FIX-2）。
-    removalConfirm: 'command-only',
-    writePath: 'src/pages/KeyBoard.vue:196-214',
-    conclusion: 'keep',
-    conclusionReason:
-      'A 级：有 getter + setter，允许「撤销」措辞（operations.ts:23）；但颜色不落 config.yaml、固件原色不可查，写回的是页面默认值 → 移除只报「仅命令确认，未确认已恢复」',
-  },
-  {
-    id: 'keyboard.brightness',
-    name: '键盘背光亮度',
-    group: 'keyboard',
-    intentPath: null,
-    readback: { method: 'Keyboard.GetLightBrightness', kind: 'direct' },
-    readbackNote:
-      'Keyboard.GetLightBrightness 直接读亮度档位（0–3）；但它读不出「这档位是不是本软件写的」，移除只能命令确认',
-    reversibility: 'a',
-    intentRule: { kind: 'present' },
-    observedRule: { kind: 'present' },
-    removal: [
-      {
-        kind: 'bridge',
-        method: 'Keyboard.SetLightBrightness',
-        args: [2],
-        label: '写回页面默认档位 2（KeyBoard.vue:245，非固件原值）',
-      },
-    ],
-    // 同颜色：present 判据下移除后回读必然"仍然生效"，没有可靠的出厂档位可写回。
-    removalConfirm: 'command-only',
-    writePath: 'src/pages/KeyBoard.vue:215-220',
-    conclusion: 'keep',
-    conclusionReason:
-      '同上；亮度与颜色同一次「应用」下发（KeyBoard.vue:186-241）；移除只报「仅命令确认，未确认已恢复」',
-  },
-  {
-    id: 'keyboard.mode',
-    name: '键盘灯效模式',
-    group: 'keyboard',
-    intentPath: null,
-    readback: { method: 'Keyboard.GetMode', kind: 'direct' },
-    readbackNote: 'Keyboard.GetMode 直接读灯效模式（0=关闭 2=固定色）',
-    reversibility: 'a',
-    intentRule: { kind: 'present' },
-    observedRule: { kind: 'equals', value: 2 },
-    removal: [
-      {
-        kind: 'bridge',
-        method: 'Keyboard.SetMode',
-        args: [0],
-        label: '把灯效模式切到关闭（RGBKeyboardMode.Mode_Off）',
-      },
-    ],
-    removalConfirm: 'readback',
-    writePath: null,
-    conclusion: 'review',
-    conclusionReason:
-      '前端零消费点：KeyBoard.vue 只调用 GetColor/SetColor/GetLightBrightness/SetLightBrightness（KeyBoard.vue:60-75、196-220），GetMode/SetMode 只有桥接声明（bridge.ts:182-183）；模式在灯效页无任何入口 → 建议补入口或标为桥接预留',
-  },
-  {
-    id: 'keyboard.gradient',
-    name: '键盘渐变（色相循环）',
-    group: 'keyboard',
-    intentPath: 'App.BootKeyboardGradient',
-    readback: { method: 'KeyboardGradient.IsRunning', kind: 'direct' },
-    readbackNote: 'KeyboardGradient.IsRunning 直接读渐变服务是否在跑',
-    reversibility: 'a',
-    intentRule: { kind: 'truthy' },
-    observedRule: { kind: 'truthy' },
-    exact: true,
-    removal: [
-      { kind: 'bridge', method: 'KeyboardGradient.Stop', args: [], label: '停止渐变服务' },
-      {
-        kind: 'config',
-        path: 'App.BootKeyboardGradient',
-        value: false,
-        label: '清掉「开机自动开启」意图',
-      },
-    ],
-    removalConfirm: 'readback',
-    writePath: 'src/pages/KeyBoard.vue:157-184',
-    conclusion: 'review',
-    conclusionReason:
-      '渐变服务停止时会恢复启动前的颜色/亮度/模式快照（KeyboardGradientController.cs:127-132），移除路径本身是诚实的；但它在运行中每约 100ms 持续写颜色（KeyboardGradientController.cs:158-164），与灯效页「应用颜色/亮度」（KeyBoard.vue:196-220）争夺同一通道，且与厂商灯效软件/系统 RGB 生态功能重叠 —— 建议明确二者互斥或交由厂商软件',
-  },
+  // ---------------------------------------------------------------- Logo 灯 / 环境光
+  // 2026-10-06：键盘颜色/亮度/灯效模式/渐变（keyboard.color/brightness/mode/gradient）连同
+  // 整个「灯效」页一起删除 —— 机主用不到，改由厂商软件/固件管理。本组只剩 Logo 灯：
+  // 它是同一个 EC 灯效命令族（MethodName.Ambientlight=15）里**独立**的一项，
+  // 有 Get/Set 成对接口（bridge.ts 的 LogoLight 包装对象），与键盘 RGB 无关，故保留。
   {
     id: 'keyboard.logo-light',
     name: 'Logo 灯',
-    group: 'keyboard',
+    group: 'lighting',
     intentPath: null,
     readback: { method: 'LogoLight.Get', kind: 'direct' },
     readbackNote: 'LogoLight.Get 直接读 Logo 灯开关状态',
@@ -917,9 +820,8 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     removalConfirm: 'readback',
     writePath: 'src/pages/Settings/components/LogoLight.vue:10-17',
     conclusion: 'keep',
-    conclusionReason: 'A 级：Get/Set 成对（bridge.ts:467-470），有真实还原路径',
+    conclusionReason: 'A 级：Get/Set 成对（bridge.ts 的 LogoLight 包装对象），有真实还原路径',
   },
-
   // ---------------------------------------------------------------- 系统与开机行为
   {
     id: 'system.performance-mode',
@@ -1453,7 +1355,7 @@ export function allBridgeMethods(items: readonly AppliedFeature[] = APPLIED_FEAT
 export function groupFeatures(
   items: readonly AppliedFeature[] = APPLIED_FEATURES,
 ): Array<{ id: FeatureGroup; label: string; items: AppliedFeature[] }> {
-  const order: FeatureGroup[] = ['cpu', 'smu', 'gpu', 'fan', 'keyboard', 'system']
+  const order: FeatureGroup[] = ['cpu', 'smu', 'gpu', 'fan', 'lighting', 'system']
   return order
     .map((id) => ({
       id,

@@ -45,12 +45,6 @@ const toggleCards = [
     configPath: 'App.BootSetRyzenSumCurveOptimizerAll',
   },
   {
-    group: 'auto',
-    title: '自启动键盘渐变',
-    description: '启用后，开机及睡眠唤醒时自动开启键盘渐变（以启动时键盘当前颜色为锚点循环渐变）',
-    configPath: 'App.BootKeyboardGradient',
-  },
-  {
     group: 'safety',
     title: '过温看门狗',
     description:

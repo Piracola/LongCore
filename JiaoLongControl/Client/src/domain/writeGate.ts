@@ -12,7 +12,7 @@
  *   真机安全上下限待 v4 §14.3 #5 确认后由 Server 侧权威化）。
  */
 
-export type WriteDomain = 'smu' | 'fan' | 'mode' | 'gpu' | 'keyboard' | 'power' | 'other'
+export type WriteDomain = 'smu' | 'fan' | 'mode' | 'gpu' | 'power' | 'other'
 
 export interface WriteRule {
   /** 值为 0 时拒绝（限制型参数：0 多为读取失败渲染值，非合法意图） */
@@ -125,10 +125,5 @@ export const writeGate = {
   /** GPU 锁频/功耗墙/温度墙（前端一致性；NVAPI 侧 Server 另有校验） */
   gpu(value: number, range: { min: number; max: number }): WriteGateDecision {
     return check({ range, reversibility: 'b' }, value)
-  },
-
-  /** 键盘颜色（A 级：有 getter + setter，允许「撤销」措辞） */
-  keyboardColor(): WriteGateDecision {
-    return { allowed: true, reason: null }
   },
 }
