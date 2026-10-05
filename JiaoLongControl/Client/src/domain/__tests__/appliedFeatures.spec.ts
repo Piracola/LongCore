@@ -445,26 +445,20 @@ describe('fan.curve 的「移除」必须真正交还 EC（2026-10-06 WS1 安全
     // 判据仍是回读：交还结果由独立重读确认，不是"命令被接受就算数"
     expect(fanCurve.readback?.method).toBe('AutoFanControl.IsRunning')
     expect(fanCurve.removalConfirm).toBe('readback')
+    // FIX-1：停服务命令报失败时，靠这个闸门做独立回读（否则真停成功会被判失败、
+    // 撤掩码与落盘永不执行）。它也是真下发的方法名，必须能解析到（见上条 allBridgeMethods 用例）。
+    const stopStep = fanCurve.removal[0]!
+    expect(stopStep.kind === 'bridge' && stopStep.confirmStoppedBy).toBe('AutoFanControl.IsRunning')
+    expect(resolveBridgeMethod(bridgeNamespace, 'AutoFanControl.IsRunning')).not.toBeNull()
   })
 
-  it('任一交还步骤失败都不得报成功：后续步骤不执行，移除后回读仍算「生效」', () => {
-    const fanCurve = featureById('fan.curve')
-    // 组合写入口径（useCompositeWrite.run）：遇失败中止、已生效项不撤销
-    for (const failedAt of [0, 1]) {
-      expect(judgeRemoval(fanCurve, readOk(true)), `中断于第 ${failedAt} 步`).toBe(false)
-      expect(judgeRemoval(fanCurve, readFailed()), `中断于第 ${failedAt} 步`).toBe(false)
-    }
-    // 停服务成功但掩码没撤 → 服务已停（回读 false），仍不算交还成功
-    const stepsAfterStopOnly = fanCurve.removal.slice(0, 2)
-    expect(stepsAfterStopOnly.map((s) => (s.kind === 'bridge' ? s.method : 'config'))).toEqual([
-      'AutoFanControl.Stop',
-      'Fan.RemoveFanSpeed',
-    ])
-    // 掩码已撤但落盘失败 → 本次生效，但下次开机会被 SelfStart 重新拉起 = 部分应用
-    const stepsWithoutPersist = fanCurve.removal.filter((step) => step.kind === 'bridge')
-    expect(stepsWithoutPersist).toHaveLength(2)
-    expect(fanCurve.removal[fanCurve.removal.length - 1]!.kind).toBe('config')
-  })
+  // 2026-10-06（FIX-4）：此处原有第 2 条用例「任一交还步骤失败都不得报成功：后续步骤不执行…」
+  // 是空转的 —— `failedAt` 不参与任何断言，两条 expect 与标题宣称的「后续步骤不执行」无关。
+  // 「失败 → 中止、后续步骤不下发」属于执行层行为，已在能记录宿主调用序列的地方真断言：
+  //   - appliedFeaturesBoard.spec.ts「撤手动掩码失败 → 中止后续步骤」（断言第三步没执行）
+  //   - appliedFeaturesBoard.spec.ts FIX-1 两条（断言 Fan.RemoveFanSpeed / ConfigCtrl.SetConfig
+  //     在未确认停止时**一次都没被调用**）
+  // 静态形状（步骤顺序、方法名可解析）由上面那条用例继续钉住，故删掉这条名不副实的用例。
 })
 
 describe('配置路径读取', () => {

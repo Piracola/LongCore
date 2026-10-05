@@ -177,7 +177,37 @@ export function useAppliedFeatures() {
             const fn = resolveBridgeMethod(bridge, step.method)
             if (!fn) throw new Error(`桥接方法不存在：${step.method}`)
             const res = (await fn(...step.args)) as RawResult
-            return { accepted: res?.Success === true, message: res?.Message }
+            if (res?.Success === true) return { accepted: true, message: res?.Message }
+            // 命令报失败 ≠ 没生效（v4 §8.4）：真停成功的判据是写后独立重读。
+            // 但**只有在回读明确读到「已停」时才继续**：没有证据就往下走，
+            // 下一步撤掉的 0xB20 手动掩码会被曲线下一拍写回来（AGENTS.md 风扇控制边界）。
+            if (!step.confirmStoppedBy) return { accepted: false, message: res?.Message }
+            const read = resolveBridgeMethod(bridge, step.confirmStoppedBy)
+            if (!read) throw new Error(`桥接方法不存在：${step.confirmStoppedBy}`)
+            let observed: unknown
+            try {
+              // 判据取 Data 不取 Success：IsRunning() 的 Success 就是运行态本身
+              // （没在跑时 Success=false、Data=false），拿 Success 当"读成功"会正好读反。
+              observed = ((await read()) as RawResult)?.Data
+            } catch (err) {
+              return {
+                accepted: false,
+                message: `${res?.Message ?? '命令报失败'}；回读异常，未确认已停止：${err instanceof Error ? err.message : '未知错误'}`,
+              }
+            }
+            if (observed === false) {
+              return {
+                accepted: true,
+                message: `${res?.Message ?? '命令报失败'}；独立回读 ${step.confirmStoppedBy}() 确认已停止`,
+              }
+            }
+            return {
+              accepted: false,
+              message:
+                observed === true
+                  ? `${res?.Message ?? '命令报失败'}；独立回读 ${step.confirmStoppedBy}() 确认仍在运行`
+                  : `${res?.Message ?? '命令报失败'}；回读无数据，未确认已停止`,
+            }
           },
         }
       }

@@ -97,9 +97,10 @@ export function useFanCurveEditor() {
   }
 
   /**
-   * 把"要/不要应用内曲线"这个用户意图落盘, 供 SelfStart 在下次开机时遵循。
+   * 把「要应用内曲线」这个用户意图落盘, 供 SelfStart 在下次开机时遵循。
    * 没有这一步, BootAdvancedFanControlSystem 会在每次开机把用户刚关掉的接管重新拉起。
    * 落盘失败不阻断本地的启停结果 —— 本地状态才是用户当下看到的真相。
+   * 只用于**开启**方向：关闭方向由交还 EC 三步里的落盘步骤负责（那一步失败必须报出来）。
    */
   const persistServiceIntent = async (enabled: boolean) => {
     try {
@@ -118,12 +119,16 @@ export function useFanCurveEditor() {
         const result = await AutoFanControl.Start()
         if (!result.Success) throw new Error(result.Message || '自动风扇控制启用失败')
         Message.success('自动风扇控制已启用')
+        await persistServiceIntent(true)
       } else {
-        const result = await AutoFanControl.Stop()
-        if (!result.Success) throw new Error(result.Message || '自动风扇控制停止失败')
-        Message.info('自动风扇控制已停止')
+        // 关掉曲线开关**就是**交还 EC（README「与 EC 固件的关系」/ KNOWN_ISSUES 第 5 条
+        // 的口径）：只停服务 + 落盘是假交还 —— 0xB20 手动掩码还置位、EC 温控仍被绕开。
+        // 与看板 fan.curve 的「移除」、本页「交还 EC 固件温控」共用同一组三步（顺序即语义）。
+        if (!(await runHandoffToEcSteps())) {
+          throw new Error(composite.state.value.message || '交还 EC 未完成，曲线开关未关闭')
+        }
+        Message.info('自动风扇控制已停止，已交还 EC 固件温控')
       }
-      await persistServiceIntent(!!newValue)
       await AutoFanControl.IsRunning()
       await fanStore.refreshCurveService()
       const matches = isServiceRunning.value === !!newValue
@@ -385,18 +390,61 @@ export function useFanCurveEditor() {
   }
 
   /**
-   * 「交还 EC 固件温控」—— 本页唯一的控制权出口（2026-10-06 从已删除的「风扇」页挪来）。
+   * 停曲线服务，并用**独立回读**确认「真的停了」（v4 §8.4：命令被接受 ≠ 已生效）。
    *
-   * 三步都必须真发出去，缺一不可：
-   * 1. 停曲线服务（否则 RemoveFanSpeed 下一拍就被曲线写回去）
-   * 2. Fan.RemoveFanSpeed —— 撤掉 0xB20 手动掩码，EC 固件温控重新生效
-   * 3. Fan.Enabled = false **并保存**：只改前端内存的话，下次开机 SelfStart 会按
-   *    BootAdvancedFanControlSystem 把曲线重新拉起，用户以为交还了、实际没有。
+   * 两个方向都不能偷懒：
+   * - 只看 Stop() 的返回值会假红：命令报失败 ≠ 没生效（后端曾在真停成功时返回 false），
+   *   而这里一判失败就会中止后面的撤掩码/落盘，交还 EC 整条路断掉（安全问题）。
+   * - 不看返回值直接往下走会假绿：没确认停掉就去撤掩码，曲线下一拍又把掩码写回来。
    *
-   * 逐项结果与「失败不报成功」沿用 useCompositeWrite 的既有口径（遇失败中止、
-   * 已生效项不撤销、partialApplied 显式暴露），不另起一套。
+   * 判据取 Data 而不是 Success —— `AutoFanControl.IsRunning()` 的 Success 就是运行态本身
+   * （没在跑时 Success=false、Data=false），拿 Success 当"读取成功"会正好读反。
    */
-  async function handleHandoffToEc(): Promise<boolean> {
+  async function stopCurveService(): Promise<{ stopped: boolean; message: string }> {
+    let beforeData: unknown
+    try {
+      beforeData = (await AutoFanControl.IsRunning()).Data
+    } catch {
+      // 读不到运行态 → 当作"不知道"，仍去发停止命令（幂等），绝不跳过停止这一步
+      beforeData = undefined
+    }
+    if (beforeData === false) return { stopped: true, message: '曲线服务未在运行' }
+
+    const stop = await AutoFanControl.Stop()
+    if (stop.Success === true) return { stopped: true, message: stop.Message }
+
+    let observed: unknown
+    try {
+      observed = (await AutoFanControl.IsRunning()).Data
+    } catch (err) {
+      return {
+        stopped: false,
+        message: `${stop.Message}；回读异常，未确认已停止：${err instanceof Error ? err.message : '未知错误'}`,
+      }
+    }
+    if (observed === false) {
+      return { stopped: true, message: `${stop.Message}；独立回读确认已停止` }
+    }
+    return {
+      stopped: false,
+      message:
+        observed === true
+          ? `${stop.Message}；独立回读确认仍在运行`
+          : `${stop.Message}；回读无数据，未确认已停止`,
+    }
+  }
+
+  /**
+   * 交还 EC 固件温控的三步（顺序即语义，与看板注册表 fan.curve.removal 同一口径）：
+   * 停曲线服务 → `Fan.RemoveFanSpeed`（撤 0xB20 手动掩码）→ `Fan.Enabled=false` 落盘。
+   *
+   * 三个入口共用它，避免任何一处少发一步：
+   * 曲线页「交还 EC 固件温控」、曲线开关关掉（handleServiceToggle(false)）、
+   * 概览页看板 fan.curve 的「移除」。
+   *
+   * @returns true = 三步都生效
+   */
+  async function runHandoffToEcSteps(): Promise<boolean> {
     const event = await composite.run({
       source: 'user',
       transport: 'ec',
@@ -415,12 +463,8 @@ export function useFanCurveEditor() {
           run: async () => {
             // 现读而不是拿 5s 轮询的镜像：刚起来的服务会被漏掉，
             // 那样下一步的 RemoveFanSpeed 立刻被曲线写回。
-            const running = await AutoFanControl.IsRunning()
-            if (!(running.Success && running.Data === true)) {
-              return { accepted: true, message: '曲线服务未在运行' }
-            }
-            const stop = await AutoFanControl.Stop()
-            return { accepted: stop.Success === true, message: stop.Message }
+            const stopped = await stopCurveService()
+            return { accepted: stopped.stopped, message: stopped.message }
           },
         },
         {
@@ -447,8 +491,25 @@ export function useFanCurveEditor() {
       ],
     })
 
-    const failed = event.steps.some((s) => s.status === 'failed')
-    if (failed) {
+    return !event.steps.some((s) => s.status === 'failed')
+  }
+
+  /**
+   * 「交还 EC 固件温控」—— 曲线页的那个按钮。
+   *
+   * 三步都必须真发出去，缺一不可：
+   * 1. 停曲线服务（否则 RemoveFanSpeed 下一拍就被曲线写回去）
+   * 2. Fan.RemoveFanSpeed —— 撤掉 0xB20 手动掩码，EC 固件温控重新生效
+   * 3. Fan.Enabled = false **并保存**：只改前端内存的话，下次开机 SelfStart 会按
+   *    BootAdvancedFanControlSystem 把曲线重新拉起，用户以为交还了、实际没有。
+   *
+   * 逐项结果与「失败不报成功」沿用 useCompositeWrite 的既有口径（遇失败中止、
+   * 已生效项不撤销、partialApplied 显式暴露），不另起一套。
+   */
+  async function handleHandoffToEc(): Promise<boolean> {
+    const ok = await runHandoffToEcSteps()
+
+    if (!ok) {
       // 不得报成功：部分应用时也要让用户看见「哪一步没有生效」
       Message.error(`交还 EC 未完成：${composite.state.value.message ?? '有步骤失败'}`)
     } else {
@@ -459,10 +520,10 @@ export function useFanCurveEditor() {
       source: 'user',
       intent: '交还 EC 固件温控',
       requestedValue: null,
-      outcome: failed ? 'failed' : 'applied',
+      outcome: ok ? 'applied' : 'failed',
       reversible: 'c',
     })
-    return !failed
+    return ok
   }
 
   /**

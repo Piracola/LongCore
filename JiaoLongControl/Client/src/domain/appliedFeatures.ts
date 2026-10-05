@@ -74,6 +74,15 @@ export type RemovalStep =
       method: string
       args: readonly (number | string | boolean)[]
       label: string
+      /**
+       * 「命令报失败 ≠ 没生效」的独立回读闸门（v4 §8.4，2026-10-06 修）。
+       *
+       * 填一个「成功 = 某服务已停止」的 bridge getter（当前唯一一例：`AutoFanControl.IsRunning`）。
+       * 语义：本步骤的命令返回 Success=false 时，**只有**该 getter 明确读回 false 才算已生效；
+       * 读回 true 或读不到都按失败处理（继续执行会撤掉 0xB20 掩码，而曲线下一拍又写回来）。
+       * 没有这个字段的步骤仍按命令返回值判定 —— 不许无回读却假装成功。
+       */
+      confirmStoppedBy?: string
     }
   | {
       /** 清掉配置意图（走既有 configStore.saveConfig()，不另起写入机制） */
@@ -755,7 +764,15 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     //    KNOWN_ISSUES 第 5 条）。停服务 ≠ 交还控制权。
     // 3. 清 Fan.Enabled —— 否则下次开机 SelfStart 按 BootAdvancedFanControlSystem 重新拉起曲线。
     removal: [
-      { kind: 'bridge', method: 'AutoFanControl.Stop', args: [], label: '停止应用内曲线服务' },
+      {
+        kind: 'bridge',
+        method: 'AutoFanControl.Stop',
+        args: [],
+        label: '停止应用内曲线服务',
+        // 停服务命令的返回值不可信（历史上真停成功反而报 Success=false），
+        // 但「没确认停掉就撤掩码」会把掩码交给下一拍的曲线写回来 —— 判据是独立回读。
+        confirmStoppedBy: 'AutoFanControl.IsRunning',
+      },
       {
         kind: 'bridge',
         method: 'Fan.RemoveFanSpeed',
@@ -770,7 +787,8 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
       },
     ],
     removalConfirm: 'readback',
-    writePath: 'src/composables/useFanCurveEditor.ts:112-151',
+    writePath:
+      'src/composables/useFanCurveEditor.ts:115-158（曲线开关）+ runHandoffToEcSteps（同文件，停服务→撤掩码→落盘）',
     conclusion: 'keep',
     conclusionReason:
       'KNOWN_ISSUES 第 5 条的刻意取舍：固件温控表形状不可改，接管是唯一手段；有兜底（ThermalWatchdog + EcGuard）与真正的还原路径（停服务 + 交还 EC 掩码 + 落盘意图）',
@@ -1341,7 +1359,12 @@ export function bridgeMethodsOf(item: AppliedFeature): string[] {
   const names: string[] = []
   if (item.readback) names.push(item.readback.method)
   for (const step of item.removal) {
-    if (step.kind === 'bridge') names.push(step.method)
+    if (step.kind === 'bridge') {
+      names.push(step.method)
+      // 独立回读闸门同样是真下发的方法名：漏校验它就会写错一个永远解析不到的名字，
+      // 而那正是「停服务失败后仍继续撤掩码」的入口（同样按失败处理，但只有解析得到才会被调用）。
+      if (step.confirmStoppedBy) names.push(step.confirmStoppedBy)
+    }
   }
   return names
 }

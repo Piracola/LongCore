@@ -18,8 +18,12 @@ import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
  * 「手动设定转速」已在 2026-10-06 删除（机主 Decision），原 manual 态与它的
  * Hypothesis 判定一并消失：EC 本来就区分不出「固件自动」与「残留手动值」。
  *
- * 唯一出口（v4 §8.2 C 级）：`restoreAuto()` —— 停曲线服务 + 移除手动限制，
- * 不得出现「回滚/撤销」措辞。
+ * 唯一出口（v4 §8.2 C 级）：曲线页「交还 EC 固件温控」—— 停曲线服务 + `Fan.RemoveFanSpeed`
+ * 撤 0xB20 手动掩码 + 把 `Fan.Enabled` 落盘为 false（`useFanCurveEditor.handleHandoffToEc`，
+ * 与看板 fan.curve 的「移除」同一组三步）。不得出现「回滚/撤销」措辞。
+ * 2026-10-06：本 store 原有的 `restoreAuto()` 是这一出口的第二份实现，其唯一调用方
+ * （「风扇」页）随该页删除已在 72b1325 消失；零引用 + 与曲线页口径重复 + 只按
+ * `AutoFanControl.Stop().Success` 判成败（正是 FIX-1 的假失败），故整个删除，出口只留一处。
  *
  * 最近活动（v4 §8.5）：200 条环形缓冲，只记用户意图级；
  * 自动风扇曲线 / 温控看门狗的底层写入不得进入（它们的写入不经过本 store）。
@@ -32,13 +36,6 @@ import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
 // 避免出现第二份定义（两处各写一次，迟早分叉）。
 // 注意：只写 export type {…} from 不会建立本地绑定，本文件自己要用就得再 import 一次。
 export type { FanController }
-
-export interface FanApplyResult {
-  ok: boolean
-  /** 逐项结果（v4 §8.3）：停 AutoFan（如运行中）→ 移除手动限制 */
-  steps: Array<{ label: string; ok: boolean; skipped?: boolean; message?: string }>
-  message: string
-}
 
 interface FanState {
   /** 四态转速读数（v4 §7.1：失败不得显示 0） */
@@ -189,53 +186,6 @@ export const useFanStore = defineStore('fan', {
       channel?.dispose()
       channel = null
       this.monitoring = false
-    },
-
-    /** 恢复自动控制（C 级唯一出路）。逐项：停 AutoFan（曲线场景）→ 移除手动限制。 */
-    async restoreAuto(): Promise<FanApplyResult> {
-      const steps: FanApplyResult['steps'] = []
-
-      const running = await AutoFanControl.IsRunning()
-      if (running.Success && running.Data) {
-        const stop = await AutoFanControl.Stop()
-        steps.push({ label: '停止应用内曲线', ok: !!stop.Success })
-        if (!stop.Success) {
-          useActivityStore().record({
-            source: 'user',
-            intent: '恢复自动风扇控制',
-            requestedValue: null,
-            outcome: 'failed',
-            reversible: 'c',
-          })
-          return { ok: false, steps, message: '停止应用内曲线失败' }
-        }
-      } else {
-        steps.push({ label: '停止应用内曲线', ok: true, skipped: true })
-      }
-
-      const remove = await Fan.RemoveFanSpeed()
-      steps.push({ label: '移除手动转速限制', ok: !!remove.Success, message: remove.Message })
-      if (!remove.Success) {
-        useActivityStore().record({
-          source: 'user',
-          intent: '恢复自动风扇控制',
-          requestedValue: null,
-          outcome: 'failed',
-          reversible: 'c',
-        })
-        return { ok: false, steps, message: remove.Message || '移除限制失败' }
-      }
-
-      this.controller = 'auto'
-      this.curveService = okReading(false)
-      useActivityStore().record({
-        source: 'user',
-        intent: '恢复自动风扇控制',
-        requestedValue: null,
-        outcome: 'applied',
-        reversible: 'c',
-      })
-      return { ok: true, steps, message: '已恢复自动控制' }
     },
   },
 })

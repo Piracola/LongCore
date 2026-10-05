@@ -338,4 +338,76 @@ describe('已应用功能看板', () => {
     expect(result).toContain('未确认移除成功')
     expect(wrapper.text()).not.toContain('已移除并回读确认')
   })
+
+  it('FIX-1：Stop 报失败但回读 IsRunning=false → 视为已停，照常撤掩码 + 落盘', async () => {
+    // 后端历史上「真停成功」也会报 Success=false。只看返回值 → 第一步判 failed →
+    // 撤掩码与落盘永不执行，而界面只说「未确认移除成功」（EC 温控接不回来）。
+    const base = RAW_DATA['AutoFan.IsRunning']
+    RAW_DATA['AutoFan.IsRunning'] = false
+    shouldFail = (namespace, method) => namespace === 'AutoFan' && method === 'Stop'
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+
+      hostCalls = []
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+      await flushPromises()
+
+      const removalCalls = hostCalls.filter((c) => c !== 'AutoFan.IsRunning')
+      expect(removalCalls).toEqual(['AutoFan.Stop', 'Fan.RemoveFanSpeed', 'ConfigCtrl.SetConfig'])
+      const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
+      // 三步全绿（CompositeSteps 只渲染状态，逐项 message 在 composable 里，见曲线页用例）
+      expect(steps).not.toContain('失败')
+      expect(steps).toContain('停止应用内曲线服务成功')
+      // 判据来自回读：三步都跑完，最终结论是"已移除并回读确认"
+      expect(wrapper.find('.board-result').text()).toContain('已移除并回读确认')
+    } finally {
+      RAW_DATA['AutoFan.IsRunning'] = base
+      shouldFail = () => false
+    }
+  })
+
+  it('FIX-1：Stop 报失败且回读确认仍在跑 → 中止后续步骤（不撤掩码、不落盘）', async () => {
+    shouldFail = (namespace, method) => namespace === 'AutoFan' && method === 'Stop'
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+
+      hostCalls = []
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+      await flushPromises()
+
+      expect(hostCalls).toContain('AutoFan.Stop')
+      // 没确认停掉就撤掩码，曲线下一拍会把掩码写回来 —— 后两步一个都不许发
+      expect(hostCalls).not.toContain('Fan.RemoveFanSpeed')
+      expect(hostCalls).not.toContain('ConfigCtrl.SetConfig')
+      const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
+      expect(steps).toContain('独立回读 AutoFanControl.IsRunning() 确认仍在运行')
+      expect(wrapper.find('.board-result').text()).toContain('未确认移除成功')
+      expect(wrapper.text()).not.toContain('已移除并回读确认')
+    } finally {
+      shouldFail = () => false
+    }
+  })
+
+  it('FIX-1：回读本身失败 → 按「未确认已停止」处理，中止且不撤掩码（unknown ≠ stopped）', async () => {
+    shouldFail = (namespace, method) =>
+      namespace === 'AutoFan' && (method === 'Stop' || method === 'IsRunning')
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+
+      hostCalls = []
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+      await flushPromises()
+
+      expect(hostCalls).not.toContain('Fan.RemoveFanSpeed')
+      expect(hostCalls).not.toContain('ConfigCtrl.SetConfig')
+      const steps = wrapper.find('.steps').text().replace(/\s+/g, ' ')
+      expect(steps).toContain('回读无数据，未确认已停止')
+      expect(wrapper.text()).not.toContain('已移除并回读确认')
+    } finally {
+      shouldFail = () => false
+    }
+  })
 })
