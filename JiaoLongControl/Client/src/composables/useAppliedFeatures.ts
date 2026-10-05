@@ -21,6 +21,7 @@ import {
   judgeAll,
   judgeRemoval,
   readByPath,
+  removalScope,
   resolveBridgeMethod,
   type AppliedFeature,
   type IntentRead,
@@ -107,6 +108,9 @@ export function useAppliedFeatures() {
     bulkRemovalPlan(APPLIED_FEATURES, intents.value, observed.value),
   )
 
+  /** 覆盖范围（覆盖哪些 / 不覆盖哪些、各为什么）——界面必须逐类说清，不许只报一个数字 */
+  const scope = computed(() => removalScope(APPLIED_FEATURES, intents.value, observed.value))
+
   async function readOne(item: AppliedFeature): Promise<ObservedRead> {
     const spec = item.readback
     if (!spec) return { state: 'error', value: null, message: '注册表未声明回读方法' }
@@ -131,21 +135,33 @@ export function useAppliedFeatures() {
     }
   }
 
+  /**
+   * 同一轮刷新的在途去重（2026-10-05 审查 FIX-6）：一次刷新并发 17 个 getter，
+   * 反复点「重新读取」会把在途请求叠加（本仓库有过无上界在途请求把宿主卡死的 P0，v4 §4.2）。
+   * 不引入新机制：按钮在 `loading` 期间已禁用，这里再挡住程序化调用。
+   */
+  let inflight: Promise<void> | null = null
+
   async function refresh(): Promise<void> {
+    if (inflight) return inflight
     loading.value = true
-    try {
-      if (!configStore.config) await configStore.fetchConfig()
-      const withReadback = APPLIED_FEATURES.filter((item) => item.readback !== null)
-      const entries = await Promise.all(
-        withReadback.map(async (item): Promise<[string, ObservedRead]> => [
-          item.id,
-          await readOne(item),
-        ]),
-      )
-      observed.value = Object.fromEntries(entries)
-    } finally {
-      loading.value = false
-    }
+    inflight = (async () => {
+      try {
+        if (!configStore.config) await configStore.fetchConfig()
+        const withReadback = APPLIED_FEATURES.filter((item) => item.readback !== null)
+        const entries = await Promise.all(
+          withReadback.map(async (item): Promise<[string, ObservedRead]> => [
+            item.id,
+            await readOne(item),
+          ]),
+        )
+        observed.value = Object.fromEntries(entries)
+      } finally {
+        loading.value = false
+        inflight = null
+      }
+    })()
+    return inflight
   }
 
   function buildRemovalSteps(item: AppliedFeature): StepPlan[] {
@@ -169,15 +185,26 @@ export function useAppliedFeatures() {
         transport: 'config',
         requestedValue: step.value,
         run: async () => {
-          if (!configStore.config) return { accepted: false, message: '配置未加载' }
+          const current = configStore.config
+          if (!current) return { accepted: false, message: '配置未加载' }
+          // 先算后提交（2026-10-05 审查 FIX-5）：改的是克隆副本，保存成功才让共享对象变成新值。
+          // 原地改共享对象再保存，一旦保存失败，意图栏会显示一个**没落盘**的值。
+          const next = JSON.parse(JSON.stringify(current)) as Record<string, unknown>
           const path = step.path.split('.')
-          let node = configStore.config as unknown as Record<string, unknown>
+          let node = next
           for (let i = 0; i < path.length - 1; i++) {
-            node = (node[path[i] ?? ''] ?? {}) as Record<string, unknown>
+            const key = path[i] ?? ''
+            if (typeof node[key] !== 'object' || node[key] === null) node[key] = {}
+            node = node[key] as Record<string, unknown>
           }
           node[path[path.length - 1] ?? ''] = step.value
+          configStore.config = next as typeof current
           const res = (await configStore.saveConfig()) as RawResult | undefined
-          return { accepted: res?.Success === true, message: res?.Message }
+          if (res?.Success === true) return { accepted: true, message: res.Message }
+          // 保存失败：回滚显示值，再强制重拉一次配置（以磁盘为准），不留"没落盘的值"
+          configStore.config = current
+          await configStore.refresh()
+          return { accepted: false, message: res?.Message ?? '配置保存失败，已回滚为磁盘上的值' }
         },
       }
     })
@@ -226,7 +253,7 @@ export function useAppliedFeatures() {
     const message = failed
       ? `未确认移除成功：${composite.state.value.message ?? '回读未确认'}`
       : commandOnly
-        ? '命令已接受 · 该项无可靠回读，无法确认是否已移除'
+        ? '命令已接受 · 仅命令确认，未确认已恢复（该项没有能证明「已还原」的回读判据）'
         : '已移除并回读确认'
     removalLog.value = [
       { id: item.id, name: item.name, message, ok: !failed && !commandOnly },
@@ -278,6 +305,7 @@ export function useAppliedFeatures() {
     removing,
     removalLog,
     restorePlan,
+    scope,
     composite,
     refresh,
     removeOne,

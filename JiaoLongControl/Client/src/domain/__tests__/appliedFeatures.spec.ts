@@ -13,6 +13,7 @@ import {
   judgeFeature,
   judgeRemoval,
   readByPath,
+  removalScope,
   resolveBridgeMethod,
   type AppliedFeature,
   type IntentRead,
@@ -169,11 +170,13 @@ describe('判定函数：同一份注册表喂不同假状态必须给出不同�
   })
 
   it('回读值经 pick 取出：Power.GetTurboEnabled 只比 AC 侧', () => {
+    // cpu.turbo 的「已生效」= 睿频被关掉（intentRule / observedRule 都是 equals false），
+    // 所以生效态是 ac=false：睿频开着是 Windows 默认态，不构成本软件的应用痕迹。
     const turbo = featureById('cpu.turbo')
-    expect(judgeFeature(turbo, configOn(true), readOk({ ac: true, dc: false })).status).toBe(
+    expect(judgeFeature(turbo, configOn(false), readOk({ ac: false, dc: true })).status).toBe(
       'match',
     )
-    expect(judgeFeature(turbo, configOn(true), readOk({ ac: false, dc: true })).status).toBe(
+    expect(judgeFeature(turbo, configOn(false), readOk({ ac: true, dc: false })).status).toBe(
       'mismatch',
     )
   })
@@ -254,6 +257,183 @@ describe('还原计划与移除判定', () => {
     const offsets = featureById('gpu.core-offset')
     expect(judgeRemoval(offsets, readOk({ CoreMhz: 0, MemoryMhz: 0 }))).toBe(true)
     expect(judgeRemoval(offsets, readOk({ CoreMhz: 50, MemoryMhz: 0 }))).toBe(false)
+  })
+})
+
+describe('「全部还原」的覆盖范围（审查 FIX-1：既不许漏正生效的项，也不许收别人写的值）', () => {
+  /** 无配置意图、但有回读 + 有移除步骤的项 —— 它们全部落在 observed-only 上 */
+  const observedOnly = APPLIED_FEATURES.filter(
+    (item) => item.intentPath === null && item.writePath !== null && item.removal.length > 0,
+  )
+  const OBSERVED_ON: Record<string, ObservedRead> = {
+    'cpu.custom-override': readOk(true),
+    'keyboard.color': readOk({ red: 138, green: 43, blue: 226 }),
+    'keyboard.brightness': readOk(2),
+    'keyboard.logo-light': readOk(1),
+    'system.autostart': readOk(true),
+  }
+  /** 同一批项、实测"没生效"（present 判据下 null = 没有有效值） */
+  const OBSERVED_OFF: Record<string, ObservedRead> = {
+    'cpu.custom-override': readOk(false),
+    'keyboard.color': readOk(null),
+    'keyboard.brightness': readOk(null),
+    'keyboard.logo-light': readOk(0),
+    'system.autostart': readOk(false),
+  }
+
+  it('① 实测生效的 observed-only 项必须进计划（旧 status 白名单漏掉它们）', () => {
+    // 先钉住"这一类恰好是这 5 项"，注册表漂了就红
+    expect(observedOnly.map((item) => item.id).sort()).toEqual(Object.keys(OBSERVED_ON).sort())
+    const plan = bulkRemovalPlan(APPLIED_FEATURES, {}, OBSERVED_ON)
+    expect(plan.map((item) => item.id).sort()).toEqual(Object.keys(OBSERVED_ON).sort())
+    for (const item of observedOnly) {
+      const verdict = judgeFeature(item, noConfig, OBSERVED_ON[item.id]!)
+      expect(verdict.status, item.id).toBe('observed-only')
+      expect(verdict.observedActive, item.id).toBe(true)
+    }
+  })
+
+  it('② 同样 observed-only 但实测未生效的项不得进计划', () => {
+    const plan = bulkRemovalPlan(APPLIED_FEATURES, {}, OBSERVED_OFF)
+    expect(plan.map((item) => item.id)).toEqual([])
+    for (const [id, observed] of Object.entries(OBSERVED_OFF)) {
+      expect(judgeFeature(featureById(id), noConfig, observed).observedActive, id).toBe(false)
+    }
+  })
+
+  it('③ writePath=null 的项无论实测真假都不进计划（不能替别的工具清掉偏移）', () => {
+    const noWritePath = APPLIED_FEATURES.filter(
+      (item) => item.writePath === null && item.removal.length > 0,
+    )
+    expect(noWritePath.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['gpu.core-offset', 'gpu.memory-offset', 'gpu.voltage-boost']),
+    )
+    // 配置开着 + 实测非零：旧实现按 no-write-path 白名单把它们收进计划，点一下就 ResetClockOffsets
+    const intents: Record<string, IntentRead> = {
+      'gpu.core-offset': configOn(120),
+      'gpu.memory-offset': configOn(600),
+      'gpu.voltage-boost': configOn(15),
+      'keyboard.mode': configOn(2),
+    }
+    const observed: Record<string, ObservedRead> = {
+      'gpu.core-offset': readOk({ CoreMhz: 120, MemoryMhz: 0 }),
+      'gpu.memory-offset': readOk({ CoreMhz: 0, MemoryMhz: 600 }),
+      'gpu.voltage-boost': readOk(15),
+      'keyboard.mode': readOk(2),
+    }
+    expect(bulkRemovalPlan(APPLIED_FEATURES, intents, observed).map((item) => item.id)).toEqual([])
+    for (const item of noWritePath) {
+      expect(judgeFeature(item, configOn(1), readOk(1)).canRemove, item.id).toBe(true)
+    }
+  })
+
+  it('④ removalScope 把"不覆盖"逐类说清（界面据此写按钮 title/说明，不许只报数字）', () => {
+    const intents: Record<string, IntentRead> = {
+      'fan.curve': configOn(true),
+      'gpu.core-offset': configOn(120),
+      'gpu.voltage-boost': configOn(15),
+      'keyboard.gradient': configOn(false),
+    }
+    const observed: Record<string, ObservedRead> = {
+      'fan.curve': readOk(true),
+      'gpu.core-offset': readOk({ CoreMhz: 120, MemoryMhz: 0 }),
+      'gpu.voltage-boost': readOk(15),
+      'keyboard.gradient': readOk(false),
+      'keyboard.logo-light': readOk(1),
+    }
+    const scope = removalScope(APPLIED_FEATURES, intents, observed)
+    expect(scope.covered).toEqual(['应用内风扇曲线接管', 'Logo 灯'])
+    expect(scope.notWrittenByUs).toEqual(expect.arrayContaining(['核心频率偏移', '核心电压提升']))
+    expect(scope.notActive).toEqual(['键盘渐变（色相循环）'])
+    expect(scope.noRemovalPath.length).toBeGreaterThan(20) // 33 项不可回读等
+    // 四类 + 覆盖 = 注册表全部项，没有"算漏"
+    expect(
+      scope.covered.length +
+        scope.notWrittenByUs.length +
+        scope.notActive.length +
+        scope.notRead.length +
+        scope.noRemovalPath.length,
+    ).toBe(APPLIED_FEATURES.length)
+  })
+})
+
+describe('移除普查：不允许存在"点了永远不会成功"的项（审查 FIX-2）', () => {
+  /** 健康设备上「该项正在生效」时的回读值（pick 容器一并写出） */
+  const ACTIVE: Record<string, unknown> = {
+    'cpu.custom-override': true,
+    'cpu.max-frequency': { ac: 5400, dc: 5400 },
+    'cpu.turbo': { ac: false, dc: false }, // 限制生效 = 睿频被关掉
+    'gpu.core-offset': { CoreMhz: 120, MemoryMhz: 0 },
+    'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 600 },
+    'gpu.voltage-boost': 15,
+    'fan.curve': true,
+    'fan.manual-speed': { CPUFanSpeed: 2800, GPUFanSpeed: 2100 },
+    'keyboard.color': { red: 138, green: 43, blue: 226 },
+    'keyboard.brightness': 3,
+    'keyboard.mode': 2,
+    'keyboard.gradient': true,
+    'keyboard.logo-light': 1,
+    'system.autostart': true,
+  }
+  /** 同一台健康设备上「移除执行完成」后的回读值 */
+  const AFTER: Record<string, unknown> = {
+    'cpu.custom-override': false,
+    'cpu.max-frequency': { ac: 0, dc: 0 },
+    'cpu.turbo': { ac: true, dc: true }, // 睿频恢复 = 限制已移除
+    'gpu.core-offset': { CoreMhz: 0, MemoryMhz: 0 },
+    'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 0 },
+    'gpu.voltage-boost': 0,
+    'fan.curve': false,
+    'fan.manual-speed': { CPUFanSpeed: 0, GPUFanSpeed: 0 },
+    'keyboard.color': { red: 138, green: 43, blue: 226 }, // present 恒真：只能命令确认
+    'keyboard.brightness': 2,
+    'keyboard.mode': 0,
+    'keyboard.gradient': false,
+    'keyboard.logo-light': 0,
+    'system.autostart': false,
+  }
+
+  function removable(): AppliedFeature[] {
+    return APPLIED_FEATURES.filter((item) => judgeFeature(item, noConfig, readOk(1)).canRemove)
+  }
+
+  it('普查表覆盖全部挂了「移除」按钮的项（新增项漏登记就红）', () => {
+    const ids = removable()
+      .map((item) => item.id)
+      .sort()
+    expect(ids.length).toBeGreaterThan(10)
+    expect(Object.keys(ACTIVE).sort()).toEqual(ids)
+    expect(Object.keys(AFTER).sort()).toEqual(ids)
+  })
+
+  it('每一项：移除前不算已移除，移除后要么回读确认 true，要么明确标 command-only', () => {
+    let confirmed = 0
+    let commandOnly = 0
+    for (const item of removable()) {
+      expect(judgeRemoval(item, readOk(ACTIVE[item.id])), `${item.id} 生效时不得被判"已移除"`).toBe(
+        false,
+      )
+      if (judgeRemoval(item, readOk(AFTER[item.id]))) {
+        confirmed += 1
+      } else if (item.removalConfirm === 'command-only') {
+        commandOnly += 1
+      } else {
+        throw new Error(
+          `${item.id}：移除后回读永远"仍生效"且没标 command-only —— 这个按钮永远不会成功`,
+        )
+      }
+    }
+    expect(confirmed).toBeGreaterThan(5)
+    expect(commandOnly).toBeGreaterThan(0)
+  })
+
+  it('键盘颜色/亮度：没有能证明「已还原」的回读判据 → 明确 command-only，不假装能确认', () => {
+    for (const id of ['keyboard.color', 'keyboard.brightness']) {
+      const item = featureById(id)
+      expect(item.removal.length, id).toBeGreaterThan(0) // 仍提供下发，不是把按钮删掉
+      expect(item.removalConfirm, id).toBe('command-only')
+      expect(judgeRemoval(item, readOk(AFTER[id])), id).toBe(false)
+    }
   })
 })
 

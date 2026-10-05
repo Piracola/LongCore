@@ -42,6 +42,34 @@ const restoreLabel = computed(() =>
     : '全部还原（无可还原项）',
 )
 
+/**
+ * 「全部还原」的覆盖范围：必须逐类说清（覆盖哪些、不覆盖哪些、各为什么），
+ * 不许只报一个数字 —— 只报数字时「漏了正生效的项」与「收进了别人写的项」都看不出来。
+ */
+const restoreTitle = computed(() => {
+  const s = board.scope.value
+  const parts = [
+    `本次覆盖 ${s.covered.length} 项：${s.covered.length > 0 ? s.covered.join('、') : '无'}`,
+  ]
+  if (s.notWrittenByUs.length > 0) {
+    parts.push(
+      `不覆盖 ${s.notWrittenByUs.length} 项（非本软件下发，不该替别的工具清掉）：${s.notWrittenByUs.join('、')}`,
+    )
+  }
+  if (s.notActive.length > 0) {
+    parts.push(`不覆盖 ${s.notActive.length} 项（当前未生效）：${s.notActive.join('、')}`)
+  }
+  if (s.notRead.length > 0) {
+    parts.push(`不覆盖 ${s.notRead.length} 项（本次没读出生效值）：${s.notRead.join('、')}`)
+  }
+  if (s.noRemovalPath.length > 0) {
+    parts.push(
+      `另有 ${s.noRemovalPath.length} 项本行不提供「移除」（不可回读 / 永久不可逆 / 无还原值），逐行标了原因`,
+    )
+  }
+  return parts.join('｜')
+})
+
 onMounted(() => {
   void board.refresh()
 })
@@ -62,7 +90,7 @@ async function onRestoreAll() {
     return
   }
   const parts = [`已确认还原 ${result.confirmed} 项`]
-  if (result.unconfirmed > 0) parts.push(`仅命令确认 ${result.unconfirmed} 项（无回读）`)
+  if (result.unconfirmed > 0) parts.push(`仅命令确认 ${result.unconfirmed} 项（未确认已恢复）`)
   if (result.failed > 0) parts.push(`未确认 ${result.failed} 项`)
   const text = parts.join(' · ')
   if (result.failed > 0) Message.error(text)
@@ -81,6 +109,7 @@ async function onRestoreAll() {
           不一致即「配置开着、硬件没写进去」。读不到一律显示「不可回读 / 读取失败」，不回退
           0/false。
         </p>
+        <p class="scope" data-testid="restore-scope">{{ restoreTitle }}</p>
       </div>
       <div class="head-chips">
         <span class="chip mismatch">不一致 {{ board.summary.value.mismatch }}</span>
@@ -101,6 +130,8 @@ async function onRestoreAll() {
           type="button"
           class="btn-restore"
           :disabled="board.removing.value || board.restorePlan.value.length === 0"
+          :title="restoreTitle"
+          :aria-label="restoreTitle"
           @click="onRestoreAll"
         >
           {{ board.removing.value ? '正在还原…' : restoreLabel }}
@@ -174,6 +205,11 @@ async function onRestoreAll() {
                   type="button"
                   class="btn-remove"
                   :disabled="board.removing.value"
+                  :title="
+                    row.item.removalConfirm === 'command-only'
+                      ? '仅命令确认，未确认已恢复（该项没有能证明「已还原」的回读判据）'
+                      : '写后独立重读，确认已不再生效'
+                  "
                   @click="onRemove(row)"
                 >
                   移除

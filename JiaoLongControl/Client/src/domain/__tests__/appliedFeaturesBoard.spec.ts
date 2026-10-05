@@ -169,6 +169,64 @@ describe('已应用功能看板', () => {
     expect(cells[3]!.text()).toContain('已生效')
   })
 
+  it('意图栏绑到配置的值：换一组 mockConfig，意图文本必须随之改变（写死就红）', async () => {
+    const base = RAW_DATA['ConfigCtrl.GetConfig'] as {
+      Fan: Record<string, unknown>
+      Cpu: { Custom: Record<string, unknown> }
+    }
+
+    const first = mountBoard()
+    await flushPromises()
+    const intentA = rowOf(first, '应用内风扇曲线接管').findAll('td')[1]!.text()
+    expect(intentA).toContain('Fan.Enabled = true')
+    expect(rowOf(first, '长时功耗 SPL').findAll('td')[1]!.text()).toContain(
+      'Cpu.Custom.CpuLongPower = 55',
+    )
+
+    RAW_DATA['ConfigCtrl.GetConfig'] = {
+      ...base,
+      Fan: { ...base.Fan, Enabled: false },
+      Cpu: { Custom: { ...base.Cpu.Custom, CpuLongPower: 77 } },
+    }
+    try {
+      const second = mountBoard()
+      await flushPromises()
+      const intentB = rowOf(second, '应用内风扇曲线接管').findAll('td')[1]!.text()
+      expect(intentB).toContain('Fan.Enabled = false')
+      expect(intentB).not.toBe(intentA)
+      expect(rowOf(second, '长时功耗 SPL').findAll('td')[1]!.text()).toContain(
+        'Cpu.Custom.CpuLongPower = 77',
+      )
+    } finally {
+      RAW_DATA['ConfigCtrl.GetConfig'] = base
+    }
+  })
+
+  it('不可回读行的原因只渲染一处，不在「实测」与「状态」两栏重复同一段长文', async () => {
+    const wrapper = mountBoard()
+    await flushPromises()
+    const item = APPLIED_FEATURES.find((f) => f.id === 'cpu.long-power')!
+    const text = rowOf(wrapper, item.name).text()
+    expect(text).toContain('不可回读')
+    expect(text.split(item.readbackNote).length - 1, 'readbackNote 出现次数').toBe(1)
+  })
+
+  it('「全部还原」按钮逐项说明覆盖范围（aria-label = title，含覆盖项名与不覆盖原因）', async () => {
+    const wrapper = mountBoard()
+    await flushPromises()
+    const btn = wrapper.find('.btn-restore')
+    const label = btn.attributes('aria-label') ?? ''
+    expect(label.length).toBeGreaterThan(20)
+    expect(label).toBe(btn.attributes('title'))
+    expect(label).toMatch(/本次覆盖 \d+ 项：/)
+    expect(label).toContain('应用内风扇曲线接管') // 本次覆盖到的项，按名字列出
+    expect(label).toContain('非本软件下发') // 不覆盖的原因（GPU 偏移/灯效模式）
+    expect(label).toContain('核心频率偏移')
+    expect(wrapper.find('[data-testid="restore-scope"]').text()).toBe(label)
+    // 不是只有一个数字：按钮文字仍是「全部还原（N 项）」，覆盖范围另有说明
+    expect(btn.text()).toMatch(/全部还原（\d+ 项）/)
+  })
+
   it('不可回读的项显示原因而不是移除按钮', async () => {
     const wrapper = mountBoard()
     await flushPromises()
@@ -176,6 +234,45 @@ describe('已应用功能看板', () => {
     expect(row.text()).toContain('不可回读')
     expect(row.text()).toContain('无法还原')
     expect(row.find('button').exists()).toBe(false)
+  })
+
+  it('command-only 的行（键盘颜色）移除后只报「仅命令确认，未确认已恢复」，不是失败态', async () => {
+    const wrapper = mountBoard()
+    await flushPromises()
+    const row = rowOf(wrapper, '键盘背光颜色')
+    expect(row.find('button').attributes('title')).toContain('仅命令确认，未确认已恢复')
+    await row.find('button').trigger('click')
+    await flushPromises()
+    const result = wrapper.find('.board-result').text()
+    expect(result).toContain('仅命令确认，未确认已恢复')
+    expect(result).not.toContain('未确认移除成功')
+    expect(wrapper.text()).not.toContain('已移除')
+  })
+
+  it('配置步骤保存失败 → 先算后提交：意图栏不显示没落盘的值', async () => {
+    const base = RAW_DATA['ConfigCtrl.GetConfig'] as { App: Record<string, unknown> }
+    RAW_DATA['ConfigCtrl.GetConfig'] = {
+      ...base,
+      App: { ...base.App, BootKeyboardGradient: true },
+    }
+    shouldFail = (namespace, method) => namespace === 'ConfigCtrl' && method === 'SetConfig'
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+      const before = rowOf(wrapper, '键盘渐变（色相循环）').findAll('td')[1]!.text()
+      expect(before).toContain('App.BootKeyboardGradient = true')
+
+      await rowOf(wrapper, '键盘渐变（色相循环）').find('button').trigger('click')
+      await flushPromises()
+
+      // 保存失败 → 回滚显示值 + 重拉配置；绝不让意图栏显示一个没落盘的值
+      const after = rowOf(wrapper, '键盘渐变（色相循环）').findAll('td')[1]!.text()
+      expect(after).toBe(before)
+      expect(wrapper.find('.board-result').text()).toContain('未确认移除成功')
+    } finally {
+      RAW_DATA['ConfigCtrl.GetConfig'] = base
+      shouldFail = () => false
+    }
   })
 
   it('反向验证：getter 失败 → 该行显示读取失败，移除不得报「已移除」', async () => {

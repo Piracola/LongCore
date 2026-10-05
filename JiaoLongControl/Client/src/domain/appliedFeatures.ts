@@ -13,6 +13,8 @@
  *   只能显示「无法还原 + 原因」（见 canRemoveFeature / REMOVAL_BLOCKED_*）。
  * - 读不到就写「不可回读」/「读取失败」，**禁止回退成 0、false 或默认值**（v4 §7.1）。
  * - 意图与实测不一致时必须显式暴露，尤其是「配置开着、硬件没写进去」。
+ * - 「硬件当前是否真的生效」是 `FeatureVerdict.observedActive` 一等字段（读不到/读失败 = null）；
+ *   「全部还原」与界面覆盖范围说明只认它，**不得靠 status 白名单反推**（那会同时漏项与误收，见 bulkRemovalPlan）。
  *
  * 可逆级别沿用 domain/operations.ts:21-29 的五级定义（本轮把它从"日志标签"变成真门禁）。
  */
@@ -39,9 +41,14 @@ export type IntentRule =
   | { kind: 'nonzero' }
   /** 值存在（非 null/undefined/空数组）——用于「配置里记着这套值」的语义 */
   | { kind: 'present' }
+  /**
+   * 精确等于某个值——用于「限制被施加」的语义（如 `cpu.turbo`：生效 = 睿频被关掉，
+   * 而不是「睿频开着」——后者在 Windows 上本来就是默认态，不构成本软件的应用痕迹）。
+   */
+  | { kind: 'equals'; value: number | string | boolean }
 
 /** 「硬件生效」判据（回读侧，pick 之后的值） */
-export type ObservedRule = IntentRule | { kind: 'equals'; value: number | string }
+export type ObservedRule = IntentRule
 
 export interface ReadbackSpec {
   /**
@@ -210,14 +217,17 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
   },
   {
     id: 'cpu.turbo',
-    name: '睿频（Turbo）',
+    name: '关闭睿频（Turbo 限制）',
     group: 'cpu',
     intentPath: 'Cpu.Custom.CpuTurbo',
     readback: { method: 'Power.GetTurboEnabled', pick: 'ac', kind: 'direct' },
-    readbackNote: 'Power.GetTurboEnabled 读 AC 侧睿频开关（boolean）',
+    readbackNote:
+      'Power.GetTurboEnabled 读 AC 侧睿频开关（boolean）：false = 睿频被关掉（限制生效）',
     reversibility: 'b',
-    intentRule: { kind: 'truthy' },
-    observedRule: { kind: 'truthy' },
+    // 「已生效」= 限制被施加（睿频被关掉）。用 truthy 会说「睿频开着 = 本软件的应用痕迹」，
+    // 而睿频开着是 Windows 默认态，且移除动作（EnableTurbo）写后回读必为 true → 移除永远判不成功。
+    intentRule: { kind: 'equals', value: false },
+    observedRule: { kind: 'equals', value: false },
     exact: true,
     removal: [
       {
@@ -230,7 +240,8 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     removalConfirm: 'readback',
     writePath: 'src/domain/cpuPowerPlan.ts:90-95',
     conclusion: 'keep',
-    conclusionReason: '可回读且可还原；关睿频是省电/降温的常规手段',
+    conclusionReason:
+      '「已生效」= 软件把睿频关掉了（限制被施加）：observedRule 与恢复动作（Power.EnableTurbo → 回读 true）自洽，移除可回读确认；配置侧同样以 CpuTurbo=false 为生效条件（2026-10-05 审查 FIX-2）',
   },
   {
     id: 'cpu.boot-apply',
@@ -798,7 +809,8 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     group: 'keyboard',
     intentPath: null,
     readback: { method: 'Keyboard.GetColor', kind: 'direct' },
-    readbackNote: 'Keyboard.GetColor 直接读硬件当前 RGB',
+    readbackNote:
+      'Keyboard.GetColor 直接读硬件当前 RGB；但它读不出「这值是不是本软件写的」（固件原色无处可查），移除只能命令确认',
     reversibility: 'a',
     intentRule: { kind: 'present' },
     observedRule: { kind: 'present' },
@@ -810,11 +822,13 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
         label: '写回应用默认色 #8A2BE2（KeyBoard.vue:244 的页面默认值，非固件原值）',
       },
     ],
-    removalConfirm: 'readback',
+    // 回读判据是 present：任何颜色都 present → 移除后回读永远"仍然生效"。
+    // 没有可靠的出厂默认色可写回，所以只能命令确认，不得渲染成失败态（2026-10-05 审查 FIX-2）。
+    removalConfirm: 'command-only',
     writePath: 'src/pages/KeyBoard.vue:196-214',
     conclusion: 'keep',
     conclusionReason:
-      'A 级：有 getter + setter，允许「撤销」措辞（operations.ts:23）；颜色不落 config.yaml，重启后不自动恢复',
+      'A 级：有 getter + setter，允许「撤销」措辞（operations.ts:23）；但颜色不落 config.yaml、固件原色不可查，写回的是页面默认值 → 移除只报「仅命令确认，未确认已恢复」',
   },
   {
     id: 'keyboard.brightness',
@@ -822,7 +836,8 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     group: 'keyboard',
     intentPath: null,
     readback: { method: 'Keyboard.GetLightBrightness', kind: 'direct' },
-    readbackNote: 'Keyboard.GetLightBrightness 直接读亮度档位（0–3）',
+    readbackNote:
+      'Keyboard.GetLightBrightness 直接读亮度档位（0–3）；但它读不出「这档位是不是本软件写的」，移除只能命令确认',
     reversibility: 'a',
     intentRule: { kind: 'present' },
     observedRule: { kind: 'present' },
@@ -834,10 +849,12 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
         label: '写回页面默认档位 2（KeyBoard.vue:245，非固件原值）',
       },
     ],
-    removalConfirm: 'readback',
+    // 同颜色：present 判据下移除后回读必然"仍然生效"，没有可靠的出厂档位可写回。
+    removalConfirm: 'command-only',
     writePath: 'src/pages/KeyBoard.vue:215-220',
     conclusion: 'keep',
-    conclusionReason: '同上；亮度与颜色同一次「应用」下发（KeyBoard.vue:186-241）',
+    conclusionReason:
+      '同上；亮度与颜色同一次「应用」下发（KeyBoard.vue:186-241）；移除只报「仅命令确认，未确认已恢复」',
   },
   {
     id: 'keyboard.mode',
@@ -1117,6 +1134,15 @@ export interface FeatureVerdict {
   statusLabel: string
   /** 是否「配置开着、硬件没写进去」 */
   mismatch: boolean
+  /**
+   * 「硬件当前是否真的生效」——一等字段，「全部还原」与界面覆盖范围说明都只认它：
+   * - `true` / `false`：回读成功（ok/stale）且判据可判定；
+   * - `null`：不可回读（注册表未声明 getter）或回读失败（error/unavailable/loading）
+   *   —— **不知道**，不得当成 false（v4 §7.1：读不到不猜值）。
+   * 它独立于 status：`unreadable` / `read-failed` / `intent-missing` / `no-write-path` /
+   * `observed-only` 这些状态下，status 本身说不出「硬件里到底生不生效」。
+   */
+  observedActive: boolean | null
   /** 意图栏文本（camelCase 路径 + 值） */
   intentText: string
   /** 实测栏文本（bridge 方法名 + 回读值） */
@@ -1194,7 +1220,10 @@ function describeIntent(item: AppliedFeature, intent: IntentRead): string {
   const pathText = item.intentPath
   if (!intent.configLoaded) return `${pathText} = 配置未读取`
   if (!intent.found) return `${pathText} = 字段不存在`
-  return `${pathText} = ${formatValue(intent.value)}`
+  // equals 判据（如关睿频）：光看字段值看不出「为什么这算生效」，把生效条件一并写出
+  const suffix =
+    item.intentRule.kind === 'equals' ? `（生效 = ${formatValue(item.intentRule.value)}）` : ''
+  return `${pathText} = ${formatValue(intent.value)}${suffix}`
 }
 
 function describeObserved(item: AppliedFeature, observed: ObservedRead, picked: unknown): string {
@@ -1232,11 +1261,18 @@ export function judgeFeature(
   const inferred = item.readback?.kind === 'inferred'
   const blockedReason = removalBlockedReason(item)
 
+  // 「硬件当前是否真的生效」——一等字段：不可回读 / 回读失败一律是 null（不知道），
+  // 绝不用 status 白名单去反推（那正是「全部还原」既漏项又误收的根因）。
+  const readable = observed.state === 'ok' || observed.state === 'stale'
+  const observedActive =
+    item.readback === null || !readable ? null : evalRule(item.observedRule, picked)
+
   const base = {
     id: item.id,
     inferred: inferred === true,
     canRemove: blockedReason === null,
     blockedReason,
+    observedActive,
     intentText: describeIntent(item, intent),
     observedText: describeObserved(item, observed, picked),
   }
@@ -1249,15 +1285,16 @@ export function judgeFeature(
     detail,
   })
 
-  // 1. 不可回读：注册表自己声明读不到 → 不猜值
-  if (item.readback === null) return verdict('unreadable', item.readbackNote)
+  // 1. 不可回读：注册表自己声明读不到 → 不猜值。
+  //    detail 留空：readbackNote 已由「实测」栏的 observedText 承载，两栏不重复同一段长文。
+  if (item.readback === null) return verdict('unreadable', null)
 
   // 2. 回读失败（error/unavailable/loading）：不得当成 false/0
   if (observed.state !== 'ok' && observed.state !== 'stale') {
     return verdict('read-failed', observed.message ?? '回读未成功')
   }
 
-  const observedOn = evalRule(item.observedRule, picked)
+  const observedOn = observedActive === true
 
   // 3. 有意图来源但读不到配置字段
   if (item.intentPath !== null && (!intent.configLoaded || !intent.found)) {
@@ -1305,26 +1342,39 @@ export function judgeFeature(
   return verdict('match', null)
 }
 
+/** 未读到的输入：显式缺失，绝不用默认值顶替（v4 §7.1） */
+const MISSING_INTENT: IntentRead = { configLoaded: false, found: false, value: null }
+const MISSING_OBSERVED: ObservedRead = { state: 'loading', value: null, message: null }
+
+/** 取一项的判定结果（缺失的输入按「未读」处理） */
+function verdictOf(
+  item: AppliedFeature,
+  intents: Readonly<Record<string, IntentRead>>,
+  observed: Readonly<Record<string, ObservedRead>>,
+): FeatureVerdict {
+  return judgeFeature(
+    item,
+    intents[item.id] ?? MISSING_INTENT,
+    observed[item.id] ?? MISSING_OBSERVED,
+  )
+}
+
 /** 批量判定（组件只消费这个结果） */
 export function judgeAll(
   items: readonly AppliedFeature[],
   intents: Readonly<Record<string, IntentRead>>,
   observed: Readonly<Record<string, ObservedRead>>,
 ): FeatureVerdict[] {
-  return items.map((item) =>
-    judgeFeature(
-      item,
-      intents[item.id] ?? { configLoaded: false, found: false, value: null },
-      observed[item.id] ?? { state: 'loading', value: null, message: null },
-    ),
-  )
+  return items.map((item) => verdictOf(item, intents, observed))
 }
 
 /**
- * 「全部还原」名单：只收可移除且当前**看起来**还生效的项；
- * 已经 inactive 的不重复下发（少写一次硬件）。
- * 回读失败但配置明确开着 → 仍列入（用户要退出，不能被一次读取失败卡住），
- * 其结果由移除后的独立重读判定，失败就报失败。
+ * 「全部还原」名单。三条**同时**满足才收（判据是「硬件当前真的生效」，不是 status 白名单）：
+ * 1. `canRemove`：有可靠回读、非 E 级、有移除步骤（见 removalBlockedReason）；
+ * 2. `writePath !== null`：前端确实下发得出去 —— `writePath === null` 只读回读得出来，
+ *    硬件里的值**不是本软件写的**（如 MSI Afterburner 设的 GPU 偏移），点一下就把它清掉；
+ * 3. `observedActive === true`，或 `observedActive === null`（读不到回读值）**且**配置意图明确为开
+ *    —— 后者保留「一次读取失败不该卡住用户」的口径，其结果由移除后的独立重读判定。
  */
 export function bulkRemovalPlan(
   items: readonly AppliedFeature[],
@@ -1332,20 +1382,58 @@ export function bulkRemovalPlan(
   observed: Readonly<Record<string, ObservedRead>>,
 ): AppliedFeature[] {
   return items.filter((item) => {
-    const v = judgeFeature(
-      item,
-      intents[item.id] ?? { configLoaded: false, found: false, value: null },
-      observed[item.id] ?? { state: 'loading', value: null, message: null },
-    )
+    const v = verdictOf(item, intents, observed)
     if (!v.canRemove) return false
-    if (['match', 'mismatch', 'hardware-only', 'no-write-path'].includes(v.status)) return true
-    if (v.status === 'read-failed') {
+    if (item.writePath === null) return false
+    if (v.observedActive === true) return true
+    if (v.observedActive === null) {
       const intent = intents[item.id]
-      const intentOn = intent?.found ? evalRule(item.intentRule, intent.value) : false
-      return intentOn
+      return intent?.found === true && evalRule(item.intentRule, intent.value)
     }
     return false
   })
+}
+
+/** 「全部还原」的覆盖范围（界面必须逐类说明，不能只报一个数字） */
+export interface RemovalScope {
+  /** 本次会下发的项名（"全部还原"按钮实际覆盖到的） */
+  covered: string[]
+  /** 不覆盖：`writePath === null` —— 前端没有下发路径，硬件里的值不是本软件写的，不能替别的工具清掉 */
+  notWrittenByUs: string[]
+  /** 不覆盖：本软件写过，但实测当前不生效 */
+  notActive: string[]
+  /** 不覆盖：回读没读到（读失败/不可回读），且配置意图也没明确开着 —— 不知道，不猜 */
+  notRead: string[]
+  /** 不覆盖：本行根本不给「移除」（不可回读 / E 级 / 无还原值），逐行有自己的原因 */
+  noRemovalPath: string[]
+}
+
+/** 把「覆盖哪些 / 不覆盖哪些、各为什么」算成数据（纯函数，组件只渲染） */
+export function removalScope(
+  items: readonly AppliedFeature[],
+  intents: Readonly<Record<string, IntentRead>>,
+  observed: Readonly<Record<string, ObservedRead>>,
+): RemovalScope {
+  const planIds = new Set(bulkRemovalPlan(items, intents, observed).map((item) => item.id))
+  const scope: RemovalScope = {
+    covered: [],
+    notWrittenByUs: [],
+    notActive: [],
+    notRead: [],
+    noRemovalPath: [],
+  }
+  for (const item of items) {
+    if (planIds.has(item.id)) {
+      scope.covered.push(item.name)
+      continue
+    }
+    const v = verdictOf(item, intents, observed)
+    if (!v.canRemove) scope.noRemovalPath.push(item.name)
+    else if (item.writePath === null) scope.notWrittenByUs.push(item.name)
+    else if (v.observedActive === false) scope.notActive.push(item.name)
+    else scope.notRead.push(item.name)
+  }
+  return scope
 }
 
 /** 移除后的独立重读判据：必须读到该项**已不再生效**才算移除成功 */
