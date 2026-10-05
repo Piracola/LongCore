@@ -10,8 +10,6 @@
  *   因读取失败会被渲染成 0，直接下发即是把 0 写进固件限制）。
  * - SMU 值域：与 RyzenSmu.vue CONFIG_GROUPS 的滑条 min/max 一致（前端一致性校验；
  *   真机安全上下限待 v4 §14.3 #5 确认后由 Server 侧权威化）。
- * - 风扇手动转速：FAN_MIN_RPM/FAN_MAX_RPM = 1500/5800（constants/index.ts，与
- *   AutoFanControl.cs MIN_FAN_BYTE/MAX_FAN_BYTE 一致）。
  */
 
 export type WriteDomain = 'smu' | 'fan' | 'mode' | 'gpu' | 'keyboard' | 'power' | 'other'
@@ -117,11 +115,6 @@ export const writeGate = {
     const zero = SMU_ZERO_UNWRITABLE.has(itemKey)
     const range = SMU_RANGES[itemKey] ?? null
     return check({ zeroUnwritable: zero, range, reversibility: 'b' }, value)
-  },
-
-  /** 风扇手动转速（RPM）。C 级：只能恢复自动控制，不得宣称回滚 */
-  fanManualSpeed(rpm: number): WriteGateDecision {
-    return check({ range: { min: 1500, max: 5800 }, reversibility: 'c' }, rpm)
   },
 
   /** 性能模式切换（预设选择器）。B 级：只能重新应用（重新选档），非回滚 */

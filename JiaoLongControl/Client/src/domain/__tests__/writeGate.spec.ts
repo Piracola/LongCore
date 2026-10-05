@@ -22,15 +22,3 @@ describe('writeGate.smu', () => {
     expect(writeGate.smu('OcClk', -501).allowed).toBe(false)
   })
 })
-
-describe('writeGate.fanManualSpeed', () => {
-  it('allows 1500–5800', () => {
-    expect(writeGate.fanManualSpeed(1500).allowed).toBe(true)
-    expect(writeGate.fanManualSpeed(5800).allowed).toBe(true)
-  })
-
-  it('rejects outside', () => {
-    expect(writeGate.fanManualSpeed(1499).allowed).toBe(false)
-    expect(writeGate.fanManualSpeed(5801).allowed).toBe(false)
-  })
-})

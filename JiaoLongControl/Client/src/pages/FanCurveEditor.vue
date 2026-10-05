@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import FanSpeed from '@/components/common/FanSpeed.vue'
 import PageShell from '@/components/common/PageShell.vue'
+import CompositeSteps from '@/components/common/CompositeSteps.vue'
 import { useFanCurveEditor } from '@/composables/useFanCurveEditor'
 
 const {
@@ -27,7 +28,8 @@ const {
   isValidRender,
   onTabChange,
   handleServiceToggle,
-  handleRemoveFanClick,
+  handleHandoffToEc,
+  composite,
   safeMapX,
   safeMapY,
   polylinePoints,
@@ -86,8 +88,7 @@ function formatSavedAt(value: number | null) {
       </div>
       <div v-if="locked" class="curve-gate">
         <span>
-          当前为固件档位，风扇由 EC 固件表管理。曲线编辑与手动转速仅对「自定义」档位开放，
-          请先在概览页切换。
+          当前为固件档位，风扇由 EC 固件表管理。曲线编辑仅对「自定义」档位开放， 请先在概览页切换。
         </span>
       </div>
       <a-card class="fan-curve-card" :bordered="false" @click="closeMenu">
@@ -107,9 +108,10 @@ function formatSavedAt(value: number | null) {
               <button
                 class="btn-danger btn-apply-sm"
                 :disabled="locked"
-                @click="handleRemoveFanClick"
+                title="停曲线服务 + 撤掉手动掩码 + 关闭开机自动拉起，把风扇交还 EC 固件温控"
+                @click="handleHandoffToEc"
               >
-                移除转速设置
+                交还 EC 固件温控
               </button>
             </a-space>
           </div>
@@ -328,6 +330,11 @@ function formatSavedAt(value: number | null) {
           </a-space>
         </a-modal>
       </a-card>
+      <CompositeSteps
+        :steps="composite.state.value.steps"
+        :partial="composite.state.value.partialApplied"
+        :message="composite.state.value.message"
+      />
       <FanSpeed></FanSpeed>
     </div>
   </PageShell>

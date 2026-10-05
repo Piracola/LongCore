@@ -48,7 +48,6 @@ export interface FanSectionType {
   Enabled: boolean
   /** 两风扇同转速, 消除不同转速产生的拍频调制 */
   FanCurveMerge: boolean
-  ManualFanSpeed: number
   /** 升温跟踪时间常数 (秒, 3~60): 越小跟随越快 */
   TempAttackS: number
   /** 降温跟踪时间常数 (秒, 10~300): 越大风扇在高转速保持越久 */

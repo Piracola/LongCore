@@ -196,10 +196,6 @@ public class FanSection
     // 后端 Blding64 护栏亦硬性拒绝 0。上限 5800 RPM = 官方 fastestMode_FanSpeed_MaxValue(58×100)。
     // 上限 5800 与前端 FAN_MAX_RPM(constants/index.ts) 及驱动侧 FanSpeedRawMax(Blding64) 保持一致:
     // 6800 只是寄存器可写范围, 超过 5800 的写入会被驱动护栏拒绝, 属"范围多处声明"的隐患。
-    [ConfigComment("手动风扇转速 (RPM)")]
-    [ConfigRange(1500, 5800)]
-    public int ManualFanSpeed { get; set; } = 1500;
-
     // 默认曲线: 噪声与性能的折中。
     // 目标不是"最安静", 而是把温度压在 CPU 温度墙(默认 95℃)以下, 避免到墙才猛拉 ——
     // 那正是 EC 固件表的老毛病(低温区压得极低, 91℃ 后才跳变)。

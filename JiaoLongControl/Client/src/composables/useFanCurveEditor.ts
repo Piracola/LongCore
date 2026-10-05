@@ -4,6 +4,7 @@ import { AutoFanControl, Fan } from '@/utils/bridge'
 import { useConfigStore } from '@/stores/config'
 import { useActivityStore } from '@/stores/activity'
 import { useFanStore } from '@/stores/fan'
+import { useCompositeWrite } from '@/composables/useCompositeWrite'
 import { FAN_MAX_RPM, FAN_MIN_RPM } from '@/constants'
 
 export interface FanCurvePoint {
@@ -19,6 +20,7 @@ export function useFanCurveEditor() {
   const configStore = useConfigStore()
   const activity = useActivityStore()
   const fanStore = useFanStore()
+  const composite = useCompositeWrite()
 
   const activeTab = ref<'CPU' | 'GPU'>('CPU')
   // 占位默认值, 挂载后会立刻被 config.Fan.*FanCurve 覆盖。
@@ -382,29 +384,85 @@ export function useFanCurveEditor() {
     showEdit.value = false
   }
 
-  async function handleRemoveFanClick() {
-    const running = await AutoFanControl.IsRunning()
-    if (running.Success && running.Data) {
-      const stop = await AutoFanControl.Stop()
-      if (!stop.Success) {
-        Message.error(stop.Message || '停止曲线控制失败')
-        return
-      }
-    }
-    const remove = await Fan.RemoveFanSpeed()
-    if (remove.Success) {
-      Message.success(remove.Message || '已恢复自动控制')
-      fanStore.setCurveService(false)
-      activity.record({
-        source: 'user',
-        intent: '恢复自动风扇控制',
-        requestedValue: null,
-        outcome: 'applied',
-        reversible: 'c',
-      })
+  /**
+   * 「交还 EC 固件温控」—— 本页唯一的控制权出口（2026-10-06 从已删除的「风扇」页挪来）。
+   *
+   * 三步都必须真发出去，缺一不可：
+   * 1. 停曲线服务（否则 RemoveFanSpeed 下一拍就被曲线写回去）
+   * 2. Fan.RemoveFanSpeed —— 撤掉 0xB20 手动掩码，EC 固件温控重新生效
+   * 3. Fan.Enabled = false **并保存**：只改前端内存的话，下次开机 SelfStart 会按
+   *    BootAdvancedFanControlSystem 把曲线重新拉起，用户以为交还了、实际没有。
+   *
+   * 逐项结果与「失败不报成功」沿用 useCompositeWrite 的既有口径（遇失败中止、
+   * 已生效项不撤销、partialApplied 显式暴露），不另起一套。
+   */
+  async function handleHandoffToEc(): Promise<boolean> {
+    const event = await composite.run({
+      source: 'user',
+      transport: 'ec',
+      requestedValue: null,
+      reversible: 'c',
+      compensation: '交还 EC 固件温控',
+      preRead: {
+        value: fanStore.curveService.value,
+        readable: fanStore.curveService.state === 'ok',
+      },
+      steps: [
+        {
+          label: '停止应用内曲线服务',
+          transport: 'ec',
+          requestedValue: false,
+          run: async () => {
+            // 现读而不是拿 5s 轮询的镜像：刚起来的服务会被漏掉，
+            // 那样下一步的 RemoveFanSpeed 立刻被曲线写回。
+            const running = await AutoFanControl.IsRunning()
+            if (!(running.Success && running.Data === true)) {
+              return { accepted: true, message: '曲线服务未在运行' }
+            }
+            const stop = await AutoFanControl.Stop()
+            return { accepted: stop.Success === true, message: stop.Message }
+          },
+        },
+        {
+          label: '移除转速设置（撤掉手动掩码，EC 温控重新生效）',
+          transport: 'ec',
+          requestedValue: null,
+          run: async () => {
+            const remove = await Fan.RemoveFanSpeed()
+            return { accepted: remove.Success === true, message: remove.Message }
+          },
+        },
+        {
+          label: '关闭「开机自动拉起曲线」意图并保存配置',
+          transport: 'config',
+          requestedValue: false,
+          run: async () => {
+            if (!configStore.config) return { accepted: false, message: '配置未加载，意图未落盘' }
+            configStore.config.Fan.Enabled = false
+            const res = (await configStore.saveConfig()) as
+              { Success?: boolean; Message?: string } | undefined
+            return { accepted: res?.Success === true, message: res?.Message ?? '配置保存失败' }
+          },
+        },
+      ],
+    })
+
+    const failed = event.steps.some((s) => s.status === 'failed')
+    if (failed) {
+      // 不得报成功：部分应用时也要让用户看见「哪一步没有生效」
+      Message.error(`交还 EC 未完成：${composite.state.value.message ?? '有步骤失败'}`)
     } else {
-      Message.error(remove.Message || '恢复自动控制失败')
+      Message.success('已交还 EC 固件温控')
+      fanStore.setCurveService(false)
     }
+    activity.record({
+      source: 'user',
+      intent: '交还 EC 固件温控',
+      requestedValue: null,
+      outcome: failed ? 'failed' : 'applied',
+      reversible: 'c',
+    })
+    return !failed
   }
 
   /**
@@ -413,7 +471,6 @@ export function useFanCurveEditor() {
    */
   /**
    * 门禁：固件三档（办公/游戏/狂飙）下风扇由 EC 自己的表管理，曲线编辑不开放。
-   * 与风扇页共用同一个判定，避免两处口径不一。
    */
   /**
    * 曲线接管不再按性能档位设限。
@@ -458,7 +515,8 @@ export function useFanCurveEditor() {
     onTabChange,
     checkServiceStatus,
     handleServiceToggle,
-    handleRemoveFanClick,
+    handleHandoffToEc,
+    composite,
     safeMapX,
     safeMapY,
     mapX,

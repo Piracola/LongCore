@@ -3,8 +3,8 @@
  *
  * 背景（本轮交付）：软件会改写硬件（EC 风扇、CPU 功耗、GPU 超频、SMU、键盘灯、自启），
  * 但用户看不出哪些还生不生效；各页「重置」语义也不一致 —— CPU.vue:184-194 与
- * RyzenSmu.vue:363-372 的重置只改表单+存盘、不下发硬件；Fan.vue:124-126 与
- * GPU.vue:308-337 的重置真下发。本模块把「意图 vs 实测」变成可看见、可退出的两栏。
+ * RyzenSmu.vue:363-372 的重置只改表单+存盘、不下发硬件；GPU.vue:308-337 与
+ * 风扇曲线页的「交还 EC 固件温控」真下发。本模块把「意图 vs 实测」变成可看见、可退出的两栏。
  *
  * 硬规则（v4 §8.2/§8.4 + 本次交付约束）：
  * - 本文件是纯数据 + 纯函数，不 import Vue，也不 import pinia/桥接调用；
@@ -754,34 +754,6 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     conclusion: 'keep',
     conclusionReason:
       'KNOWN_ISSUES 第 5 条的刻意取舍：固件温控表形状不可改，接管是唯一手段；有兜底（ThermalWatchdog + EcGuard）与真实还原路径',
-  },
-  {
-    id: 'fan.manual-speed',
-    name: '风扇手动转速接管',
-    group: 'fan',
-    intentPath: 'Fan.ManualFanSpeed',
-    readback: { method: 'Fan.GetFanSpeed', pick: 'CPUFanSpeed', kind: 'inferred' },
-    readbackNote:
-      'EC 没有「手动掩码」getter：无法区分固件自动与残留手动值。按 stores/fan.ts:20-22、154-157 的口径推断（AutoFan 未运行 + 配置里留着手动转速）；反证条件：EC 若提供手动转速查询命令，应以查询为准',
-    reversibility: 'c',
-    intentRule: { kind: 'nonzero' },
-    observedRule: { kind: 'nonzero' },
-    removal: [
-      {
-        kind: 'bridge',
-        method: 'AutoFanControl.Stop',
-        args: [],
-        label: '停止应用内曲线（如在跑）',
-      },
-      { kind: 'bridge', method: 'Fan.RemoveFanSpeed', args: [], label: '移除手动转速限制' },
-      { kind: 'config', path: 'Fan.ManualFanSpeed', value: 0, label: '清掉配置里的手动转速目标' },
-    ],
-    // 回读只能看到转速，看不到"手动掩码"，因此移除结果无法回读确认（v4 §8.4）
-    removalConfirm: 'command-only',
-    writePath: 'src/stores/fan.ts:197-273',
-    conclusion: 'keep',
-    conclusionReason:
-      'C 级唯一出路「恢复自动控制」已实现（stores/fan.ts:275-320）；转速区间单一真源 FAN_MIN_RPM/FAN_MAX_RPM',
   },
   {
     id: 'fan.curve-merge',

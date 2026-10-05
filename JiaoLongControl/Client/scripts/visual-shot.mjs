@@ -62,7 +62,6 @@ const mockConfig = {
   Fan: {
     Enabled: false,
     FanCurveMerge: true,
-    ManualFanSpeed: 2800,
     TempAttackS: 5,
     TempReleaseS: 60,
     TempHysteresisC: 5,
@@ -341,7 +340,6 @@ async function gotoPage(id, theme) {
     gpu: 'GPU',
     smu: 'SMU',
     'fan-curve': '风扇曲线',
-    fan: '风扇',
     keyboard: '灯效',
     settings: '系统',
   }
@@ -352,6 +350,11 @@ async function gotoPage(id, theme) {
 
 await page.goto(url, { waitUntil: 'networkidle' })
 await page.waitForTimeout(1000)
+
+// 侧栏项数：2026-10-06 删掉「风扇」页后应为 7（截图不能自证项数，这里直接数 DOM）
+const navCount = await page.locator('aside[aria-label="主导航"] button.rail-btn').count()
+console.log(`nav items: ${navCount}`)
+if (navCount !== 7) throw new Error(`侧栏项数应为 7，实际 ${navCount}`)
 
 // Dark theme captures
 await page.evaluate(() => {
@@ -394,7 +397,7 @@ await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'cpu-dark.png') })
 console.log('saved cpu-dark')
 
-for (const id of ['gpu', 'fan', 'fan-curve', 'keyboard']) {
+for (const id of ['gpu', 'fan-curve', 'keyboard']) {
   await gotoPage(id, 'dark')
   await page.mouse.move(400, 400)
   await page.screenshot({ path: path.join(outDir, `${id}-dark.png`) })

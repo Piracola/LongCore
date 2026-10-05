@@ -54,7 +54,7 @@ describe('注册表：bridge 方法必须真实存在', () => {
 
   it('解析器本身是判别式的：桥接里不存在的方法名必须解析为 null', () => {
     // Fan.SetMaxFanSpeedSwitch 只在 BridgeApi 类型声明里（bridge.ts:168-169），
-    // Fan 导出对象（bridge.ts:456-460）没有它 —— 这正是"手抄名单"会漏掉的那类错。
+    // Fan 导出对象（bridge.ts:459-462）没有它 —— 这正是"手抄名单"会漏掉的那类错。
     expect(resolveBridgeMethod(bridgeNamespace, 'Fan.SetMaxFanSpeedSwitch')).toBeNull()
     expect(resolveBridgeMethod(bridgeNamespace, 'Nope.NotAMethod')).toBeNull()
   })
@@ -179,14 +179,6 @@ describe('判定函数：同一份注册表喂不同假状态必须给出不同�
     expect(judgeFeature(turbo, configOn(false), readOk({ ac: true, dc: false })).status).toBe(
       'mismatch',
     )
-  })
-
-  it('推断口径的行不谎报「硬件仍在生效」（EC 转风扇 ≠ 我们的手动值）', () => {
-    const manual = featureById('fan.manual-speed')
-    expect(manual.readback?.kind).toBe('inferred')
-    const verdict = judgeFeature(manual, configOn(0), readOk({ CPUFanSpeed: 2800 }))
-    expect(verdict.status).toBe('inactive')
-    expect(verdict.inferred).toBe(true)
   })
 
   it('无下发路径的项不得显示成「已生效」', () => {
@@ -367,7 +359,6 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
     'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 600 },
     'gpu.voltage-boost': 15,
     'fan.curve': true,
-    'fan.manual-speed': { CPUFanSpeed: 2800, GPUFanSpeed: 2100 },
     'keyboard.color': { red: 138, green: 43, blue: 226 },
     'keyboard.brightness': 3,
     'keyboard.mode': 2,
@@ -384,7 +375,6 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
     'gpu.memory-offset': { CoreMhz: 0, MemoryMhz: 0 },
     'gpu.voltage-boost': 0,
     'fan.curve': false,
-    'fan.manual-speed': { CPUFanSpeed: 0, GPUFanSpeed: 0 },
     'keyboard.color': { red: 138, green: 43, blue: 226 }, // present 恒真：只能命令确认
     'keyboard.brightness': 2,
     'keyboard.mode': 0,
@@ -439,7 +429,7 @@ describe('移除普查：不允许存在"点了永远不会成功"的项（审�
 
 describe('配置路径读取', () => {
   it('按路径取值，缺失返回 undefined（不猜默认值）', () => {
-    const config = { Fan: { Enabled: true, ManualFanSpeed: 0 }, App: { Theme: 'dark' } }
+    const config = { Fan: { Enabled: true, FanCurveMerge: false }, App: { Theme: 'dark' } }
     expect(readByPath(config, 'Fan.Enabled')).toBe(true)
     expect(readByPath(config, 'App.Theme')).toBe('dark')
     expect(readByPath(config, 'Fan.Nope')).toBeUndefined()

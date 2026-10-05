@@ -482,7 +482,7 @@ const lineChartOption = computed(() => {
               </div>
               <div class="quick-actions">
                 <button type="button" @click="pageStore.setPage('cpu')">调整 CPU 参数</button>
-                <button type="button" @click="pageStore.setPage('fan')">管理风扇策略</button>
+                <button type="button" @click="pageStore.setPage('fan-curve')">管理风扇策略</button>
               </div>
             </div>
           </section>

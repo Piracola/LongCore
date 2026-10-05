@@ -18,7 +18,6 @@ const RAW_DATA: Record<string, unknown> = {
   'Power.GetCPUMaxFrequency': { ac: 5400, dc: 5400 },
   'Power.GetTurboEnabled': { ac: true, dc: true },
   'AutoFan.IsRunning': true,
-  'Fan.GetFanSpeed': { CPUFanSpeed: 2800, GPUFanSpeed: 2100 },
   'Keyboard.GetColor': { red: 138, green: 43, blue: 226 },
   'Keyboard.GetLightBrightness': 2,
   'Keyboard.GetMode': 2,
@@ -68,7 +67,6 @@ const RAW_DATA: Record<string, unknown> = {
     Fan: {
       Enabled: true,
       FanCurveMerge: true,
-      ManualFanSpeed: 2800,
       TempAttackS: 5,
       TempReleaseS: 60,
       TempHysteresisC: 5,

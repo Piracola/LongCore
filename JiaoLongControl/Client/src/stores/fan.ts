@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { Fan, AutoFanControl, type FanSpeedInfo } from '@/utils/bridge'
-import { writeGate } from '@/domain/writeGate'
 import { type ActivityRecord } from '@/domain/operations'
 import { useActivityStore } from '@/stores/activity'
 import { okReading, staleReading, errorReading, type Reading } from '@/utils/reading'
@@ -12,15 +11,15 @@ import { POLL_INTERVAL_FAN_SPEED, POLL_INTERVAL_SMART_FAN } from '@/constants'
  * 风扇策略 store —— 第一个垂直切片（UI重构_最终方案_v4.md §11，Implemented 2026-09-17）。
  *
  * FanPolicy 状态机（v4 §6 + §10「自动策略接管必须显示当前由谁控制」）：
- * - auto    EC 固件自动温控（默认；手动转速未设 且 AutoFan 未运行）
+ * - auto    EC 固件自动温控（默认；AutoFan 未运行）
  * - curve   应用内曲线接管（AutoFanControl 运行中）
- * - manual  用户手动接管（SetFanSpeed 已下发；AutoFan 已停）
  *
- * 判定权威：AutoFan.IsRunning()（曲线）→ Fan.SetFanSpeed 是否留有手动设定（manual）→ auto。
- * EC 没有可靠 getter 区分「固件自动」与「残留手动值」，manual 判定为推断（Hypothesis），
- * 反证条件：若 EC 存在手动转速查询命令，应以查询为准。
+ * 判定权威：AutoFan.IsRunning()（曲线）→ auto。
+ * 「手动设定转速」已在 2026-10-06 删除（机主 Decision），原 manual 态与它的
+ * Hypothesis 判定一并消失：EC 本来就区分不出「固件自动」与「残留手动值」。
  *
- * 可逆性（v4 §8.2）：风扇手动接管 = C 级 —— 只能「恢复自动控制」，不得出现「回滚/撤销」。
+ * 唯一出口（v4 §8.2 C 级）：`restoreAuto()` —— 停曲线服务 + 移除手动限制，
+ * 不得出现「回滚/撤销」措辞。
  *
  * 最近活动（v4 §8.5）：200 条环形缓冲，只记用户意图级；
  * 自动风扇曲线 / 温控看门狗的底层写入不得进入（它们的写入不经过本 store）。
@@ -36,7 +35,7 @@ export type { FanController }
 
 export interface FanApplyResult {
   ok: boolean
-  /** 逐项结果（v4 §8.3）：停 AutoFan（如运行中）→ 写转速 → 保存配置 */
+  /** 逐项结果（v4 §8.3）：停 AutoFan（如运行中）→ 移除手动限制 */
   steps: Array<{ label: string; ok: boolean; skipped?: boolean; message?: string }>
   message: string
 }
@@ -74,7 +73,7 @@ export const useFanStore = defineStore('fan', {
     },
     /** 控制权显示名（v4 §10：必须显示「当前由谁控制」） */
     controllerLabel(): string {
-      return { auto: 'EC 自动温控', manual: '手动接管', curve: '应用内曲线' }[this.controller]
+      return { auto: 'EC 自动温控', curve: '应用内曲线' }[this.controller]
     },
     /**
      * 应用内曲线能否接管风扇。
@@ -151,10 +150,8 @@ export const useFanStore = defineStore('fan', {
             return
           }
         }
-        // AutoFan 未运行 + 配置里有持久化的手动转速 → 推断 manual（Hypothesis，见文件头）
-        const { useConfigStore } = await import('@/stores/config')
-        const cfg = useConfigStore().config?.Fan?.ManualFanSpeed
-        this.controller = typeof cfg === 'number' && cfg > 0 ? 'manual' : 'auto'
+        // 曲线服务未运行 → EC 固件自动温控（唯一剩下的第二种控制权）
+        this.controller = 'auto'
       } finally {
         this.resolving = false
       }
@@ -192,84 +189,6 @@ export const useFanStore = defineStore('fan', {
       channel?.dispose()
       channel = null
       this.monitoring = false
-    },
-
-    /** 手动设定转速（C 级可逆）。逐项：writeGate → 停 AutoFan → 写转速 → 保存配置。 */
-    async applyManualSpeed(
-      rpm: number,
-      saveConfig: () => Promise<unknown>,
-    ): Promise<FanApplyResult> {
-      const steps: FanApplyResult['steps'] = []
-
-      // 闸门（v4 §8.6 前端一致性值域 1500–5800）
-      const gate = writeGate.fanManualSpeed(rpm)
-      if (!gate.allowed) {
-        useActivityStore().record({
-          source: 'user',
-          intent: `风扇手动 ${rpm} RPM`,
-          requestedValue: rpm,
-          outcome: 'failed',
-          reversible: 'c',
-        })
-        return { ok: false, steps, message: gate.reason || '值被写入闸门拒绝' }
-      }
-
-      // 1. 若曲线接管中，先停（否则 EC 写入会被 AutoFan 下一拍覆盖）
-      const running = await AutoFanControl.IsRunning()
-      if (running.Success && running.Data) {
-        const stop = await AutoFanControl.Stop()
-        steps.push({ label: '停止应用内曲线', ok: !!stop.Success })
-        if (!stop.Success) {
-          useActivityStore().record({
-            source: 'user',
-            intent: `风扇手动 ${rpm} RPM`,
-            requestedValue: rpm,
-            outcome: 'failed',
-            reversible: 'c',
-          })
-          return { ok: false, steps, message: '停止应用内曲线失败，未写入转速' }
-        }
-      } else {
-        steps.push({ label: '停止应用内曲线', ok: true, skipped: true })
-      }
-
-      // 2. 写手动转速
-      const set = await Fan.SetFanSpeed(rpm)
-      steps.push({ label: `设定转速 ${rpm} RPM`, ok: !!set.Success, message: set.Message })
-      if (!set.Success) {
-        useActivityStore().record({
-          source: 'user',
-          intent: `风扇手动 ${rpm} RPM`,
-          requestedValue: rpm,
-          outcome: 'failed',
-          reversible: 'c',
-        })
-        return { ok: false, steps, message: set.Message || '转速写入失败' }
-      }
-
-      // 3. 保存配置（开机恢复）
-      // 手动转速与"应用内曲线接管"互斥: 这里同时把 Fan.Enabled 置 false。
-      // 否则 SelfStart 会在下次开机按 BootAdvancedFanControlSystem 把曲线重新拉起,
-      // 把用户显式设的手动转速悄悄顶掉。
-      const { useConfigStore } = await import('@/stores/config')
-      const cfgStore = useConfigStore()
-      if (cfgStore.config) cfgStore.config.Fan.Enabled = false
-      const save = await saveConfig()
-      steps.push({
-        label: '保存配置',
-        ok: !!(save as { Success?: boolean } | undefined)?.Success,
-      })
-
-      this.controller = 'manual'
-      this.curveService = okReading(false)
-      useActivityStore().record({
-        source: 'user',
-        intent: `风扇手动 ${rpm} RPM`,
-        requestedValue: rpm,
-        outcome: 'applied',
-        reversible: 'c',
-      })
-      return { ok: true, steps, message: '手动转速已应用' }
     },
 
     /** 恢复自动控制（C 级唯一出路）。逐项：停 AutoFan（曲线场景）→ 移除手动限制。 */

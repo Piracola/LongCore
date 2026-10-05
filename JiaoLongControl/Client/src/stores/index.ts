@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
 import { markRaw, type Component } from 'vue'
-import { ChartLine, Cpu, Fan, Home, Keyboard, Microchip, MonitorCog, Settings } from '@lucide/vue'
+import { ChartLine, Cpu, Home, Keyboard, Microchip, MonitorCog, Settings } from '@lucide/vue'
 import HOME_Page from '@/pages/Home.vue'
 import CPU_Page from '@/pages/CPU.vue'
-import Fan_Page from '@/pages/Fan.vue'
 import Keyboard_Page from '@/pages/KeyBoard.vue'
 import Settings_Page from '@/pages/Settings.vue'
 import GPU_Page from '@/pages/GPU.vue'
@@ -59,7 +58,6 @@ const HomeCardType: HomeCardItem[] = [
     icon: markRaw(ChartLine),
     page: FanCurveEditor,
   },
-  { id: 'fan', title: '风扇', group: 'thermal', icon: markRaw(Fan), page: Fan_Page },
   { id: 'keyboard', title: '灯效', group: 'light', icon: markRaw(Keyboard), page: Keyboard_Page },
   { id: 'smu', title: 'SMU', group: 'advanced', icon: markRaw(Microchip), page: RyzenSmu_Page },
   { id: 'settings', title: '系统', group: 'system', icon: markRaw(Settings), page: Settings_Page },

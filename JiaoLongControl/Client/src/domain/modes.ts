@@ -9,7 +9,7 @@
  * | ObservedFirmwareMode     | EC 命令 8 / Fn 热键事件 15         | stores/mode.ts `observedFirmware`（只有三档，见 v4 §14.2 冲突 B 裁定） |
  * | CustomPowerOverride      | EC 命令 23 子状态                  | stores/mode.ts `customOverride`（不是固件第四档） |
  * | SelectedMode（我选了什么）| 前端本地（用户点选）               | stores/mode.ts `selected` + `activeKind`（pending 不冒充已生效） |
- * | FanPolicy                | EC 手动转速寄存器 + AutoFan 运行态 | stores/fan.ts（手动/自动/曲线，显示"当前由谁控制"） |
+ * | FanPolicy                | AutoFanControl 运行态             | stores/fan.ts（自动/曲线，显示"当前由谁控制"；手动转速已删，见下） |
  *
  * **未落地**（2026-09-24 决定：不为它们声明空类型）：`WindowsPowerPlanState`（powercfg 状态）、
  * `GPUPerformancePolicy`（NVAPI 锁频/输出模式）。设置页只保留「是否联动电源计划」开关；
@@ -29,11 +29,13 @@ export type FirmwareMode = 'balance' | 'performance' | 'quiet'
 
 /**
  * 风扇控制权状态机（v4 §6 FanPolicy + §10「自动策略接管必须显示当前由谁控制」）。
- * - auto    EC 固件自动温控（默认；无手动转速寄存器值且 AutoFan 未运行）
- * - manual  用户手动接管（SetFanSpeed 已下发；AutoFan 已停）
+ * - auto    EC 固件自动温控（默认；AutoFan 未运行）
  * - curve   应用内曲线接管（AutoFanControl 正在运行）
+ *
+ * 「手动设定风速档位」已于 2026-10-06 删除（机主 Decision）：风扇此后只走
+ * 「应用内曲线」或「EC 固件自动」/机器档位，不再有第三个手动态。
  */
-export type FanController = 'auto' | 'manual' | 'curve'
+export type FanController = 'auto' | 'curve'
 
 export interface FanPolicy {
   controller: FanController

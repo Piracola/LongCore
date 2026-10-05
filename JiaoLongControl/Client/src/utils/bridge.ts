@@ -453,9 +453,11 @@ export const CPU = {
     cached(STATIC_TTL_MS, 'CPU.GetPhysicalCoreCount', () => call(raw.CPU.GetPhysicalCoreCount())),
 }
 
+// 没有 SetFanSpeed 包装：「风扇手动设定风速档位」已于 2026-10-06 删除。
+// BridgeApi 类型里仍保留该声明 —— 后端 FanController.SetFanSpeed(byte) 真实存在
+// （ThermalWatchdog 过温兜底靠它拉满 5800），声明与包装本来就不必一一对应（v4 §O4）。
 export const Fan = {
   GetFanSpeed: () => cached(CACHE_TTL_MS, 'Fan.GetFanSpeed', () => call(raw.Fan.GetFanSpeed())),
-  SetFanSpeed: (fanSpeed: number) => call(raw.Fan.SetFanSpeed(toByte(fanSpeed / 100))),
   RemoveFanSpeed: () => call(raw.Fan.RemoveFanSpeed()),
 }
 
