@@ -611,8 +611,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 概览页下半页新增「已应用功能」看板：每行两栏 —— **意图** = `Config.GetConfig()` 读到的 `config.yaml` 字段路径，
 **实测** = 桥接 getter 的回读值；两者不一致时显式标出「配置开着·硬件没写进去」。逐行「移除」+ 页内「全部还原」，
 让「软件改过哪些硬件、还生不生效、能不能退出」第一次可以看见。
-唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（当时 49 项，**2026-10-06 为 45 项**，见 §14.10：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由；
-2026-10-06 由 50 项删去 `fan.manual-speed`，见 §14.9），
+唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（当时 **50 项**，**2026-10-06 为 45 项**，见 §14.9/§14.10：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由；
+2026-10-06 先由 50 项删去 `fan.manual-speed`（§14.9）、再删去 4 个键盘项（§14.10）），
 组件只遍历注册表，不做任何功能清单硬编码。
 
 **依据**
@@ -647,8 +647,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - `c24d03f` feat(client)：注册表 + 看板 + 28 个用例（含反向验证：让 getter 失败 → 该行显示「读取失败」，移除只报「未确认移除成功」，
   全文不出现「已移除」）。
 - `9d01a64` fix(test)：探针工程补齐编译依赖（SmuWriteGate / LogRuntime / Models / YamlDotNet），0 错误。
-- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（`c24d03f` 时点 49 项：keep 38 / review 5 / cut 6；
-  2026-10-06 先由 50 项删去 `fan.manual-speed`、再删去 4 个键盘项 → 现为 **45 项：keep 36 / review 3 / cut 6**，见 §14.10）。
+- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（计数逐时点实测：`c24d03f` **50 项**：keep 39 / review 5 / cut 6；
+  `72b1325` 49 项：38/5/6（删 `fan.manual-speed`，§14.9）；`e00e218` **45 项：keep 36 / review 3 / cut 6**（再删 4 个键盘项，§14.10））。
 - `714b249` fix(client)（复查整改，见 §14.8）：`observedActive` 一等字段 + 覆盖范围说明 + 移除判据自洽 + 文案去重 + 刷新门禁。
 
 **Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过（`c24d03f` 时点）；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
@@ -790,7 +790,7 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - 前端：`Client/src/pages/KeyBoard.vue` 整页删除；`stores/index.ts` 的 `HomeCardType` 7 → 6 项；
   `stores/pageIds.ts` 的 `PAGE_IDS` 7 → 6 项、`PageId` 去掉 `'keyboard'`；`pages/Settings.vue` 的「自启动键盘渐变」开关；
   `utils/bridge.ts` 的 `Keyboard` / `KeyboardGradient` 两个导出对象与 `BridgeApi` 里对应的两段声明
-  （后端方法即将不存在，留着声明就是撒谎）、`RGBKeyboardMode` / `RGBKeyboardBrightnessLevel` / `ColorInfo` 三个只服务键盘的类型；
+  （后端方法即将不存在，留着声明就是撒谎）；
   `domain/writeGate.ts` 的 `writeGate.keyboardColor()` 与 `WriteDomain` 的 `'keyboard'`；
   `types/config.ts` 的 `AppSectionType.BootKeyboardGradient`。
 - 注册表：删 4 项（`keyboard.color` / `keyboard.brightness` / `keyboard.mode` / `keyboard.gradient`）——
@@ -803,6 +803,9 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
   `Server/Core/Models/JiaoLongConfig.cs` 的 `AppSection.BootKeyboardGradient`（含 `ConfigComment`）；
   `Server/Core/Utils/SelfStart.cs` 的 `if (bridge.Config.App.BootKeyboardGradient) bridge.KeyboardGradient.Start();`。
   这一行同时覆盖**睡眠唤醒**：`MainWindow.OnPowerModeChanged`（`PowerModes.Resume`）会再跑一次 `new SelfStart()`。
+  `Server/Core/Models/ColorInfo.cs` 删除（唯一消费者 `KeyboardController` 已删，全仓零引用 —— 2026-10-06 补删，FIX-5）；
+  `SysEnums.cs` 的 `MethodName.RGBKeyboard*`（16/17/18）与 `HwWriteGate.cs` 的键盘白名单/值域项**按协议层事实保留**，不动
+  （理由见 `docs/功能必要性与架构梳理.md` §8 第 9 条）。
 - 落点迁移：旧数字 `7` 与旧字符串 `'keyboard'` 都**显式**映射到 `'home'`（该页没有继任页；Logo 灯在设置页里，
   不是可导航的灯效页）。数字键 1..8 **不重新编号**：`'8'` 仍是 `'settings'`，否则存着 `'8'` 的人会落到别的页面。
   别名表仍是 `Map`（防 `localStorage` 里 `'toString'` 命中 prototype）。
