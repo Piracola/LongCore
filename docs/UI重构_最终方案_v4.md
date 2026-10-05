@@ -629,6 +629,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - 真机上任一行的回读值与硬件实况不符（getter 口径不对）→ 该行必须换 getter 或降级为「不可回读」，不得保留错误结论。
 - EC 若提供手动转速掩码查询命令 → `fan.manual-speed` 行的「推断」标注必须改成直读（依据 `stores/fan.ts:20-22` 自述的 Hypothesis）。
 - 若看板在真机上「读取失败」频次高到无法使用（每次刷新并发 17 次 getter），则必须先补 getter / 加刷新门禁，再谈「一键还原」。
+  → **2026-10-05 已补门禁**（`loading` 期间禁用「重新读取」+ `refresh()` 在途去重，见 §14.8 FIX-6）；真机频次行为仍未验证。
+- 「全部还原」若在真机上出现"漏了正生效的项"或"动了别的工具设的值" → 覆盖判据必须回到注册表逐项复核（§14.8 FIX-1 已按此改）。
 
 **边界（本轮刻意不做）**
 - 只出结论不删功能：`HomeCardType` 仍 8 项（`stores/index.ts:51-66`）、`PAGE_IDS` 未变（`stores/pageIds.ts:6-15`）；
@@ -641,7 +643,63 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
   全文不出现「已移除」）。
 - `9d01a64` fix(test)：探针工程补齐编译依赖（SmuWriteGate / LogRuntime / Models / YamlDotNet），0 错误。
 - 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（50 项：keep 39 / review 5 / cut 6）。
+- `714b249` fix(client)（复查整改，见 §14.8）：`observedActive` 一等字段 + 覆盖范围说明 + 移除判据自洽 + 文案去重 + 刷新门禁。
 
-**Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
+**Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过（`c24d03f` 时点）；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
 `home-dark-bottom.png`（mock 桥，含一行「配置开着·硬件没写进去」与 `--fail-readback` 的失败态）。
 **未 Verified**：真机硬件行为（本轮无真机复现，见该文档 §8）。
+
+---
+
+### 14.8 2026-10-05 · 看板覆盖判据整顿（**Decision**；§14.7 独立审查后的 FIX-1~6）
+
+**Decision（负责人：实施者（AI，复查整改），2026-10-05；依据：§14.7 的独立审查结论 + §7.1 状态真实性契约 + §8.2/§8.4）**
+
+§14.7 的看板被判定「有条件通过」：**「全部还原」既漏正生效的项，又误收本软件从未写过的项**（假绿），
+另有 3 行的「移除」结构上永不成功（恒定假红）。本节记录整顿后的判据，取代 §14.7 中与之冲突的表述。
+
+**Decision 内容**
+
+1. **「硬件当前是否真的生效」是一等字段**，不再靠 `status` 白名单反推。
+   `FeatureVerdict.observedActive: boolean | null`：`readback === null` 或回读非 `ok/stale` → `null`（**不知道**），
+   否则 `evalRule(observedRule, picked)`。
+2. **「全部还原」三条同时满足才收**：`canRemove` **且** `writePath !== null`（本软件确实下发得出去）
+   **且**（`observedActive === true` **或**（`observedActive === null` **且**配置意图明确为开））。
+   最后一条保留了「一次读取失败不该卡住用户」的既有口径。
+3. **覆盖范围必须在界面上说清**：新增纯函数 `removalScope()` 把「覆盖 / 非本软件下发 / 当前未生效 /
+   没读出生效值 / 本行不给移除」算成数据；按钮 `title` + `aria-label` + 表头下一行说明**逐项列出**，不许只报一个数字。
+4. **「移除」判据必须与恢复动作自洽**：`cpu.turbo` 的「已生效」改为「限制被施加」
+   （`equals:false`，行名「关闭睿频（Turbo 限制）」）；`keyboard.color` / `keyboard.brightness` 没有可证明「已还原」的
+   回读判据 → `removalConfirm: 'command-only'`，文案「仅命令确认，未确认已恢复」，**不渲染成失败态**。
+   新增普查用例：14 个有「移除」按钮的项，移除后要么 `judgeRemoval === true`，要么明确 `command-only` —— 不允许存在"永不成功"的项。
+5. **文案不重复**：33 个不可回读行的原因只留在「实测」栏（`不可回读 · <原因>`），状态栏不再重复同一段长文。
+6. **先算后提交**：配置移除步骤改为改克隆副本、保存成功才让共享对象变成新值；失败回滚显示值并强制重拉配置。
+7. **刷新要有上界**（不引入新机制）：`loading` 期间禁用「重新读取」+ `refresh()` 在途 Promise 去重。
+   §14.7 的反证条件「若读取失败频次高到无法使用 → 必须先加刷新门禁」到此已落实，但真机频次仍未验证。
+
+**依据（Observation，可复现）**
+
+- 旧 `bulkRemovalPlan()` 的白名单 `['match','mismatch','hardware-only','no-write-path']` 不含 `observed-only`：
+  5 项实测正开着却漏出计划（`cpu.custom-override`、`keyboard.color`、`keyboard.brightness`、`keyboard.logo-light`、`system.autostart`）。
+- 同一白名单无条件收 `no-write-path`：`gpu.core-offset` / `gpu.memory-offset` / `gpu.voltage-boost` 的 `writePath` 为 `null`
+  （注册表自述"硬件侧的值非本软件所写"）也会进计划，点一下会执行 `NvidiaGpu.ResetClockOffsets()` /
+  `SetVoltageBoostPercent(0)`，清掉别的工具（如 MSI Afterburner）设的偏移。
+- 3 行恒假红：`cpu.turbo`（移除 `Power.EnableTurbo()` vs 判据 `truthy`）、`keyboard.color` / `keyboard.brightness`
+  （移除写回默认值 vs 判据 `present`）。
+- 现有用例只断言意图栏里有 `Fan.Enabled` 这个字符串 —— 意图栏写死也能全绿。
+
+**Implemented / Verified（本机实测输出）**
+
+- 用例数 **60 → 72**（9 文件 / 72 通过 / 0 跳过；新增 12 条，无 `.skip`/`.only`，未放宽任何既有断言）。
+- FIX-1 复现命令：修前 `[]` → 修后 `[ 'cpu.custom-override' ]`。
+- 移除普查：14 项中 12 项可回读确认、2 项（键盘颜色/亮度）明确 `command-only`、0 项永不成功。
+- 截图（mock 桥）：`全部还原（8 项）`，chip「不一致 1 / 读取失败 0 / 不可回读 33 / 无下发路径 5」，
+  覆盖说明行逐项列出 8 项覆盖 + 4 项「非本软件下发」+ 2 项「当前未生效」+ 36 项「本行不提供移除」。
+- 后端门禁：`dotnet build --no-incremental` 0 警告 0 错误；`ProtocolCodecTest` 29 通过 0 失败。
+- 逐条结论与证据、以及**未做/未验证**项见 `docs/功能必要性与架构梳理.md`（§5.1 D5–D7、§7.1、§8）。
+
+**未 Verified**
+
+- 真机（WebView2 桥）行为：`observedActive` 的取值依赖各 getter 的真实返回结构，只在 mock 桥下验证。
+- 刷新门禁（FIX-6）没有单测：并发点难以在组件用例里观测。
+- 键盘颜色/亮度仍无法证明"用户原先的灯效已被还原"（`command-only` 的来源）。
