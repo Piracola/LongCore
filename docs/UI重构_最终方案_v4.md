@@ -87,8 +87,8 @@ A 线补充第 6 条（源自本次 P0 事故）：
 | 风扇 | `1500 RPM` 用全站最大字号 | Observation（**全站唯一层级正确的元素**） |
 | 风扇 | 遥测曲线压在左下角约 1/4 区域 | Observation |
 | 风扇 | 「安全提示」整段散文 + 一枚危险按钮，权重相同 | ⚠️ 待验证候选 |
-| 键盘 | 预览区是通用圆角矩形网格，非真实键盘布局 | Observation |
-| 键盘 | 预设命名与色相不对应（冰晶=青/极光=绿/烈焰=玫红） | ⚠️ 待验证候选 |
+| 键盘 | 预览区是通用圆角矩形网格，非真实键盘布局 | Observation（2026-10-06 灯效页已删，仅存档） |
+| 键盘 | 预设命名与色相不对应（冰晶=青/极光=绿/烈焰=玫红） | ⚠️ 待验证候选（同上，已无对象） |
 
 ### 3.2 代码核查（逐行，带位置）
 
@@ -284,7 +284,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 
 | 等级 | 例子 | UI 允许的措辞 |
 |---|---|---|
-| **A 可安全逆转** | 键盘颜色（有 getter + setter） | 「撤销」 |
+| **A 可安全逆转** | Logo 灯（有 getter + setter；2026-10-06 前举例是「键盘颜色」，该功能已删） | 「撤销」 |
 | **B 只能重新应用** | SMU 限制（原值未必可读） | 「改回 …」 |
 | **C 只能恢复默认/自动** | 风扇曲线接管（2026-10-06 前是「手动接管」） | 「交还 EC 固件温控」 |
 | **D 需要重启** | GPU 输出模式 | 「重启后生效」+ 重启引导 |
@@ -297,7 +297,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 | 页面 | 现状 | 后果 |
 |---|---|---|
 | CPU | **顺序写 7 项**（自定义状态/温度墙/长时功耗/短时功耗/频率/睿频/SMU） | 中间失败 → **前面已生效** |
-| 键盘 | 颜色与亮度**并行**发送 | 一个成功一个失败 → 部分应用 |
+| （键盘） | 颜色与亮度曾**并行**发送（`pages/KeyBoard.vue`，2026-10-06 整页删除） | 历史上会出现"一个成功一个失败 → 部分应用"；该页已不存在 |
 | GPU | 输出模式可能需重启 | 立即反馈是假的 |
 
 必须**逐项报告**成功 / 失败 / 跳过，并显式暴露「部分应用」状态。
@@ -333,7 +333,7 @@ B 线指出"WMI 写调用不抛异常即视为已下发；明确不校验写响�
 > v3.1 的纯意图式 IA 已被推翻（§5），B 线的混合式仍自标为"待验证候选"——所以两者都只是候选。
 
 ### 候选 1 · 硬件领域型（现状改良）
-一级导航：概览 / 性能 / 散热 / 灯效 / 高级 / 系统
+一级导航：概览 / 性能 / 散热 / 灯效 / 高级 / 系统（原文写于 2026-10-05；灯效页已于 2026-10-06 删除，实际一级导航为 6 项：概览 / CPU / GPU / 风扇曲线 / SMU / 系统 —— 见 §14.10）
 - CPU、GPU 作为「性能」页内的**稳定分区**
 - SMU 归入「高级」，不作为一等入口
 
@@ -611,7 +611,7 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 概览页下半页新增「已应用功能」看板：每行两栏 —— **意图** = `Config.GetConfig()` 读到的 `config.yaml` 字段路径，
 **实测** = 桥接 getter 的回读值；两者不一致时显式标出「配置开着·硬件没写进去」。逐行「移除」+ 页内「全部还原」，
 让「软件改过哪些硬件、还生不生效、能不能退出」第一次可以看见。
-唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（49 项：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由；
+唯一真源 `JiaoLongControl/Client/src/domain/appliedFeatures.ts`（当时 49 项，**2026-10-06 为 45 项**，见 §14.10：意图路径 / 回读方法 / 可逆级别 a–e / 有序移除步骤 / 结论+理由；
 2026-10-06 由 50 项删去 `fan.manual-speed`，见 §14.9），
 组件只遍历注册表，不做任何功能清单硬编码。
 
@@ -647,7 +647,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 - `c24d03f` feat(client)：注册表 + 看板 + 28 个用例（含反向验证：让 getter 失败 → 该行显示「读取失败」，移除只报「未确认移除成功」，
   全文不出现「已移除」）。
 - `9d01a64` fix(test)：探针工程补齐编译依赖（SmuWriteGate / LogRuntime / Models / YamlDotNet），0 错误。
-- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（49 项：keep 38 / review 5 / cut 6；2026-10-06 由 50 项删去 `fan.manual-speed`）。
+- 逐条功能必要性结论与证据见 `docs/功能必要性与架构梳理.md`（`c24d03f` 时点 49 项：keep 38 / review 5 / cut 6；
+  2026-10-06 先由 50 项删去 `fan.manual-speed`、再删去 4 个键盘项 → 现为 **45 项：keep 36 / review 3 / cut 6**，见 §14.10）。
 - `714b249` fix(client)（复查整改，见 §14.8）：`observedActive` 一等字段 + 覆盖范围说明 + 移除判据自洽 + 文案去重 + 刷新门禁。
 
 **Verified（独立证据）**：`npm run test` 9 文件 / 60 通过 / 0 跳过（`c24d03f` 时点）；截图 `JiaoLongControl/Client/.visual-qa/home-dark.png`、
@@ -736,7 +737,8 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
   且 `ThermalWatchdog` 在用，声明与包装本就不必一一对应，见 §O4）；`types/config.ts` 的 `FanSectionType.ManualFanSpeed`；
   `stores/fan.ts` 的 `applyManualSpeed()` 与基于 `config.Fan.ManualFanSpeed > 0` 的 manual 推断；`controllerLabel` 去掉「手动接管」。
 - 注册表：删 `fan.manual-speed` 项 —— **50 → 49 项**、可移除 **14 → 13**、`推断（inferred）` **1 → 0**、
-  bridge 方法名 29 → 27；`fan.curve` 的移除步骤（停服务 + 清 `Fan.Enabled`）保持完整。
+  bridge 方法名 29 → 27；`fan.curve` 的移除步骤当时是 2 步（停服务 + 清 `Fan.Enabled`），
+  **`dca35c8` 补成 3 步**（停服务 → `Fan.RemoveFanSpeed` 撤 0xB20 手动掩码 → 落盘意图，见 §14.10 与 `docs/功能必要性与架构梳理.md` §5.1 D9）。
 - 后端：`JiaoLongConfig.FanSection.ManualFanSpeed` 连同 `ConfigComment` / `ConfigRange` 删除（其余 C# 未动）。
   **`FanController.SetFanSpeed(byte)` 必须保留** —— `ThermalWatchdog` 过温兜底（98℃/10s 拉满 5800）靠它。
 - 落点迁移（必须）：`localStorage['jl-ui-page']` 的旧字符串 `'fan'` 与旧下标 `6` 都迁到 `fan-curve`
@@ -760,3 +762,71 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 
 **未 Verified**：真机（WebView2 桥）行为 —— 只做了 mock 桥单测与 `scripts/visual-shot.mjs` 截图验证；
 `Fan.RemoveFanSpeed` 是否真的撤掉 EC 侧 0xB20 手动掩码，仍以 `research/docs/08_硬件安全架构.md` 的既有证据为准，本轮未新增真机证据。
+
+
+---
+
+### 14.10 2026-10-06 · 删除「键盘颜色/亮度」整个功能，Logo 灯保留并换组（**Decision**；机主拍板）
+
+**Decision（负责人：机主，2026-10-06）**
+
+机主原话：「键盘颜色/亮度的这个功能也需要直接删除掉，我用不到」。整个「灯效」页（颜色 / 亮度 / 快捷预设 /
+区域预览 / 键盘灯效模式 / 键盘渐变）连同后端 `KeyboardController` + `KeyboardGradientController` 一并删除；
+**Logo 灯全链路保留**，注册表分组由 `keyboard`（标签「键盘与灯效」）改名为 `lighting`（标签「Logo 灯 / 环境光」）。
+
+按 §1 分类法，这是一条 **Decision** 而不是 Observation：依据是机主的明确产品取舍，不是实施者的技术判断。
+
+**依据**
+
+1. 机主直接指示（2026-10-06）。键盘 RGB 与厂商灯效软件 / 系统 RGB 生态功能重叠，凭据在实现者手里 —— 用不到就删。
+2. 键盘渐变服务在运行中约每 100ms 持续写颜色通道（原 `KeyboardGradientController`），与灯效页「应用颜色/亮度」
+   争抢同一通道；删掉整条链路同时也消掉了这个争用。
+3. §8.2 的 A 级举例原本就是「键盘颜色」—— 该功能删除后，A 级仍需一个有 getter + setter 的例子，故正文举例改为 Logo 灯。
+4. 保留而不是顺手删掉 Logo 灯：它走的是 EC 的 `MethodName.Ambientlight`（命令 15），与键盘 RGB（16/17/18）
+   是不同寄存器，机主只说了删键盘灯效。
+
+**删除面（Implemented）**
+
+- 前端：`Client/src/pages/KeyBoard.vue` 整页删除；`stores/index.ts` 的 `HomeCardType` 7 → 6 项；
+  `stores/pageIds.ts` 的 `PAGE_IDS` 7 → 6 项、`PageId` 去掉 `'keyboard'`；`pages/Settings.vue` 的「自启动键盘渐变」开关；
+  `utils/bridge.ts` 的 `Keyboard` / `KeyboardGradient` 两个导出对象与 `BridgeApi` 里对应的两段声明
+  （后端方法即将不存在，留着声明就是撒谎）、`RGBKeyboardMode` / `RGBKeyboardBrightnessLevel` / `ColorInfo` 三个只服务键盘的类型；
+  `domain/writeGate.ts` 的 `writeGate.keyboardColor()` 与 `WriteDomain` 的 `'keyboard'`；
+  `types/config.ts` 的 `AppSectionType.BootKeyboardGradient`。
+- 注册表：删 4 项（`keyboard.color` / `keyboard.brightness` / `keyboard.mode` / `keyboard.gradient`）——
+  **49 → 45 项**、可移除 **13 → 9**、bridge 方法名 **27 → 20**、`keep/review/cut` **38/5/6 → 36/3/6**；
+  `keyboard.logo-light` 保留（id 不变），`group` 由 `keyboard` 改为 `lighting`。
+  `readback: null` 的 **33 项不变**（4 个键盘项都有回读），无「移除」按钮的 **36 项也不变**。
+  硬规则仍成立：`readback === null` 或级别 e 的项挂移除步骤 = **0**。
+- 后端：`Server/Core/Controllers/KeyboardController.cs`、`Server/Core/Controllers/KeyboardGradientController.cs` 删除；
+  `Server/Interop/Bridge.cs` 删两个属性**与 `Dispose()` 里的 `KeyboardGradient.Dispose()`**（只删属性不删 Dispose 就是资源泄漏）；
+  `Server/Core/Models/JiaoLongConfig.cs` 的 `AppSection.BootKeyboardGradient`（含 `ConfigComment`）；
+  `Server/Core/Utils/SelfStart.cs` 的 `if (bridge.Config.App.BootKeyboardGradient) bridge.KeyboardGradient.Start();`。
+  这一行同时覆盖**睡眠唤醒**：`MainWindow.OnPowerModeChanged`（`PowerModes.Resume`）会再跑一次 `new SelfStart()`。
+- 落点迁移：旧数字 `7` 与旧字符串 `'keyboard'` 都**显式**映射到 `'home'`（该页没有继任页；Logo 灯在设置页里，
+  不是可导航的灯效页）。数字键 1..8 **不重新编号**：`'8'` 仍是 `'settings'`，否则存着 `'8'` 的人会落到别的页面。
+  别名表仍是 `Map`（防 `localStorage` 里 `'toString'` 命中 prototype）。
+- 截图工具：`scripts/visual-shot.mjs` 去掉 keyboard 页截图项、`Keyboard.*` / `KeyboardGradient.*` 的 mock handlers、
+  mock 配置里的 `BootKeyboardGradient`；侧栏项数断言 7 → 6。
+
+**反证条件（Reject if）**
+
+- 老用户升级后落点不是 `home`（被弹到别的页面或白屏）→ 迁移映射有漏，必须补齐。
+- Logo 灯在真机上不再可用（Get/Set 返回失败）→ 说明它与键盘 RGB 共享了被删掉的链路，必须恢复那部分。
+- 若将来重新引入键盘 RGB → 必须同时重建 后端控制器 + 桥接包装 + 闸门闸位 + 页面 + 注册表行，
+  并重新评估渐变服务与厂商灯效软件争抢同一通道的问题；不得直接引用本条删除记录当"已论证过"。
+
+**Implemented 提交**：`e00e218` refactor（前端 + 后端 + 注册表 + 用例）；本文档与
+`docs/功能必要性与架构梳理.md` / `docs/KNOWN_ISSUES.md` / `README.md` 的计数同步）。
+（WS1 的 `dca35c8` fix(client) 是同一轮的前置安全补丁：`fan.curve` 的移除补上 `Fan.RemoveFanSpeed`。）
+
+**Verified（本机实测输出，本轮时点）**
+- 前端门禁：`npm run format:check` / `lint` / `type-check` / `build` 全通过；`npm run test` **10 文件 / 79 通过 / 0 跳过**。
+- 后端门禁：`dotnet build -c Release --no-incremental` **0 警告 0 错误**；`ProtocolCodecTest` **29 通过 0 失败**。
+- 反向验证：`JiaoLongControl/**` 内 `KeyboardController` / `KeyboardGradient` / `BootKeyboardGradient` /
+  `SetLightBrightness` / `SetColor` **零命中**；`migratePageId('keyboard')` 与 `migratePageId('7')` 手工运行均返回 `home`，
+  `migratePageId('fan')` / `('6')` 仍返回 `fan-curve`（回归）。
+- 截图：`node scripts/visual-shot.mjs --out=.visual-qa` 通过，日志 `nav items: 6`，不再产出 `keyboard-*.png`。
+
+**未 Verified**：真机（WebView2 桥）行为 —— 只做了 mock 桥单测与截图验证；「键盘 RGB 由厂商软件/固件管理」
+是产品表述，不是本仓代码可验证的事实。
