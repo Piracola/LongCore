@@ -12,6 +12,7 @@ import {
   TooltipComponent,
 } from 'echarts/components'
 import PageShell from '@/components/common/PageShell.vue'
+import AppliedFeaturesBoard from '@/components/common/AppliedFeaturesBoard.vue'
 import useStore from '@/stores'
 import { useModeStore, type ModeSelection } from '@/stores/mode'
 import { FIRMWARE_MODE_LABELS, type FirmwareMode } from '@/domain/modes'
@@ -512,6 +513,10 @@ const lineChartOption = computed(() => {
             </div>
           </section>
         </div>
+
+        <!-- 已应用功能看板：注册表驱动（domain/appliedFeatures.ts），
+             意图（config.yaml）vs 实测（桥接回读）两栏 + 逐项/一键还原 -->
+        <AppliedFeaturesBoard />
       </div>
     </div>
   </PageShell>

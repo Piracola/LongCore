@@ -191,6 +191,59 @@ const handlers = {
   'Power.GetTurboEnabled': () => hostOk({ ac: true, dc: true }),
 };
 
+/* ---- 已应用功能看板（概览页）用到的回读 getter 与移除方法 ----
+ * makeNs 的 fallback 会把**未登记**的方法当成功返回（假绿），所以看板用到的
+ * 每一个方法都必须在这里显式登记，否则截图里的看板全是"绿的"。
+ * 反向验证：--fail-readback=<rawNamespace.Method>（如 AutoFan.IsRunning）
+ * 让指定 getter 失败 —— 看板必须显示「读取失败」，移除必须报失败，绝不显示「已移除」。
+ */
+window.__qaFailReadback = ${JSON.stringify(argValue('fail-readback'))};
+function qaRead(key, value) {
+  if (window.__qaFailReadback === key) {
+    return { toJson: () => JSON.stringify({ Success: false, Message: '注入的读取失败', Data: null }) };
+  }
+  return hostOk(value);
+}
+Object.assign(handlers, {
+  // 回读 getter（raw.* 命名空间，与 bridge.ts 的包装层调用一致）
+  'CPU.GetCustomMode': () => qaRead('CPU.GetCustomMode', true),
+  'Power.GetCPUMaxFrequency': () => qaRead('Power.GetCPUMaxFrequency', { ac: 5400, dc: 5400 }),
+  // mockConfig 的 CpuTurbo=true，这里故意回读 false → 看板演示「配置开着、硬件没写进去」
+  'Power.GetTurboEnabled': () => qaRead('Power.GetTurboEnabled', { ac: false, dc: false }),
+  'AutoFan.IsRunning': () => qaRead('AutoFan.IsRunning', false),
+  'Keyboard.GetColor': () => qaRead('Keyboard.GetColor', { red: 138, green: 43, blue: 226 }),
+  'Keyboard.GetLightBrightness': () => qaRead('Keyboard.GetLightBrightness', 2),
+  'Keyboard.GetMode': () => qaRead('Keyboard.GetMode', 2),
+  'KeyboardGradient.IsRunning': () => qaRead('KeyboardGradient.IsRunning', false),
+  'LogoLight.Get': () => qaRead('LogoLight.Get', 1),
+  'AutoStart.IsEnabled': () => qaRead('AutoStart.IsEnabled', true),
+  'PerformanceMode.Get': () => qaRead('PerformanceMode.Get', 2),
+  'GPU.Get': () => qaRead('GPU.Get', 0),
+  'NvidiaGpu.GetClockOffsets': () => qaRead('NvidiaGpu.GetClockOffsets', { CoreMhz: 0, MemoryMhz: 0 }),
+  'NvidiaGpu.GetVoltageBoostPercent': () => qaRead('NvidiaGpu.GetVoltageBoostPercent', 0),
+  'NvidiaGpu.GetGpuPowerPolicy': () =>
+    qaRead('NvidiaGpu.GetGpuPowerPolicy', {
+      CurrentWatts: 140,
+      MinWatts: 80,
+      DefaultWatts: 140,
+      MaxWatts: 160,
+    }),
+  // 看板「移除」会用到的写入方法
+  'CPU.SetCustomMode': () => hostOk(null),
+  'Power.ResetCPUMaxFrequency': () => hostOk(null),
+  'Power.EnableTurbo': () => hostOk(null),
+  'Fan.RemoveFanSpeed': () => hostOk(null),
+  'Keyboard.SetColor': () => hostOk(null),
+  'Keyboard.SetLightBrightness': () => hostOk(null),
+  'Keyboard.SetMode': () => hostOk(null),
+  'KeyboardGradient.Stop': () => hostOk(null),
+  'LogoLight.Set': () => hostOk(null),
+  'AutoStart.Disable': () => hostOk(null),
+  'NvidiaGpu.ResetClockOffsets': () => hostOk(null),
+  'NvidiaGpu.SetVoltageBoostPercent': () => hostOk(null),
+  'GPU.Set': () => hostOk(null),
+});
+
 function makeNs(pathParts) {
   return new Proxy(
     {},
@@ -309,6 +362,15 @@ await gotoPage('home', 'dark')
 await page.mouse.move(400, 400)
 await page.screenshot({ path: path.join(outDir, 'home-dark.png') })
 console.log('saved home-dark')
+
+// 已应用功能看板在概览页下半页：滚到底再拍一张，确认表体（意图/实测/无法还原）逐行渲染
+await page.evaluate(() => {
+  const el = document.querySelector('.no-scrollbar.overflow-y-auto') || document.scrollingElement
+  if (el) el.scrollTop = el.scrollHeight
+})
+await page.waitForTimeout(400)
+await page.screenshot({ path: path.join(outDir, 'home-dark-bottom.png') })
+console.log('saved home-dark-bottom')
 
 await gotoPage('smu', 'dark')
 await page.mouse.move(400, 400)
