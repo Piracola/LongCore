@@ -113,6 +113,9 @@ export const useFanStore = defineStore('fan', {
     async refreshCurveService(): Promise<boolean> {
       try {
         const res = await AutoFanControl.IsRunning()
+        // 契约（v4 §14.11，2026-10-06 起）：IsRunning 恒 Success=true，运行态在 Data。
+        // 旧契约把运行态塞进 Success，于是"曲线没在跑"（Success=false, Data=false）会被这里
+        // 判成"读取失败"——正常的"没在跑"读不回来，只能显示 stale/error。
         if (res.Success && res.Data !== undefined && res.Data !== null) {
           this.curveService = okReading(!!res.Data)
           if (res.Data) this.controller = 'curve'

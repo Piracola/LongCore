@@ -397,25 +397,23 @@ export function useFanCurveEditor() {
    *   而这里一判失败就会中止后面的撤掩码/落盘，交还 EC 整条路断掉（安全问题）。
    * - 不看返回值直接往下走会假绿：没确认停掉就去撤掩码，曲线下一拍又把掩码写回来。
    *
-   * 判据取 Data 而不是 Success —— `AutoFanControl.IsRunning()` 的 Success 就是运行态本身
-   * （没在跑时 Success=false、Data=false），拿 Success 当"读取成功"会正好读反。
+   * FIX-D（2026-10-06）：**不再**先自读一次"服务在不在跑"来决定发不发 Stop。那是 TOCTOU ——
+   * 并发的 Start（开机自启 / 另一个页面）刚把曲线拉起来时，自读到的"没在跑"会让 Stop 被跳过，
+   * 于是下一步 `Fan.RemoveFanSpeed` 撤掉的 0xB20 掩码立刻被曲线下一拍写回来。
+   * `Stop()` 现在幂等（没在跑也返回 Success=true），这个短路没有存在理由。
+   *
+   * 回读契约（v4 §14.11，2026-10-06 起）：`AutoFanControl.IsRunning()` 恒 Success=true，
+   * 运行态在 Data。读到 Success !== true 说明这次读本身失败（或契约又被写反）——
+   * 此时 Data 一律不采信，按"未确认已停止"中止，绝不当作"没在跑"。
    */
   async function stopCurveService(): Promise<{ stopped: boolean; message: string }> {
-    let beforeData: unknown
-    try {
-      beforeData = (await AutoFanControl.IsRunning()).Data
-    } catch {
-      // 读不到运行态 → 当作"不知道"，仍去发停止命令（幂等），绝不跳过停止这一步
-      beforeData = undefined
-    }
-    if (beforeData === false) return { stopped: true, message: '曲线服务未在运行' }
-
     const stop = await AutoFanControl.Stop()
     if (stop.Success === true) return { stopped: true, message: stop.Message }
 
     let observed: unknown
     try {
-      observed = (await AutoFanControl.IsRunning()).Data
+      const read = await AutoFanControl.IsRunning()
+      observed = read.Success === true ? read.Data : undefined
     } catch (err) {
       return {
         stopped: false,

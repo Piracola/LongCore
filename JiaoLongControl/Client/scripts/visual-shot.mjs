@@ -139,6 +139,7 @@ const handlers = {
   'NvidiaGpu.GetGpuMemoryClock': () => hostOk(8000),
   'NvidiaGpu.GetGpuFanSpeed': () => hostOk(2100),
   'NvidiaGpu.GetGpuTemperature': () => hostOk(62),
+  // 契约（v4 §14.11）：AutoFan.IsRunning 必须 Success:true + Data=<bool>（见下方 Object.assign 处的说明）
   'AutoFan.IsRunning': () => hostOk(false),
   'AutoFan.Start': () => hostOk(null),
   'AutoFan.Stop': () => hostOk(null),
@@ -199,6 +200,10 @@ Object.assign(handlers, {
   'Power.GetCPUMaxFrequency': () => qaRead('Power.GetCPUMaxFrequency', { ac: 5400, dc: 5400 }),
   // mockConfig 的 CpuTurbo=true，这里故意回读 false → 看板演示「配置开着、硬件没写进去」
   'Power.GetTurboEnabled': () => qaRead('Power.GetTurboEnabled', { ac: false, dc: false }),
+  // AutoFan.IsRunning：**必须** Success:true + Data=<bool>，与后端契约一致（v4 §14.11）。
+  // 后端 2026-10-06 之前把运行态塞进 Success（没在跑 = Success:false + Data:false），
+  // 而这里的 mock 恒返回 Success:true —— mock 与真机不一致，看板 fan.curve 的用例在真机上
+  // 根本不可达却一直是绿的（假绿现场）。改的是后端（IsRunning 恒 true），mock 侧不要反过来写。
   'AutoFan.IsRunning': () => qaRead('AutoFan.IsRunning', false),
   'LogoLight.Get': () => qaRead('LogoLight.Get', 1),
   'AutoStart.IsEnabled': () => qaRead('AutoStart.IsEnabled', true),

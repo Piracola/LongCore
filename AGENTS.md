@@ -64,6 +64,11 @@ npm run test                  # vitest
   `object`——那会把「可能为 null」的真实情况重新藏起来。取值方需自行处理：
   `is bool b && b` / `is not FanSpeedInfo info` / `(T)Data!`（仅限先判过 `Success` 的场合）。
 
+## CommandResult 契约（2026-10-06 起）
+
+`Success` 只表达"这次查询/命令本身成不成功"，业务取值一律进 `Data`（getter 恒 `Success = true`）；
+新增 getter 不得把业务值塞进 `Success` —— 前端以 `Success !== true` 判读取失败，写反了就是假红（v4 §14.11）。
+
 ## 风扇控制边界（改动前必读）
 
 - **转速区间只有一个真源**：`Client/src/constants/index.ts` 的 `FAN_MIN_RPM` / `FAN_MAX_RPM`（1500/5800）。

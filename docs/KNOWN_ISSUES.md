@@ -112,6 +112,12 @@
 17. **崩溃后风扇状态残留**（上游遗留）：进程硬崩溃时手动风扇模式可能残留在 EC 中。
     现已加入心跳护栏，下次启动检测到过期心跳会自动恢复风扇自动模式。
 
+**本 fork 回归（2026-10-06 已修，`13ca2f6`）**：看板 `fan.curve` 行把"曲线没在跑"报成「读取失败」、
+点「移除」时三步真下发却报「未确认移除成功」—— `AutoFanControl.IsRunning()` 把运行态塞进了
+`CommandResult.Success`（曲线未运行时 `Success=false`），而前端以 `Success !== true` 判读取失败。
+现 `IsRunning()` 与 `FanController.GetMaxFanSpeedSwitch()` 恒 `Success=true`、取值进 `Data`，
+契约见 v4 §14.11。
+
 ## 尚未验证
 
 18. **电池（DC）供电场景**：AC/DC 双参数切换在电池下未做长时间实测。
@@ -142,3 +148,7 @@
     但要把它对应到「STAPM/PPT/TDC/EDC/温度墙」需要 SMU 传输表协议（本仓无该常量，ryzenadj 用的是
     同一 mailbox 的另一组命令），且必须按 family（FP6/FP7/Strix/AM5）逐一真机验证。完成前，
     SMU 页的「未读取」是**诚实**的，不要用软件记录值冒充硬件真值。
+25. **`CommandResult.Success` 契约只在 mock 桥与探针下验证过**（2026-10-06）：`IsRunning()` 恒
+    `Success=true` 由单测 + 一个只读探针（引用 Release `LongCore.dll`，不调 `Start()`）证明，
+    **真机（WebView2 桥 + EC）未复现**：看板 `fan.curve` 行是否恢复正常的两态显示、点「移除」后
+    是否给出「已移除并回读确认」，需要在有 EC 的机器上实测一次。契约见 v4 §14.11。

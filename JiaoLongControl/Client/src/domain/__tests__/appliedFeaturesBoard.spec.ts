@@ -75,6 +75,15 @@ const RAW_DATA: Record<string, unknown> = {
 }
 
 let shouldFail: (namespace: string, method: string) => boolean = () => false
+/**
+ * 契约回归用（安全网，不是常态路径）：把某方法伪装成**旧契约形状** ——
+ * `Success=false` 但 `Data` 里仍带着业务取值。后端 `AutoFanControl.IsRunning()` 曾把运行态
+ * **同时**当 `Success` 与 `Data` 传出去（于是没在跑 = `Success:false` + `Data:false`）。
+ * 契约见 v4 §14.11：`Success` 只表达"这次查询/命令本身成不成功"，取值在 `Data`。
+ */
+let legacyContractOn: (namespace: string, method: string) => boolean = () => false
+/** 回读直接抛异常：让 `toJson()` 抛 → `call()` 返回 rejected promise（宿主 IPC 异常的形态） */
+let throwOn: (namespace: string, method: string) => boolean = () => false
 /** 宿主被真正调用到的方法（按 namespace.method 记录，用于断言「移除到底下发了什么」） */
 let hostCalls: string[] = []
 
@@ -98,6 +107,23 @@ beforeAll(() => {
           if (typeof method !== 'string' || method === 'then') return undefined
           return () => {
             hostCalls.push(`${namespace}.${method}`)
+            if (throwOn(namespace, method)) {
+              return {
+                toJson: () => {
+                  throw new Error('注入的宿主异常')
+                },
+              }
+            }
+            if (legacyContractOn(namespace, method)) {
+              return {
+                toJson: () =>
+                  JSON.stringify({
+                    Success: false,
+                    Message: '旧契约形状',
+                    Data: RAW_DATA[`${namespace}.${method}`],
+                  }),
+              }
+            }
             if (shouldFail(namespace, method)) return hostFail('注入的读取失败')
             return hostOk(RAW_DATA[`${namespace}.${method}`])
           }
@@ -129,6 +155,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   shouldFail = () => false
+  legacyContractOn = () => false
+  throwOn = () => false
   hostCalls = []
 })
 
@@ -407,6 +435,72 @@ describe('已应用功能看板', () => {
       expect(steps).toContain('回读无数据，未确认已停止')
       expect(wrapper.text()).not.toContain('已移除并回读确认')
     } finally {
+      shouldFail = () => false
+    }
+  })
+
+  it('契约回归：IsRunning 返回 Success=false（契约被写反）→ 判读取失败，且不得撤掩码/落盘', async () => {
+    // **这是防"契约再次被写反"的安全网，不是常态路径**（常态路径见上一条：Success:true + Data）。
+    // 后端曾把运行态塞进 Success（没在跑 = Success:false + Data:false），而前端 readOne 以
+    // `Success !== true` 判"读取失败" —— 于是看板 fan.curve 行在正常态显示读取失败（假红）。
+    // 契约见 v4 §14.11：Success 只表达"这次查询本身成不成功"，运行态在 Data。
+    // 万一又被写反：这次读必须算失败，Data 一个字都不采信 → 保守方向（不撤 0xB20 掩码、
+    // 不落盘、不报成功），既不假绿也不拿旧契约的 Data=false 当"已停"的证据。
+    legacyContractOn = (ns, m) => ns === 'AutoFan' && m === 'IsRunning'
+    shouldFail = (ns, m) => ns === 'AutoFan' && m === 'Stop' // 走「Stop 报失败 → 独立回读确认」这条分支
+    // 旧后端的真实形状：曲线没在跑 = Success:false **且** Data:false（同一个 bool 传了两遍）。
+    // Data 必须是 false，否则这条用例不判别：拿 Data 当证据的实现照样会中止。
+    const base = RAW_DATA['AutoFan.IsRunning']
+    RAW_DATA['AutoFan.IsRunning'] = false
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+
+      expect(rowOf(wrapper, '应用内风扇曲线接管').text().replace(/\s+/g, ' ')).toContain('读取失败')
+
+      hostCalls = []
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+      await flushPromises()
+
+      expect(hostCalls).toContain('AutoFan.Stop')
+      // Data=false 看着像"没在跑"，但这次读本身是失败的 —— 没有证据就不许撤掩码
+      expect(hostCalls).not.toContain('Fan.RemoveFanSpeed')
+      expect(hostCalls).not.toContain('ConfigCtrl.SetConfig')
+      // 保守分支：读失败 ≠ 已停止（不能拿旧契约的 Data=false 当停止证据）
+      expect(wrapper.find('.steps').text().replace(/\s+/g, ' ')).toContain('未确认已停止')
+      expect(wrapper.find('.board-result').text()).toContain('未确认移除成功')
+      expect(wrapper.text()).not.toContain('已移除并回读确认')
+    } finally {
+      RAW_DATA['AutoFan.IsRunning'] = base
+      legacyContractOn = () => false
+      shouldFail = () => false
+    }
+  })
+
+  it('回读抛异常（reject）→ 行显示读取失败，移除中止且不撤掩码、不报成功', async () => {
+    // 补 catch 分支的覆盖：以前只有 hostFail（`{Success:false, Data:null}`），
+    // 把 `catch { return stopped: true }` 这类危险实现写进去，一条用例都不会红。
+    shouldFail = (ns, m) => ns === 'AutoFan' && m === 'Stop'
+    throwOn = (ns, m) => ns === 'AutoFan' && m === 'IsRunning'
+    try {
+      const wrapper = mountBoard()
+      await flushPromises()
+
+      // 读不到 ≠ 没在跑：行必须显示读取失败，不是"未生效"
+      const before = rowOf(wrapper, '应用内风扇曲线接管').text().replace(/\s+/g, ' ')
+      expect(before).toContain('读取失败')
+      expect(before).not.toContain('已生效')
+
+      hostCalls = []
+      await rowOf(wrapper, '应用内风扇曲线接管').find('button').trigger('click')
+      await flushPromises()
+
+      expect(hostCalls).not.toContain('Fan.RemoveFanSpeed')
+      expect(hostCalls).not.toContain('ConfigCtrl.SetConfig')
+      expect(wrapper.find('.steps').text().replace(/\s+/g, ' ')).toContain('回读异常')
+      expect(wrapper.text()).not.toContain('已移除并回读确认')
+    } finally {
+      throwOn = () => false
       shouldFail = () => false
     }
   })

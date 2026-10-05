@@ -186,9 +186,11 @@ export function useAppliedFeatures() {
             if (!read) throw new Error(`桥接方法不存在：${step.confirmStoppedBy}`)
             let observed: unknown
             try {
-              // 判据取 Data 不取 Success：IsRunning() 的 Success 就是运行态本身
-              // （没在跑时 Success=false、Data=false），拿 Success 当"读成功"会正好读反。
-              observed = ((await read()) as RawResult)?.Data
+              // 契约（v4 §14.11，2026-10-06 起）：确认用的 getter 恒 Success=true，运行态在 Data。
+              // Success !== true 表示这次读本身失败（或契约又被写反）——此时 Data 一个字都不采信，
+              // 按"未确认已停止"中止：没有证据就撤 0xB20 掩码，曲线下一拍会把它写回来。
+              const readback = (await read()) as RawResult | null
+              observed = readback?.Success === true ? readback.Data : undefined
             } catch (err) {
               return {
                 accepted: false,

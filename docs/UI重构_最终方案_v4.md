@@ -833,3 +833,60 @@ SMU 命令的无人值守开机写入，手误会被每次开机重放。要生�
 
 **未 Verified**：真机（WebView2 桥）行为 —— 只做了 mock 桥单测与截图验证；「键盘 RGB 由厂商软件/固件管理」
 是产品表述，不是本仓代码可验证的事实。
+
+---
+
+### 14.11 2026-10-06 · `CommandResult.Success` 契约收口：业务取值一律进 `Data`（**Decision**；聚焦复审整改）
+
+**Decision（负责人：实施者（AI，聚焦复审整改），2026-10-06）**
+
+`CommandResult.Success` **只表达"这次查询/命令本身成不成功"**；业务取值（"在不在跑""开没开"这类状态）
+**一律进 `Data`**，getter 恒 `Success = true`。把"没在跑 / 未开启"这种**正常的业务结果**写成 `Success = false`
+是违约：前端的读取闸门就是 `Success !== true`（`Client/src/composables/useAppliedFeatures.ts:122`），
+违约会让一次**成功的读取**被判成"读取失败"。
+
+**依据**
+
+1. 本轮聚焦复审的复现：曲线没在跑（正常态）时 `AutoFanControl.IsRunning()` 返回
+   `Success=false / Data=false`，看板 `fan.curve` 行显示「读取失败（自动风扇控制没有在运行中）」；
+   点「移除」时三步（`AutoFanControl.Stop` → `Fan.RemoveFanSpeed` → `ConfigCtrl.SetConfig`）**真下发**，
+   复核却判失败 → 结论「未确认移除成功」。**两个方向都是假红**：正常态报读取失败，真还原报未确认。
+2. 同族第二处 `FanController.GetMaxFanSpeedSwitch()` 也是"取值既进 `Success` 又进 `Data`"的写法。
+   它当前在前端没有消费者（`utils/bridge.ts:150` 只声明未导出），属于会被下一个人照抄的 landmine，一并修。
+3. 契约本身不是新发明：`CpuController.GetCustomMode`、`FanController.GetFanSpeed` 等既有 getter
+   早就是 `new CommandResult(true, "获取成功", <值>)` 的形状；本轮只把两处偏离按**既有**约定收口。
+4. 配套：确认用的回读（`useFanCurveEditor.stopCurveService` / `useAppliedFeatures.buildRemovalSteps`）
+   在 `Success !== true` 时必须**不采信 `Data`**，按"未确认已停止"中止（保守方向：没有证据就不撤
+   `0xB20` 手动掩码 —— 撤了会被曲线的下一拍写回来）。
+
+**反证条件（Reject if）**
+
+- 看板 `fan.curve` 行在曲线未运行时仍显示「读取失败」→ 契约没生效（后端返回值或前端闸门有一处没改）。
+- 点「移除」后三步都下发、结论仍是「未确认移除成功」→ 复核用的 `IsRunning()` 仍返回 `Success=false`。
+- 将来若 `Success` 需要表达查询侧的第三种状态（如"部分成功"）→ 必须**新增字段**，不得复用
+  `Success = false` 表达业务取值：那会立刻让所有 `Success !== true` 闸门把该状态判成读取失败。
+
+**Implemented 提交**：`13ca2f6` fix(server)（两处返回值 + 契约注释）；`fix(client)+docs:`（本轮第二条提交：
+确认回读的 `Success` 闸门、FIX-D 去掉 TOCTOU 短路、契约回归用例、mock 注释、本文档与已知问题同步）。
+
+**Verified（本机实测输出，本轮时点）**
+
+- 前端门禁：`npm run format:check` / `lint` / `type-check` / `build` 全通过；`npm run test`
+  **10 文件 / 89 通过 / 0 跳过**（本轮 85 → 89）。
+- 后端门禁：`dotnet build -c Release --no-incremental` **0 警告 0 错误**；`ProtocolCodecTest` **29 通过 0 失败**。
+- 临时探针（放 `$env:TEMP`，引用 Release `LongCore.dll`，**不调 `Start()`**）：`new AutoFanControl().IsRunning()`
+  → `Success=True / Data=False / "自动风扇控制没有在运行中"`；`new FanController().GetMaxFanSpeedSwitch()`
+  → `Success=True / Data=False / "获取成功"`（本机 EC 未初始化，取值本身不构成硬件事实）。
+- 反向验证：`git grep -n "new CommandResult(_isRunning" HEAD -- JiaoLongControl` 与
+  `git grep -n 'new CommandResult(res, "获取成功"' HEAD -- JiaoLongControl` **均零命中**。
+- 用例判别力（临时变异后跑用例，随后**已还原文件并删除备份**）：去掉确认回读的 `Success` 闸门 →
+  契约回归用例红；把两处回读 `catch` 改成乐观返回（`accepted:true` / `stopped:true`）→ 两条 reject 用例红；
+  恢复旧的 TOCTOU 短路 → 两条 FIX-D 用例红。
+
+**FIX-D（TOCTOU 短路）已做**：`useFanCurveEditor.stopCurveService` 不再先自读"在不在跑"来决定发不发
+`Stop`，而是**总是发**（`Stop()` 幂等：没在跑也 `Success=true`），停没停只由命令返回值 + 独立回读判定。
+理由：自读与 Stop 之间存在竞态窗口，并发的 `Start`（开机自启 / 另一个页面）会把曲线拉起来，
+被跳过的 `Stop` 让 `Fan.RemoveFanSpeed` 撤掉的掩码与曲线下一拍写入竞争。
+
+**未 Verified**：真机（WebView2 桥 + EC）行为。本轮全部证据来自单测、mock 桥与一个只读探针；
+「看板行恢复正常态显示」「移除后结论为『已移除并回读确认』」在真机上尚未复现一次。

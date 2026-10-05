@@ -23,6 +23,12 @@ interface Call {
 let calls: Call[] = []
 let savedConfigs: Array<Record<string, unknown>> = []
 let failOn: (namespace: string, method: string) => boolean = () => false
+/**
+ * 回读直接抛异常：让桩的 `toJson()` 抛 → `call()` 返回 rejected promise（宿主 IPC 异常的形态）。
+ * 用于覆盖回读的 `catch` 分支 —— 以前只有 `hostFail`（`{Success:false, Data:null}`），
+ * `catch { return stopped: true }` 这类危险实现不会被任何用例抓到。
+ */
+let throwOn: (namespace: string, method: string) => boolean = () => false
 let isRunning = true
 /**
  * `AutoFan.Stop` 报失败之后，回读 `AutoFan.IsRunning` 应该读到什么。
@@ -63,6 +69,13 @@ function installHost(): void {
             // 停服务本身会改变运行态：成功 = 已停，失败 = 由 runningAfterStop 指定
             if (namespace === 'AutoFan' && method === 'Stop') {
               isRunning = failed ? runningAfterStop : false
+            }
+            if (throwOn(namespace, method)) {
+              return {
+                toJson: () => {
+                  throw new Error('注入的宿主异常')
+                },
+              }
             }
             if (failed) return hostFail('注入的失败')
             if (namespace === 'ConfigCtrl' && method === 'GetConfig') {
@@ -126,6 +139,7 @@ beforeEach(() => {
   calls = []
   savedConfigs = []
   failOn = () => false
+  throwOn = () => false
   isRunning = true
   runningAfterStop = true
   setActivePinia(createPinia())
@@ -155,14 +169,51 @@ describe('曲线页「交还 EC 固件温控」出口', () => {
     wrapper.unmount()
   })
 
-  it('曲线服务没在跑：不停服务，但仍撤掩码 + 落盘', async () => {
+  it('FIX-D：曲线服务没在跑也照样发 Stop（幂等），撤掩码 + 落盘不受影响', async () => {
+    // 旧实现自认为"没在跑"就短路不发 Stop。那是一个 TOCTOU：并发的 Start（开机自启 /
+    // 另一个页面刚打开曲线开关）会在自读之后把曲线拉起来，被跳过的 Stop 于是让下一步的
+    // Fan.RemoveFanSpeed 撤掉的 0xB20 掩码立刻被曲线下一拍写回来。
+    // Stop() 现在幂等（没在跑也返回 Success=true），这个短路已无存在理由。
     isRunning = false
     const wrapper = await mountEditor()
 
     expect(await editor.handleHandoffToEc()).toBe(true)
-    expect(countOf('AutoFan', 'Stop')).toBe(0)
+    expect(countOf('AutoFan', 'Stop')).toBe(1)
     expect(countOf('Fan', 'RemoveFanSpeed')).toBe(1)
     expect((savedConfigs[0]!.Fan as Record<string, unknown>).Enabled).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('FIX-D：自认为没在跑、宿主其实刚被并发 Start 拉起 → 中止，不撤掩码（旧短路会假绿）', async () => {
+    // 竞态的判别用例：自读说"没在跑"，Stop 之后的独立回读却说"仍在跑"（就是那次并发 Start）。
+    // 旧短路实现读到 isRunning=false 就直接返回 stopped:true，于是掩码被撤 —— 而曲线还在写，
+    // 掩码下一拍就被写回来，界面却报「已交还 EC」。
+    isRunning = false
+    failOn = (ns, m) => ns === 'AutoFan' && m === 'Stop'
+    runningAfterStop = true
+    const wrapper = await mountEditor()
+
+    expect(await editor.handleHandoffToEc()).toBe(false)
+    expect(countOf('Fan', 'RemoveFanSpeed')).toBe(0)
+    expect(savedConfigs).toHaveLength(0)
+    expect(editor.composite.state.value.steps[0]!.message).toContain('独立回读确认仍在运行')
+
+    wrapper.unmount()
+  })
+
+  it('回读抛异常（reject）→ 中止，不撤掩码、不落盘、不报成功', async () => {
+    // catch 分支的覆盖：读不到运行态只能按"未确认已停止"中止。
+    // 若写成 `catch { return { stopped: true } }`，掩码就会被盲撤（曲线下一拍写回来）。
+    failOn = (ns, m) => ns === 'AutoFan' && m === 'Stop'
+    throwOn = (ns, m) => ns === 'AutoFan' && m === 'IsRunning'
+    const wrapper = await mountEditor()
+
+    expect(await editor.handleHandoffToEc()).toBe(false)
+    expect(countOf('Fan', 'RemoveFanSpeed')).toBe(0)
+    expect(savedConfigs).toHaveLength(0)
+    expect(editor.composite.state.value.phase).toBe('failed')
+    expect(editor.composite.state.value.steps[0]!.message).toContain('回读异常')
 
     wrapper.unmount()
   })
