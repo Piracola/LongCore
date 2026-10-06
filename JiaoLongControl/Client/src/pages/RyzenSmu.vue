@@ -133,9 +133,10 @@ const activity = useActivityStore()
 const applyingGroup = ref<string | null>(null)
 const lastAppliedGroup = ref<string | null>(null)
 const configStore = useConfigStore()
-if (!configStore.config) {
-  await configStore.fetchConfig()
-}
+// 顶层 await 会把本页变成 async setup 组件，RightSide 的 <Suspense> 要等它 resolve 才渲染。
+// 配置改为后台兜底拉取（fetchConfig 自带 in-flight 去重，App.vue 启动时已在拉）；
+// smuData 是 computed，配置到位后各表单项自然重算。
+// 注意：分组快照的播种也在文件末尾那个 IIFE 里，必须等配置到位。
 const smuData = computed(() => configStore.config?.Smu)
 
 const coreCount = ref(0)
@@ -160,13 +161,13 @@ function storedPerCore(list: number[] | undefined, index: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
+// 依赖 coreCount **与配置里的逐核值**：两者到达顺序无保证（都是桥接调用）。
+// 只 watch coreCount 时，若 GetPhysicalCoreCount 先于 fetchConfig 返回，saved 为空 →
+// 逐核表永久填 0，配置后到也不会重新触发（0 是合法值，界面上没有任何"未读取"提示）。
 watch(
-  coreCount,
-  (newCount) => {
+  [coreCount, () => smuData.value?.PerCoreCurve, () => smuData.value?.PerCoreOcClk],
+  ([newCount, savedCurve, savedClk]) => {
     if (newCount <= 0) return
-    const saved = smuData.value
-    const savedCurve = saved?.PerCoreCurve ?? []
-    const savedClk = saved?.PerCoreOcClk ?? []
     const currentLen = perCoreCurve.length
     if (newCount > currentLen) {
       for (let i = currentLen; i < newCount; i++) {
@@ -176,6 +177,12 @@ watch(
     } else if (newCount < currentLen) {
       perCoreCurve.splice(newCount)
       perCoreOcClk.splice(newCount)
+    } else {
+      // 核心数不变但配置后到：用配置值重填（storedPerCore 对缺失/非有限值返回 0）
+      for (let i = 0; i < newCount; i++) {
+        perCoreCurve[i] = storedPerCore(savedCurve, i)
+        perCoreOcClk[i] = storedPerCore(savedClk, i)
+      }
     }
   },
   { immediate: true },
@@ -432,7 +439,15 @@ const clocksTone = computed<'idle' | 'pending'>(() =>
 )
 
 // 页面就绪时给所有分组拍一次快照；此后只有"成功应用"才会刷新它
-for (const g of [...limitGroups, clockGroup, curveGroup, thermalGroup]) snapshotGroup(g)
+// 必须在配置到位**之后**拍：snapshotGroup 内部有 `if (!smuData.value) return` 守卫，
+// 放在 setup 同步段会因配置尚未加载而空跑，快照永远种不下 —— 用户改了滑条，
+// groupPendingCount 恒为 0，状态条永远说"无改动"（v4 禁止的假阴性）。
+void (async () => {
+  if (!configStore.config) {
+    await configStore.fetchConfig()
+  }
+  for (const g of [...limitGroups, clockGroup, curveGroup, thermalGroup]) snapshotGroup(g)
+})()
 
 const perCoreSummary = computed(() =>
   perCorePendingCount.value > 0

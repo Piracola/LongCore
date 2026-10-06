@@ -232,11 +232,49 @@ namespace JiaoLongControl.Server.Core.Controllers
             }
         }
 
+        /// <summary>
+        /// MaxClockSpeed 是常量（进程生命周期内不变），而 Win32_Processor 是慢 WMI 类。
+        /// 此前每次 GetCpuFrequency 都重查一遍 —— 该通道前端 TTL 只有 1s
+        /// （bridge.ts CACHE_TTL_MS），远小于 5s 轮询，所以这条查询是真的每 5 秒打一次
+        /// 宿主 UI 线程。缓存后彻底离开热路径。
+        ///
+        /// 两处**用户可见**的行为变化，都是往正确方向走，改动前请先读：
+        /// 1. MaxClockSpeed 为 0 时不再返回 0。旧实现直接 return 0，会让前端算成
+        ///    0 MHz 并渲染「0.00 GHz」—— 那正是 reading.ts:10 明令禁止的"读取失败
+        ///    伪装成真实 0"。现在改为跳过 0 继续枚举（Win32_Processor 是多实例类，
+        ///    旧实现取到第一颗就退出，本身也可能在多路机上取错），最终回落 3000。
+        /// 2. WMI 抛异常时改为 catch 后回落 3000，而不是让异常穿透到 GetCpuFrequency
+        ///    把整个频率通道判成 CommandResult(false)。降级成有值总好过整个通道假红。
+        ///
+        /// 仅成功时缓存，失败不缓存：保留下次重试的机会。
+        /// 无需加锁 —— 仅前端 COM 调用方走到这里，串行落在宿主 UI 线程（后台的
+        /// AutoFanControl / ThermalWatchdog 只调 GetCPUThermometer）。
+        /// </summary>
+        private static uint? _baseFrequencyCache;
+
         private uint GetBaseFrequency()
         {
-            using var searcher = new ManagementObjectSearcher("SELECT MaxClockSpeed FROM Win32_Processor");
-            foreach (var obj in searcher.Get())
-                return Convert.ToUInt32(obj["MaxClockSpeed"]);
+            if (_baseFrequencyCache.HasValue)
+                return _baseFrequencyCache.Value;
+
+            try
+            {
+                using var searcher = new ManagementObjectSearcher("SELECT MaxClockSpeed FROM Win32_Processor");
+                foreach (var obj in searcher.Get())
+                {
+                    uint mhz = Convert.ToUInt32(obj["MaxClockSpeed"]);
+                    if (mhz > 0)
+                    {
+                        _baseFrequencyCache = mhz;
+                        return mhz;
+                    }
+                }
+            }
+            catch
+            {
+                // 查询失败不缓存：保留下次重试的机会
+            }
+
             return 3000;
         }
 

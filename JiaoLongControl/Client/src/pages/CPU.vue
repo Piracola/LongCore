@@ -2,6 +2,7 @@
 import CpuDie from '@/components/common/CpuDie.vue'
 import PageShell from '@/components/common/PageShell.vue'
 import ApplyBar from '@/components/common/ApplyBar.vue'
+import InfoHint from '@/components/common/InfoHint.vue'
 
 import { ref, computed, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
@@ -30,15 +31,18 @@ const voltV = computed(() => systemInfoStore.cpuVoltValue)
 const usagePct = computed(() => systemInfoStore.cpuUsageValue)
 const tempC = computed(() => systemInfoStore.cpuTempValue)
 
-if (!configStore.config) {
-  await configStore.fetchConfig()
-}
-
+// 顶层 await 会把本页变成 async setup 组件：RightSide 的 <Suspense> 必须等它 resolve
+// 才渲染，而 GetCpuInfo() 是一次**未缓存的 Win32_Processor WMI 查询**（每次进 CPU 页都跑）。
+// 改为后台补齐：首屏立即出，CPU 名称/核心数到位后自行填上。
+// fetchConfig 自带 in-flight 去重，App.vue 启动时已在拉，这里只是兜底。
 const cpuInfo = ref<CpuInfo | null>(null)
-const infoResult = await CPU.GetCpuInfo()
-if (infoResult.Success) {
-  cpuInfo.value = infoResult.Data
-}
+void (async () => {
+  if (!configStore.config) await configStore.fetchConfig()
+  const infoResult = await CPU.GetCpuInfo()
+  if (infoResult.Success) {
+    cpuInfo.value = infoResult.Data
+  }
+})()
 
 // 使用 computed 来简化对配置项的访问，并确保响应。
 const CPUData = computed(() => configStore.config?.Cpu)
@@ -113,10 +117,19 @@ const applyStatus = computed(() => {
 
 // 改参数即存盘（只落 config.yaml，不碰硬件）：避免"调完滑条没点应用，重启就没了"。
 // 真正的下发只在「应用」里发生（见 buildCpuPowerRun）。
+//
+// 关键守卫：配置改为后台加载后，**首次进入页面时配置从 undefined 变成有值**本身就会
+// 触发本 watch —— 那不是用户意图，只是"数据到了"。改造前顶层 await 让配置在 setup 期
+// 就位，watch 注册时不触发，故本守卫以前不需要。必须像 GPU.vue:104-109 那样区分二者，
+// 否则「只是浏览 CPU 页」就会触发一次 Config.SetConfig 落盘。
+// 由各滑条 @change / @input 置位，与 GPU.vue 的 userTouched 同一套语义。
+const userTouched = ref(false)
+
 watch(
   () => JSON.stringify([CPUData.value?.Custom, SmuData.value?.CurveOptimizerAll]),
   () => {
     if (!composite.isBusy.value) composite.reset()
+    if (!userTouched.value) return
     configStore.debouncedSave()
   },
 )
@@ -248,12 +261,9 @@ async function handleReset() {
                 <div class="flex justify-between items-center text-xs">
                   <span class="text-gray-300 flex items-center gap-1"
                     >长时功耗限制(PL1)
-                    <span
-                      class="text-weak cursor-help text-[10px] hover:text-muted"
-                      title="CPU 可持续运行的长时功耗上限"
-                      >?</span
-                    ></span
-                  >
+                    <InfoHint
+                      text="CPU 可持续运行的长时功耗上限（SPL）。日常负载稳定在这个瓦数内，超过会触发降频保护。"
+                  /></span>
                   <span class="text-accent font-medium tnum"
                     >{{ activeProfile.CpuLongPower }} W</span
                   >
@@ -264,6 +274,7 @@ async function handleReset() {
                   :min="30"
                   :max="120"
                   class="w-full"
+                  @change="userTouched = true"
                 />
               </div>
 
@@ -272,12 +283,9 @@ async function handleReset() {
                 <div class="flex justify-between items-center text-xs">
                   <span class="text-gray-300 flex items-center gap-1"
                     >短时功耗限制(PL2)
-                    <span
-                      class="text-weak cursor-help text-[10px] hover:text-muted"
-                      title="CPU 短时间爆发功耗上限"
-                      >?</span
-                    ></span
-                  >
+                    <InfoHint
+                      text="CPU 短时间爆发功耗上限（SPPT）。跑分、突发负载先冲这个值，撞墙后回落到长时限。"
+                  /></span>
                   <span class="text-accent font-medium tnum"
                     >{{ activeProfile.CpuShortPower }} W</span
                   >
@@ -288,6 +296,7 @@ async function handleReset() {
                   :min="30"
                   :max="150"
                   class="w-full"
+                  @change="userTouched = true"
                 />
               </div>
 
@@ -296,12 +305,9 @@ async function handleReset() {
                 <div class="flex justify-between items-center text-xs">
                   <span class="text-gray-300 flex items-center gap-1"
                     >核心电压偏移 (CO)
-                    <span
-                      class="text-weak cursor-help text-[10px] hover:text-muted"
-                      title="Curve Optimizer 电压偏移, 负值为降压"
-                      >?</span
-                    ></span
-                  >
+                    <InfoHint
+                      text="Curve Optimizer 全核电压偏移，负值为降压：温度更低、能效更高，压得过低会死机，需自己摸稳定点。"
+                  /></span>
                   <span class="text-accent font-medium tnum">{{
                     configStore.config?.Smu?.CurveOptimizerAll ?? 0
                   }}</span>
@@ -313,6 +319,7 @@ async function handleReset() {
                   :min="-30"
                   :max="0"
                   class="w-full"
+                  @change="userTouched = true"
                 />
               </div>
 
@@ -321,12 +328,9 @@ async function handleReset() {
                 <div class="flex justify-between items-center text-xs">
                   <span class="text-gray-300 flex items-center gap-1"
                     >CPU 温度墙
-                    <span
-                      class="text-weak cursor-help text-[10px] hover:text-muted"
-                      title="触发降频前的最高核心温度"
-                      >?</span
-                    ></span
-                  >
+                    <InfoHint
+                      text="触发降频前的最高核心温度。撞墙即降频；应用内看门狗在 98℃/10s 会强制风扇拉满，早于温度墙动作。"
+                  /></span>
                   <span class="text-accent font-medium tnum"
                     >{{ activeProfile.CpuTempWall }} °C</span
                   >
@@ -337,6 +341,7 @@ async function handleReset() {
                   :min="60"
                   :max="105"
                   class="w-full"
+                  @change="userTouched = true"
                 />
               </div>
 
@@ -345,12 +350,9 @@ async function handleReset() {
                 <div class="flex justify-between items-center text-xs">
                   <span class="text-gray-300 flex items-center gap-1"
                     >最大睿频
-                    <span
-                      class="text-weak cursor-help text-[10px] hover:text-muted"
-                      title="CPU 最大加速频率上限"
-                      >?</span
-                    ></span
-                  >
+                    <InfoHint
+                      text="CPU 最大加速频率上限。降低可减少功耗与发热，设满则由温度墙和功耗墙决定实际表现。"
+                  /></span>
                   <span class="text-accent font-medium tnum"
                     >{{ (activeProfile.CpuMaxFrequency / 1000).toFixed(1) }} GHz</span
                   >
@@ -362,6 +364,7 @@ async function handleReset() {
                   :max="5400"
                   :step="100"
                   class="w-full"
+                  @change="userTouched = true"
                 />
               </div>
             </div>
