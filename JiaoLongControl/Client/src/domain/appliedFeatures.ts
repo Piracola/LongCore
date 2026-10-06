@@ -280,7 +280,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     group: 'smu',
     intentPath: 'Smu.StapmLimit',
     readback: null,
-    readbackNote: 'SMU 限制值无可靠 getter，只能确认命令被接受（KNOWN_ISSUES.md:64-72、133-136）',
+    readbackNote: 'SMU 限制值无可靠 getter，只能确认命令被接受（KNOWN_ISSUES 第 9 条）',
     reversibility: 'b',
     intentRule: { kind: 'nonzero' },
     observedRule: { kind: 'nonzero' },
@@ -514,7 +514,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: 'src/pages/RyzenSmu.vue:288-321（applyPerCore）',
     conclusion: 'review',
     conclusionReason:
-      '配置只记录、开机不下发（Decision 2026-09-24，KNOWN_ISSUES.md:74-79）；冷启动后硬件是否保留那套值未经真机验证（同条），故不做"重启即生效"的表述',
+      '配置只记录、开机不下发（Decision 2026-09-24，KNOWN_ISSUES 第 10 条）；冷启动后硬件是否保留那套值未经真机验证（同条），故不做"重启即生效"的表述',
   },
   {
     id: 'smu.per-core-occlk',
@@ -581,7 +581,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: 'src/pages/RyzenSmu.vue:120-126（独立提交卡）',
     conclusion: 'keep',
     conclusionReason:
-      '过温保护参数；页面只提供「填入推荐值 99℃」而非"恢复默认"（KNOWN_ISSUES.md:64-72）',
+      '过温保护参数；页面只提供「填入推荐值 99℃」而非"恢复默认"（KNOWN_ISSUES 第 9 条）',
   },
   {
     id: 'smu.temp-limit-rsmu',
@@ -658,7 +658,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: null,
     conclusion: 'cut',
     conclusionReason:
-      '前端零消费点：高级超频面板整段被注释（GPU.vue:501-624 含 handleApplyAdvanced），SetCoreClockOffset/ApplyClockOffsets 只剩桥接声明（bridge.ts:239-241、577-578）',
+      '前端零消费点：高级超频面板已于 2026-10-06 整段删除（其 handleApplyAdvanced 函数定义也早已不存在），SetCoreClockOffset/ApplyClockOffsets 只剩桥接声明',
   },
   {
     id: 'gpu.memory-offset',
@@ -707,7 +707,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: null,
     conclusion: 'cut',
     conclusionReason:
-      '前端零消费点：SetVoltageBoostPercent 只有桥接声明（bridge.ts:243、586-587），面板已注释（GPU.vue:562-584）',
+      '前端零消费点：SetVoltageBoostPercent 只有桥接声明，面板已于 2026-10-06 整段删除（仍可经本行的「移除」步骤调用）',
   },
   {
     id: 'gpu.power-limit',
@@ -724,7 +724,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: null,
     conclusion: 'cut',
     conclusionReason:
-      '前端零消费点且已明示（GPU.vue:467-476 注释："TGP 由 EC 管理，驱动接口不可用"）；配置默认值 140（JiaoLongConfig.cs:121）会被误读成"已下发"，看板因此标「无下发路径」',
+      '前端零消费点且已明示（GPU.vue 内注释："TGP 由 EC 管理，驱动接口不可用"，功耗滑条已随高级面板一并删除）；配置默认值 140（JiaoLongConfig.cs:121）会被误读成"已下发"，看板因此标「无下发路径」',
   },
   {
     id: 'gpu.direct-mode',
@@ -915,7 +915,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     group: 'system',
     intentPath: 'App.BootSetRyzenSumCurveOptimizerAll',
     readback: null,
-    readbackNote: 'SMU 无回读接口（KNOWN_ISSUES.md:64-72），开机下发结果无从确认',
+    readbackNote: 'SMU 无回读接口（KNOWN_ISSUES 第 9 条），开机下发结果无从确认',
     reversibility: 'b',
     intentRule: { kind: 'truthy' },
     observedRule: { kind: 'truthy' },
@@ -977,7 +977,7 @@ export const APPLIED_FEATURES: readonly AppliedFeature[] = [
     writePath: 'src/pages/Settings.vue:54-59',
     conclusion: 'keep',
     conclusionReason:
-      '唯一在紧急时刻覆盖手动转速的保护（KNOWN_ISSUES.md:23-29）；默认开启，关闭需用户明确操作',
+      '唯一在紧急时刻覆盖手动转速的保护（KNOWN_ISSUES 第 5 条）；默认开启，关闭需用户明确操作',
   },
 ]
 

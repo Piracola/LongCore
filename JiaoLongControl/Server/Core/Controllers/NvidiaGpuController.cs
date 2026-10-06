@@ -101,8 +101,37 @@ namespace JiaoLongControl.Server.Core.Controllers
 
         /// <summary>
         /// 通过 WMI 查询 Win32_VideoController 获取 NVIDIA 显卡驱动安装日期（格式 yyyy-MM-dd）。
+        /// 结果按进程缓存：驱动安装日期不装驱动就不会变，而 Win32_VideoController 是本仓
+        /// 最慢的 WMI 类（要走显示适配器栈）。
+        ///
+        /// 收益的真实量级：前端该通道已另有 30s TTL 缓存（bridge.ts STATIC_TTL_MS），
+        /// 原本是**每 30 秒穿透一次**、不是每 5 秒。别按"高频热路径"估它的收益。
+        ///
+        /// 两个刻意的不变量，改动前务必先读：
+        /// 1. **异常不填充缓存** —— QueryNvidiaDriverDate 抛出时下面的 :116-118 根本不执行，
+        ///    _filled 保持 false，下次调用照常重试，WMI 抖动可自愈。只有"查询成功但无匹配
+        ///    NVIDIA 行 / DriverDate 缺失"才被永久缓存 —— 那本身也是确定性的（显卡不会在
+        ///    运行中从 WMI 列表里消失），永久缓存它语义自洽。
+        /// 2. **无需加锁** —— 仅前端 COM 调用方会走到这里，串行落在宿主 UI 线程；后台的
+        ///    AutoFanControl / ThermalWatchdog 只调 GetCPUThermometer / GetGpuTemperature。
+        ///    加锁反而会把 UI 线程串行化，与本修复的目标相反。写入顺序是「先 value 后
+        ///    filled」，反过来的话并发读者会看到 filled=true 而 value=null，返回 ""。
         /// </summary>
+        private string? _driverDateCache;
+        private bool _driverDateCacheFilled;
+
         private string GetNvidiaDriverDate(int gpuIndex)
+        {
+            if (_driverDateCacheFilled)
+                return _driverDateCache ?? "";
+
+            string resolved = QueryNvidiaDriverDate(gpuIndex);
+            _driverDateCache = string.IsNullOrEmpty(resolved) ? null : resolved;
+            _driverDateCacheFilled = true;
+            return resolved;
+        }
+
+        private string QueryNvidiaDriverDate(int gpuIndex)
         {
             string fullName = GetGPU(gpuIndex).FullName;
             string fallback = "";
@@ -507,105 +536,6 @@ namespace JiaoLongControl.Server.Core.Controllers
             catch (Exception ex)
             {
                 return new CommandResult(false, $"恢复 GPU 风扇自动调速失败: {ex.Message}");
-            }
-        }
-
-        private CommandResult? _capabilitiesCache;
-
-        /// <summary>
-        /// 探测本机驱动实际支持哪些超频能力 (部分 OEM 驱动会静默忽略偏移写入, 只能实测定论)。
-        /// 结果按进程缓存, 更换驱动后需重启应用。
-        /// </summary>
-        public CommandResult GetOverclockCapabilities(int gpuIndex = -1)
-        {
-            if (_capabilitiesCache != null)
-                return _capabilitiesCache;
-
-            CommandResult result;
-            try
-            {
-                result = new CommandResult(true, "获取成功", new
-                {
-                    CoreOffset = ProbeCoreOffsetSupported(),
-                    // 现驱动 V/F 偏移表不提供显存通道, 锁频走 nvidia-smi -lmc
-                    MemoryOffset = false,
-                    VoltageBoost = ProbeVoltageBoostSupported(),
-                    ThermalPolicy = ProbeThermalPolicySupported(),
-                    PowerPolicy = ProbePowerPolicySupported(),
-                });
-            }
-            catch (Exception ex)
-            {
-                result = new CommandResult(false, $"能力探测失败: {ex.Message}");
-            }
-            _capabilitiesCache = result;
-            return result;
-        }
-
-        private bool ProbeCoreOffsetSupported()
-        {
-            try
-            {
-                var gpu = NvApiOverclock.GetGpuHandle(ResolveGpuIndex(-1));
-                var points = NvApiOverclock.GetActiveCurvePoints(gpu);
-                if (points.Length == 0)
-                    return false;
-
-                // 用 +100MHz 的单点探测写入区分"驱动忽略"与温度步进噪声 (±30MHz)
-                int point = points[points.Length / 2];
-                int before = NvApiOverclock.GetCurvePointFrequencyMhz(gpu, point);
-                NvApiOverclock.SetClockPointOffset(gpu, point, 100000);
-                System.Threading.Thread.Sleep(80);
-                int after = NvApiOverclock.GetCurvePointFrequencyMhz(gpu, point);
-                NvApiOverclock.SetClockPointOffset(gpu, point, 0);
-                return after - before > 60;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private bool ProbeVoltageBoostSupported()
-        {
-            try
-            {
-                var gpu = NvApiOverclock.GetGpuHandle(ResolveGpuIndex(-1));
-                int current = NvApiOverclock.GetVoltageBoostPercent(gpu);
-                NvApiOverclock.SetVoltageBoostPercent(gpu, current); // 写回原值, 仅探测接口可用性
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private bool ProbeThermalPolicySupported()
-        {
-            try
-            {
-                var gpu = NvApiOverclock.GetGpuHandle(ResolveGpuIndex(-1));
-                var policy = NvApiOverclock.GetThermalPolicy(gpu);
-                NvApiOverclock.SetThermalPolicy(gpu, policy.CurrentTemp); // 写回当前值
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private bool ProbePowerPolicySupported()
-        {
-            try
-            {
-                NvApiOverclock.GetPowerPolicy(NvApiOverclock.GetGpuHandle(ResolveGpuIndex(-1)));
-                return true;
-            }
-            catch
-            {
-                return false;
             }
         }
 

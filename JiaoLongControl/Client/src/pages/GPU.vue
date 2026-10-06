@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, type Ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import { NvidiaGpu, type OverclockCapabilities } from '@/utils/bridge'
+import { NvidiaGpu } from '@/utils/bridge'
 import { writeGate } from '@/domain/writeGate'
 import { buildSparkline } from '@/utils/chart'
 import { useConfigStore } from '@/stores/config'
@@ -29,7 +29,6 @@ const {
   gpuFanSpeed,
 } = storeToRefs(systemInfoStore)
 const loading = ref(false)
-const showAdvanced = ref(false)
 const composite = useCompositeWrite()
 const activity = useActivityStore()
 // 「还没读到」≠「读不到」。旧实现把首屏的 loading/error 一律判为缺失，
@@ -43,10 +42,6 @@ const gpuMissing = computed(
 const gpuPending = computed(
   () => systemInfoStore.gpuStatic.state === 'loading' && gpuName.value === null,
 )
-
-if (!configStore.config) {
-  await configStore.fetchConfig()
-}
 
 // --- Sparkline Chart History ---
 const historyLength = 20
@@ -124,40 +119,24 @@ watch(
   },
 )
 
-const gpuClockOffset = ref(0)
-const memClockOffset = ref(0)
-const tempWall = ref(87)
 const coreClockRange = ref({ Min: 0, Max: 500 })
 const memClockRange = ref({ Min: 0, Max: 1500 })
+// 功耗限制滑条本身已被注释掉，但「重置」仍要把 PowerLimit 拉回驱动上限
+// （handleResetNormal），故值域与钳制都要留着。
 const powerLimitRange = ref({ Min: 50, Max: 140 })
-const offsetRange = ref({ Core: { Min: -1000, Max: 1000 }, Memory: { Min: -1000, Max: 3000 } })
-const thermalPolicy = ref({ CurrentTemp: 87, MinTemp: 65, DefaultTemp: 83, MaxTemp: 90 })
-const ocCaps = ref<OverclockCapabilities>({
-  CoreOffset: true,
-  MemoryOffset: true,
-  VoltageBoost: true,
-  ThermalPolicy: true,
-  PowerPolicy: true,
-})
 
 async function fetchGpuRanges() {
   // 钳制期：本函数会把越界的配置值拉回值域内，这属于「按驱动能力修正」，
   // 不是用户意图，因此期间禁止自动落盘。
   clampOnly.value = true
   try {
-    const [core, mem, power, ocRange, ocOffsets, thermal, caps] = await Promise.all([
+    // 只读活着的滑条需要的三个值域。高级超频面板已整段删除，其偏移/温度墙/能力探测
+    // 的 NVAPI 调用一并撤销 —— 那套探测会在用户 V/F 曲线上真的写值，冷启动不该做。
+    const [core, mem, power] = await Promise.all([
       NvidiaGpu.GetGpuCoreClockRange(),
       NvidiaGpu.GetGpuMemoryClockRange(),
       NvidiaGpu.GetGpuPowerLimitRange(),
-      NvidiaGpu.GetClockOffsetRange(),
-      NvidiaGpu.GetClockOffsets().catch(() => null),
-      NvidiaGpu.GetGpuThermalPolicy().catch(() => null),
-      NvidiaGpu.GetOverclockCapabilities().catch(() => null),
     ])
-
-    if (caps && caps.Success && caps.Data) {
-      ocCaps.value = caps.Data
-    }
 
     if (core.Success && core.Data) {
       const min = core.Data.Min ?? 0
@@ -185,40 +164,28 @@ async function fetchGpuRanges() {
         GPUData.value.PowerLimit = max
       }
     }
-
-    if (ocRange.Success && ocRange.Data) {
-      offsetRange.value = {
-        Core: { Min: ocRange.Data.Core?.Min ?? -1000, Max: ocRange.Data.Core?.Max ?? 1000 },
-        Memory: { Min: ocRange.Data.Memory?.Min ?? -1000, Max: ocRange.Data.Memory?.Max ?? 3000 },
-      }
-    }
-
-    // 偏移量以驱动当前实际值为。 读取失败时回落到配置持久化。
-    if (ocOffsets && ocOffsets.Success && ocOffsets.Data) {
-      gpuClockOffset.value = ocOffsets.Data.CoreMhz
-      memClockOffset.value = ocOffsets.Data.MemoryMhz
-    } else if (GPUData.value) {
-      gpuClockOffset.value = GPUData.value.CoreClockOffset ?? 0
-      memClockOffset.value = GPUData.value.MemoryClockOffset ?? 0
-    }
-
-    if (thermal && thermal.Success && thermal.Data) {
-      thermalPolicy.value = thermal.Data
-      tempWall.value = thermal.Data.CurrentTemp
-    }
   } catch (err) {
     console.error('Failed to fetch GPU ranges', err)
   } finally {
     clampOnly.value = false
   }
 }
-await fetchGpuRanges()
-
-const appliedSnapshot = ref(
-  JSON.stringify([GPUData.value?.GpuClock ?? null, GPUData.value?.MemoryClock ?? null]),
-)
+/**
+ * 基准快照的捕获时机：`fetchGpuRanges()` 会按驱动值域钳制 GpuClock/MemoryClock，
+ * 基准必须取「钳制之后」的值，否则用户什么都没动也会看到「待应用 N 项」。
+ * 配置改为后台加载后，setup 期 GPUData 可能还是 null —— 故在配置到位、
+ * 且（首次进入时）钳制完成后统一落一次。
+ */
+const appliedSnapshot = ref<string | null>(null)
+function captureBaseline() {
+  if (appliedSnapshot.value !== null) return
+  appliedSnapshot.value = JSON.stringify([
+    GPUData.value?.GpuClock ?? null,
+    GPUData.value?.MemoryClock ?? null,
+  ])
+}
 const gpuPendingCount = computed(() => {
-  if (!GPUData.value) return 0
+  if (!GPUData.value || appliedSnapshot.value === null) return 0
   const [clock, memory] = JSON.parse(appliedSnapshot.value) as [number | null, number | null]
   return Number(GPUData.value.GpuClock !== clock) + Number(GPUData.value.MemoryClock !== memory)
 })
@@ -232,8 +199,31 @@ const applyStatus = computed(() => {
   if (applyPhase.value === 'partial') return '部分应用 · 请检查逐项结果'
   if (applyPhase.value === 'failed') return composite.state.value.message || '应用失败'
   if (applyPhase.value === 'success') return '命令已接受 · 当前频率以实时监控为准'
-  return '配置已存盘 · 尚未下发新值'
+  // 从未成功应用过：不能声称"已存盘"（照 CPU 页的 neverApplied 语义）。
+  // appliedSnapshot 为 null 有两种成因：尚未落基准（后台探测未完成），或用户在探测期间
+  // 动过滑条而我们刻意没落基准（见 IIFE 里的 userTouched 守卫）—— 两种都得说"未应用"。
+  return appliedSnapshot.value === null
+    ? '尚未应用 · 改值后点「应用」才会写入硬件'
+    : '配置已存盘 · 尚未下发新值'
 })
+
+// 顶部 async setup 是「切到 GPU 偶发卡顿」的根因：顶层 await 会让本页变成异步组件，
+// RightSide 的 <Suspense> 必须等它全部 resolve 才渲染 —— 其中 fetchGpuRanges() 要等 3 个
+// NVAPI 值域调用在宿主往返，值域探测期间整页只剩加载圈。改成后台补齐：首屏立即出，
+// 值域到位后滑条自行撑开。
+void (async () => {
+  try {
+    if (!configStore.config) await configStore.fetchConfig()
+    await fetchGpuRanges()
+    // 用户在值域探测往返期间已经动过滑条 → 此时取基准等于把「尚未下发的意图」
+    // 当成已应用基准，状态条会说"无待应用"而值其实从未写进硬件。宁可不落基准。
+    if (userTouched.value) return
+    // 必须在钳制之后取基准，否则首次进入会凭空显示「待应用 2 项」
+    captureBaseline()
+  } catch (err) {
+    console.error('GPU 初始化失败', err)
+  }
+})()
 
 async function handleApplyNormal() {
   // 前端一致性闸门：NVAPI 侧另有校验，但越界值不该等到驱动才被拒
@@ -398,34 +388,8 @@ async function handleResetNormal() {
             </div>
           </div>
         </div>
-        <!-- 3. 模式切换按钮 -->
-        <div class="flex gap-2">
-          <!--          <button-->
-          <!--            @click="showAdvanced = false"-->
-          <!--            :class="[-->
-          <!--              'flex-1 text-xs font-medium px-4 py-2.5 rounded-lg transition-all border',-->
-          <!--              !showAdvanced-->
-          <!--                ? 'bg-gradient-to-r from-purple-700 to-indigo-600 text-white border-transparent shadow-[0_0_12px_rgba(138,43,226,0.25)]'-->
-          <!--                : 'bg-ink/[0.02] text-gray-400 border-ink/10 hover:text-ink hover:border-ink/20',-->
-          <!--            ]"-->
-          <!--          >-->
-          <!--            常规设置-->
-          <!--          </button>-->
-          <!--          <button-->
-          <!--            @click="showAdvanced = true"-->
-          <!--            :class="[-->
-          <!--              'flex-1 text-xs font-medium px-4 py-2.5 rounded-lg transition-all border',-->
-          <!--              showAdvanced-->
-          <!--                ? 'bg-gradient-to-r from-purple-700 to-indigo-600 text-white border-transparent shadow-[0_0_12px_rgba(138,43,226,0.25)]'-->
-          <!--                : 'bg-ink/[0.02] text-gray-400 border-ink/10 hover:text-ink hover:border-ink/20',-->
-          <!--            ]"-->
-          <!--          >-->
-          <!--            高级超频-->
-          <!--          </button>-->
-        </div>
-
-        <!-- 常规设置面板 -->
-        <div v-if="!showAdvanced" class="panel-card p-5 space-y-5">
+        <!-- 常规设置面板（高级超频面板已整段删除，这里不再有标签切换） -->
+        <div class="panel-card p-5 space-y-5">
           <div class="space-y-5">
             <div class="space-y-2">
               <div class="flex justify-between items-center text-xs">
@@ -464,16 +428,9 @@ async function handleResetNormal() {
               />
             </div>
 
-            <!-- 功耗限制：笔记。TGP 由固。EC 管理，驱动接口不可用，暂不提。-->
-            <!-- <div class="space-y-2">
-              <div class="flex justify-between items-center text-xs">
-                <span class="text-gray-300 flex items-center gap-1">功耗限制<span
-                    class="text-gray-500 cursor-pointer text-[10px]">。</span></span>
-                <span class="text-purple-400 font-medium font-mono">{{ GPUData.PowerLimit }} W</span>
-              </div>
-              <a-slider v-model="GPUData.PowerLimit" :min="powerLimitRange.Min" :max="powerLimitRange.Max" class="w-full"/>
-                @change="userTouched = true"
-            </div> -->
+            <!-- 功耗限制：笔记。TGP 由固。EC 管理，驱动接口不可用，暂不提。
+                 故此处不提供功耗滑条；但「重置」仍要把 PowerLimit 拉回驱动上限，
+                 powerLimitRange 依旧要随 fetchGpuRanges 一起探测并钳制。-->
           </div>
 
           <div class="flex justify-start items-center pt-2 border-t border-ink/[0.04]">
@@ -497,131 +454,6 @@ async function handleResetNormal() {
             :message="composite.state.value.message"
           />
         </div>
-
-        <!-- 高级超频面板 -->
-        <!--        <div-->
-        <!--          v-if="showAdvanced"-->
-        <!--          class="panel-card p-5 space-y-5"-->
-        <!--        >-->
-        <!--          <div class="space-y-5">-->
-        <!--            <div-->
-        <!--              v-if="!ocCaps.CoreOffset || !ocCaps.MemoryOffset || !ocCaps.VoltageBoost"-->
-        <!--              class="text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2"-->
-        <!--            >-->
-        <!--              本机驱动已锁定部分超频能。(OEM 限制)，对应滑条已置灰。可用「常规设置」的锁频拉满睿频代替。-->
-        <!--            </div>-->
-
-        <!--            <div class="space-y-2">-->
-        <!--              <div class="flex justify-between items-center text-xs">-->
-        <!--                <span class="text-gray-300 flex items-center gap-1"-->
-        <!--                  >核心频率偏移-->
-        <!--                  <span-->
-        <!--                    v-if="!ocCaps.CoreOffset"-->
-        <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-        <!--                    >驱动已锁。/span-->
-        <!--                  >-->
-        <!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
-        <!--                >-->
-        <!--                <span class="text-purple-400 font-medium font-mono"-->
-        <!--                  >{{ gpuClockOffset > 0 ? '+' : '' }}{{ gpuClockOffset }} MHz</span-->
-        <!--                >-->
-        <!--              </div>-->
-        <!--              <a-slider-->
-        <!--                v-model="gpuClockOffset"-->
-        <!--                :min="offsetRange.Core.Min"-->
-        <!--                :max="offsetRange.Core.Max"-->
-        <!--                :disabled="!ocCaps.CoreOffset"-->
-        <!--                class="w-full"-->
-        <!--              />-->
-        <!--            </div>-->
-
-        <!--            <div class="space-y-2">-->
-        <!--              <div class="flex justify-between items-center text-xs">-->
-        <!--                <span class="text-gray-300 flex items-center gap-1"-->
-        <!--                  >显存频率偏移-->
-        <!--                  <span-->
-        <!--                    v-if="!ocCaps.MemoryOffset"-->
-        <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-        <!--                    >不支。/span-->
-        <!--                  >-->
-        <!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
-        <!--                >-->
-        <!--                <span class="text-purple-400 font-medium font-mono"-->
-        <!--                  >{{ memClockOffset > 0 ? '+' : '' }}{{ memClockOffset }} MHz</span-->
-        <!--                >-->
-        <!--              </div>-->
-        <!--              <a-slider-->
-        <!--                v-model="memClockOffset"-->
-        <!--                :min="offsetRange.Memory.Min"-->
-        <!--                :max="offsetRange.Memory.Max"-->
-        <!--                :disabled="!ocCaps.MemoryOffset"-->
-        <!--                class="w-full"-->
-        <!--              />-->
-        <!--            </div>-->
-
-        <!--            <div class="space-y-2">-->
-        <!--              <div class="flex justify-between items-center text-xs">-->
-        <!--                <span class="text-gray-300 flex items-center gap-1"-->
-        <!--                  >核心电压提升-->
-        <!--                  <span-->
-        <!--                    v-if="!ocCaps.VoltageBoost"-->
-        <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-        <!--                    >驱动已锁。/span-->
-        <!--                  >-->
-        <!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
-        <!--                >-->
-        <!--                <span class="text-purple-400 font-medium font-mono"-->
-        <!--                  >+{{ voltageBoostPercent }} %</span-->
-        <!--                >-->
-        <!--              </div>-->
-        <!--              <a-slider-->
-        <!--                v-model="voltageBoostPercent"-->
-        <!--                :min="0"-->
-        <!--                :max="100"-->
-        <!--                :disabled="!ocCaps.VoltageBoost"-->
-        <!--                class="w-full"-->
-        <!--              />-->
-        <!--            </div>-->
-
-        <!--            <div class="space-y-2">-->
-        <!--              <div class="flex justify-between items-center text-xs">-->
-        <!--                <span class="text-gray-300 flex items-center gap-1"-->
-        <!--                  >温度墙上。-->
-        <!--                  <span-->
-        <!--                    v-if="!ocCaps.ThermalPolicy"-->
-        <!--                    class="text-[9px] text-rose-400/90 border border-rose-500/30 rounded px-1"-->
-        <!--                    >不支。/span-->
-        <!--                  >-->
-        <!--                  <span class="text-gray-500 cursor-pointer text-[10px]">。</span></span-->
-        <!--                >-->
-        <!--                <span class="text-purple-400 font-medium font-mono">{{ tempWall }} 。</span>-->
-        <!--              </div>-->
-        <!--              <a-slider-->
-        <!--                v-model="tempWall"-->
-        <!--                :min="thermalPolicy.MinTemp"-->
-        <!--                :max="thermalPolicy.MaxTemp"-->
-        <!--                :disabled="!ocCaps.ThermalPolicy"-->
-        <!--                class="w-full"-->
-        <!--              />-->
-        <!--            </div>-->
-        <!--          </div>-->
-
-        <!--          <div class="flex justify-between items-center pt-2 border-t border-ink/[0.04]">-->
-        <!--            <button-->
-        <!--              class="flex items-center gap-2 text-xs text-gray-400 hover:text-ink border border-ink/10 hover:border-ink/20 bg-ink/[0.02] hover:bg-ink/[0.05] px-4 py-2 rounded-lg transition-colors pressable"-->
-        <!--              @click="handleResetAdvanced"-->
-        <!--            >-->
-        <!--              重置-->
-        <!--            </button>-->
-        <!--            <button-->
-        <!--              :disabled="loading"-->
-        <!--              class="text-xs font-medium text-ink bg-gradient-to-r from-purple-700 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 disabled:opacity-50 px-6 py-2 rounded-lg transition-all shadow-[0_0_15px_rgba(138,43,226,0.3)]"-->
-        <!--              @click="handleApplyAdvanced"-->
-        <!--            >-->
-        <!--              {{ loading ? '应用中...' : '应用' }}-->
-        <!--            </button>-->
-        <!--          </div>-->
-        <!--        </div>-->
       </div>
 
       <!-- ==================== 右侧：显卡信息与实时监控区==================== -->
@@ -633,9 +465,7 @@ async function handleResetNormal() {
           </div>
           <div class="grid grid-cols-2 gap-3">
             <!-- GPU 使用。-->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[11px] text-muted block">GPU 使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -654,15 +484,13 @@ async function handleResetNormal() {
                     <stop offset="100%" stop-color="#8A2BE2" stop-opacity="0" />
                   </linearGradient>
                 </defs>
-                <path :d="utilChart.line" fill="none" stroke="#8A2BE2" stroke-width="1.2" />
+                <path :d="utilChart.line" fill="none" stroke="#8A2BE2" stroke-width="1.5" />
                 <path :d="utilChart.area" fill="url(#g-purple)" />
               </svg>
             </div>
 
             <!-- 显存使用。-->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[11px] text-muted block">显存使用率</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -681,15 +509,13 @@ async function handleResetNormal() {
                     <stop offset="100%" stop-color="#3B82F6" stop-opacity="0" />
                   </linearGradient>
                 </defs>
-                <path :d="memUtilChart.line" fill="none" stroke="#3B82F6" stroke-width="1.2" />
+                <path :d="memUtilChart.line" fill="none" stroke="#3B82F6" stroke-width="1.5" />
                 <path :d="memUtilChart.area" fill="url(#g-blue)" />
               </svg>
             </div>
 
             <!-- 核心频率 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[10px] text-gray-500 block">核心频率</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -702,15 +528,13 @@ async function handleResetNormal() {
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
               >
-                <path :d="coreClockChart.line" fill="none" stroke="#8A2BE2" stroke-width="1.2" />
+                <path :d="coreClockChart.line" fill="none" stroke="#8A2BE2" stroke-width="1.5" />
                 <path :d="coreClockChart.area" fill="url(#g-purple)" />
               </svg>
             </div>
 
             <!-- 显存频率 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[10px] text-gray-500 block">显存频率</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -723,15 +547,13 @@ async function handleResetNormal() {
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
               >
-                <path :d="memClockChart.line" fill="none" stroke="#3B82F6" stroke-width="1.2" />
+                <path :d="memClockChart.line" fill="none" stroke="#3B82F6" stroke-width="1.5" />
                 <path :d="memClockChart.area" fill="url(#g-blue)" />
               </svg>
             </div>
 
             <!-- GPU 温度 -->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[10px] text-gray-500 block">GPU 温度</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -750,15 +572,13 @@ async function handleResetNormal() {
                     <stop offset="100%" stop-color="#10B981" stop-opacity="0" />
                   </linearGradient>
                 </defs>
-                <path :d="tempChart.line" fill="none" stroke="#10B981" stroke-width="1.2" />
+                <path :d="tempChart.line" fill="none" stroke="#10B981" stroke-width="1.5" />
                 <path :d="tempChart.area" fill="url(#g-green)" />
               </svg>
             </div>
 
             <!-- 风扇转。-->
-            <div
-              class="bg-ink/[0.02] border border-ink/[0.04] p-3 rounded-lg flex flex-col justify-between"
-            >
+            <div class="bg-inset border border-hair p-3 rounded-lg flex flex-col justify-between">
               <div>
                 <span class="text-[10px] text-gray-500 block">风扇转速</span>
                 <span class="text-base font-bold text-ink font-mono"
@@ -771,7 +591,7 @@ async function handleResetNormal() {
                 viewBox="0 0 160 40"
                 preserveAspectRatio="none"
               >
-                <path :d="fanChart.line" fill="none" stroke="#3B82F6" stroke-width="1.2" />
+                <path :d="fanChart.line" fill="none" stroke="#3B82F6" stroke-width="1.5" />
                 <path :d="fanChart.area" fill="url(#g-blue)" />
               </svg>
             </div>

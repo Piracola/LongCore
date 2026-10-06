@@ -105,14 +105,6 @@ export interface GpuFanControlInfo {
   MaxRpm: number
 }
 
-export interface OverclockCapabilities {
-  CoreOffset: boolean
-  MemoryOffset: boolean
-  VoltageBoost: boolean
-  ThermalPolicy: boolean
-  PowerPolicy: boolean
-}
-
 export interface SmuTelemetry {
   Ppt: number
   Tdc: number | null
@@ -217,7 +209,6 @@ export interface BridgeApi {
     GetGpuFanControl(gpuIndex?: number): HostBridgePromise<GpuFanControlInfo>
     SetGpuFanLevel(percent: number, gpuIndex?: number): HostBridgePromise<void>
     SetGpuFanAuto(gpuIndex?: number): HostBridgePromise<void>
-    GetOverclockCapabilities(gpuIndex?: number): HostBridgePromise<OverclockCapabilities>
   }
   Power: {
     SetCPUMaxFrequency(mhz: number): HostBridgePromise<void>
@@ -550,10 +541,6 @@ export const NvidiaGpu = {
   SetGpuFanLevel: (percent: number, gpuIndex?: number) =>
     call(raw.NvidiaGpu.SetGpuFanLevel(percent, gpuIndex)),
   SetGpuFanAuto: (gpuIndex?: number) => call(raw.NvidiaGpu.SetGpuFanAuto(gpuIndex)),
-  GetOverclockCapabilities: (gpuIndex?: number) =>
-    cached(STATIC_TTL_MS, `NvidiaGpu.GetOverclockCapabilities(${gpuIndex ?? ''})`, () =>
-      call(raw.NvidiaGpu.GetOverclockCapabilities(gpuIndex)),
-    ),
 }
 
 export const SystemInfo = {
