@@ -125,6 +125,34 @@ describe('模式三分离 store', () => {
     expect(store.activeKind).toBe('preset')
   })
 
+  it('切换在途：事件镜像不得改写 selected（切出自定义的"退回游戏"中间态）', async () => {
+    mocks.get.mockResolvedValue(ok(SystemPerMode.BalanceMode))
+    let release: (value: unknown) => void = () => {}
+    mocks.set.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve
+        }),
+    )
+    const store = useModeStore()
+    await store.refreshObserved()
+
+    const inflight = store.select({ kind: 'preset', mode: 'quiet' })
+    await Promise.resolve()
+    expect(store.syncing).toBe(true)
+
+    // 我们自己关命令 23 时固件回抛的中间态。采信它就会把用户刚点的「办公」改成「游戏」，
+    // 紧接着的写后回读看到的正是这个假中间态 —— "首次从自定义切出必失败"就是这么来的。
+    store.applyHotkeyMirror(SystemPerMode.BalanceMode)
+    expect(store.selected).toEqual({ kind: 'preset', mode: 'quiet' })
+
+    mocks.get.mockResolvedValue(ok(SystemPerMode.QuietMode))
+    release(ok(null))
+    expect(await inflight).toBe(true)
+    expect(store.selected).toEqual({ kind: 'preset', mode: 'quiet' })
+    expect(store.activeKind).toBe('preset')
+  })
+
   it('自定义覆盖：下发通过且回读为 CustomMode 才算成功', async () => {
     mocks.get.mockResolvedValue(ok(SystemPerMode.BalanceMode))
     mocks.applySaved.mockResolvedValue({

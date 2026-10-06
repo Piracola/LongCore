@@ -21,6 +21,9 @@
              清除本机 User 作用域里的 LIB/INCLUDE/LIBPATH/Path 残留后即为噪音。
              抑制它是为了让"0 警告"重新成为有意义的门禁信号。 -->
         <NoWarn>$(NoWarn);CS1668</NoWarn>
+        <!-- 冷启动: WPF 与 LibreHardwareMonitor/YamlDotNet 这批依赖首次运行全靠 JIT, ReadyToRun
+             预编译可省掉大部分 JIT(顺带降低开机预热那一次的 CPU/IO)。只作用于 publish, 不影响 build。 -->
+        <PublishReadyToRun>true</PublishReadyToRun>
     </PropertyGroup>
 
     <ItemGroup>

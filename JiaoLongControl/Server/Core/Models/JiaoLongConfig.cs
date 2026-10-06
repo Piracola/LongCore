@@ -185,7 +185,9 @@ public class FanSection
     // 28.5 分钟窗口 —— 两组不是同一段数据, 引用时请连窗口与样本一起引, 不要混用数字。
     // 离线重放(19 分钟真实负载): 该默认值下写入 366 → 11 次、方向反转 0 次,
     // 平均每 79 秒才动一次风扇, 且相对曲线要求的平均欠冷只有 150 RPM。
-    [ConfigComment("温度不灵敏带 (℃): 温度变化不足此值时不调整转速 (0=关闭)")]
+    // 注意: 噪音档位(NoiseTolerance)会覆盖此值 —— 安静 8℃ / 均衡 5℃ / 强冷 3℃。
+    // 保留本项是为了手动微调与向后兼容; 选了档位时以档位为准。
+    [ConfigComment("温度不灵敏带 (℃): 温度变化不足此值时不调整转速 (0=关闭; 选了噪音档位时被档位覆盖)")]
     [ConfigRange(0, 15)]
     public int TempHysteresisC { get; set; } = 5;
 
@@ -193,6 +195,16 @@ public class FanSection
     // 后端 Blding64 护栏亦硬性拒绝 0。上限 5800 RPM = 官方 fastestMode_FanSpeed_MaxValue(58×100)。
     // 上限 5800 与前端 FAN_MAX_RPM(constants/index.ts) 及驱动侧 FanSpeedRawMax(Blding64) 保持一致:
     // 6800 只是寄存器可写范围, 超过 5800 的写入会被驱动护栏拒绝, 属"范围多处声明"的隐患。
+    // 噪音忍耐度: 一个旋钮同时驱动曲线缩放 / 不灵敏带 / 安全下限阈值三件事。
+    // 为什么要三件一起动, 而不是只缩放曲线: 离线重放(中等负载, 6 seed 平均)显示
+    // 只动曲线缩放时, 安全下限(88℃→4500)会把安静档顶回高转速, 档位差异被抹平;
+    // 只动不灵敏带则几乎不改变响度(32.6 / 33.0 / 32.8 dBA), 只改变写入次数(21/14/9)。
+    // 三件同动后: 安静 32.1 dBA / 均衡 32.8 / 强冷 34.1, 且 90℃ 低档秒数 75 / 0 / 0。
+    // 数值口径: 1.0 档与出厂行为一致, 因此升级不会改变既有体验。
+    [ConfigComment("噪音忍耐度: 0=安静(转速更低更稳) 1=均衡(出厂) 2=强冷(转速更高更凉)")]
+    [ConfigRange(0, 2)]
+    public int NoiseTolerance { get; set; } = 1;
+
     // 默认曲线: 噪声与性能的折中。
     // 目标不是"最安静", 而是把温度压在 CPU 温度墙(默认 95℃)以下, 避免到墙才猛拉 ——
     // 那正是 EC 固件表的老毛病(低温区压得极低, 91℃ 后才跳变)。
@@ -238,8 +250,8 @@ public class FanPoint
 /// 背景(仅供维护者, 用户可见文案见下): 旧行为下每次数据读取、每次前端调用都写一行
 /// DEBUG, 实测一天 5.7 万行 / 6.4 MB(约 27 次/秒同步写盘), 其中 98.4% 出自
 /// CommandResult 的构造函数; 而真正有用的控制侧信息(AutoFanControl 转速、看门狗、
-/// EcGuard、HwWriteGate 拦截)只占 1.4%。故把"读取明细"与"控制日志"分开开关,
-/// 并允许攒批落盘。
+/// EcGuard、HwWriteGate 拦截)只占 1.4%。故把"读取明细"与"控制日志"分开开关。
+/// 这里曾经还有一个"攒批落盘间隔", 因低日志量下会静默吞掉安全事件而废除(见 LogRuntime)。
 /// 注意: 下面 [ConfigComment] 的文字会直接写进 config.yaml 给用户看, 必须说人话;
 /// 上述论证留在 XML 注释里, 不要搬进 ConfigComment。
 /// </summary>
@@ -252,11 +264,6 @@ public class LogSection
     // 退回每天 5 万行; 而排查"某个读取为什么返回空"时又临时需要它。
     [ConfigComment("记录读取明细: 把每一次硬件数据读取都写进日志(体积的绝大部分来源), 仅在排查读数异常时打开")]
     public bool CommandDebug { get; set; } = false;
-
-    // 安全信息不靠这个兜底: LogRuntime 挂了一个只做刷盘的 appender, 级别 >= WARN 一律立即落盘。
-    [ConfigComment("写入间隔 (秒): 日志攒够一批再保存, 减少磁盘读写。0=每条立即保存; 警告与错误始终立即保存")]
-    [ConfigRange(0, 60)]
-    public int FlushIntervalS { get; set; } = 3;
 }
 
 public class SmuSection

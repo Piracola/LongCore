@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import {
-  AxisPointerComponent,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-} from 'echarts/components'
+import TrendChart from '@/components/common/TrendChart.vue'
 import PageShell from '@/components/common/PageShell.vue'
 import AppliedFeaturesBoard from '@/components/common/AppliedFeaturesBoard.vue'
 import useStore from '@/stores'
@@ -18,20 +9,11 @@ import { useModeStore, type ModeSelection } from '@/stores/mode'
 import { FIRMWARE_MODE_LABELS, type FirmwareMode } from '@/domain/modes'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { useFanStore } from '@/stores/fan'
-import { chartTheme } from '@/theme/theme'
 import { tempLevel, tempLevelHys, type TempLevel } from '@/utils/temperature'
+import type { TrendSeries } from '@/utils/chart'
 import { storeToRefs } from 'pinia'
 import { Scale, SlidersHorizontal, Volume1, Zap } from '@lucide/vue'
 import { FAN_MAX_RPM, TEMP_HISTORY_INTERVAL_MS } from '@/constants'
-
-use([
-  CanvasRenderer,
-  LineChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent,
-  AxisPointerComponent,
-])
 
 const systemInfoStore = useSystemInfoStore()
 // 四态读数 state（Reading<T>）
@@ -126,6 +108,14 @@ async function runSelection(sel: ModeSelection) {
     }
     return
   }
+  // 重入（上一次切换仍在途）不是失败：这次点击根本没有下发，给它标 3 秒错误态是假红。
+  // `syncing` 仍为真即可判定是这一条 —— 真正失败的分支在 store 的 finally 里已把它置回 false。
+  // （2026-10-06：服务端"先关自定义再写档位"把在途窗口从 ~30ms 拉到 ~150~300ms，
+  // 连点胶囊更容易撞上这条分支，所以必须区分"忙"与"失败"。）
+  if (modeStore.syncing) {
+    Message.info(modeStore.lastErrorOr || '上一次切换尚未完成')
+    return
+  }
   markFailed(key)
   Message.error(modeStore.lastErrorOr || '切换失败')
 }
@@ -153,6 +143,13 @@ const packagePower = computed(() => {
 })
 
 const { tempHistory } = storeToRefs(systemInfoStore)
+
+function formatClockTs(at: number) {
+  const d = new Date(at)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 const historyWindowSec = ref(120)
 const historyOptions = [
   { label: '2 分钟', seconds: 120 },
@@ -184,141 +181,34 @@ onMounted(() => {
   void fanStore.resolveController()
 })
 
-function formatClock(at: number) {
-  const d = new Date(at)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
-
-function formatTemp(v: number | null) {
-  return v === null ? '—' : `${v}°C`
-}
-
 const LEVEL_LABEL: Record<TempLevel, string> = {
   cool: 'COOL',
   warm: 'WARM',
   hot: 'HOT',
   critical: 'CRIT',
 }
+const tempSeries = computed<TrendSeries[]>(() => [
+  {
+    key: 'cpu',
+    label: 'CPU',
+    color: '#60a5fa',
+    unit: '°C',
+    axis: 'left',
+    axisMax: 100,
+    data: visibleTempHistory.value.map((s) => s.cpu),
+  },
+  {
+    key: 'gpu',
+    label: 'GPU',
+    color: '#34d399',
+    unit: '°C',
+    axis: 'left',
+    axisMax: 100,
+    data: visibleTempHistory.value.map((s) => s.gpu),
+  },
+])
 
-const lineChartOption = computed(() => {
-  const samples = visibleTempHistory.value
-  const axis = chartTheme.value.axis
-  const gridLine = chartTheme.value.line
-  return {
-    animation: false,
-    animationDurationUpdate: 0,
-    grid: { top: 28, bottom: 28, left: 44, right: 12, containLabel: false },
-    legend: {
-      data: ['CPU', 'GPU'],
-      icon: 'roundRect',
-      itemWidth: 12,
-      itemHeight: 3,
-      textStyle: { color: chartTheme.value.legend, fontSize: 10 },
-      top: 0,
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'line',
-        snap: true,
-        lineStyle: {
-          color: chartTheme.value.cross,
-          width: 1.5,
-        },
-      },
-      backgroundColor: chartTheme.value.tooltipBg,
-      borderColor: chartTheme.value.tooltipBorder,
-      borderWidth: 1,
-      textStyle: { color: chartTheme.value.label, fontSize: 12 },
-      extraCssText: 'box-shadow: none;',
-      formatter: (raw: unknown) => {
-        const items = Array.isArray(raw) ? raw : []
-        const first = items[0] as { dataIndex?: number } | undefined
-        const idx = typeof first?.dataIndex === 'number' ? first.dataIndex : -1
-        const sample = idx >= 0 ? samples[idx] : undefined
-        if (!sample) return ''
-        return [
-          `<div style="font-variant-numeric:tabular-nums;font-size:11px;opacity:.7;margin-bottom:4px">${formatClock(sample.at)}</div>`,
-          `<div style="font-variant-numeric:tabular-nums">CPU: ${formatTemp(sample.cpu)}</div>`,
-          `<div style="font-variant-numeric:tabular-nums">GPU: ${formatTemp(sample.gpu)}</div>`,
-        ].join('')
-      },
-    },
-    xAxis: {
-      type: 'category',
-      data: samples.map((s) => formatClock(s.at)),
-      boundaryGap: false,
-      axisLine: { show: true, lineStyle: { color: gridLine, width: 1 } },
-      axisTick: { show: false },
-      axisLabel: {
-        show: true,
-        color: axis,
-        fontSize: 10,
-        hideOverlap: true,
-        formatter: (_value: string, index: number) => {
-          if (samples.length <= 1) return _value
-          const step = Math.max(1, Math.ceil((samples.length - 1) / 4))
-          return index % step === 0 || index === samples.length - 1 ? _value : ''
-        },
-      },
-      splitLine: {
-        show: true,
-        lineStyle: { color: gridLine, type: 'solid', width: 1 },
-      },
-      axisPointer: {
-        show: true,
-        type: 'line',
-        snap: true,
-        lineStyle: { color: chartTheme.value.cross, width: 1.5 },
-        label: { show: false },
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: 100,
-      interval: 20,
-      axisLine: { show: true, lineStyle: { color: gridLine, width: 1 } },
-      axisTick: { show: false },
-      splitLine: {
-        show: true,
-        lineStyle: { color: gridLine, type: 'solid', width: 1 },
-      },
-      splitArea: {
-        show: true,
-        areaStyle: { color: chartTheme.value.band },
-      },
-      axisLabel: { color: axis, fontSize: 10, formatter: '{value}°' },
-    },
-    series: [
-      {
-        name: 'CPU',
-        data: samples.map((i) => i.cpu),
-        type: 'line',
-        smooth: true,
-        showSymbol: samples.length < 24,
-        symbol: 'circle',
-        symbolSize: 6,
-        emphasis: { focus: 'series', itemStyle: { borderWidth: 2 } },
-        lineStyle: { color: '#60a5fa', width: 2 },
-        itemStyle: { color: '#60a5fa' },
-      },
-      {
-        name: 'GPU',
-        data: samples.map((i) => i.gpu),
-        type: 'line',
-        smooth: true,
-        showSymbol: samples.length < 24,
-        symbol: 'circle',
-        symbolSize: 6,
-        emphasis: { focus: 'series', itemStyle: { borderWidth: 2 } },
-        lineStyle: { color: '#34d399', width: 2 },
-        itemStyle: { color: '#34d399' },
-      },
-    ],
-  }
-})
+const tempTimes = computed(() => visibleTempHistory.value.map((s) => formatClockTs(s.at)))
 </script>
 
 <template>
@@ -509,7 +399,13 @@ const lineChartOption = computed(() => {
               </div>
             </div>
             <div class="chart-body">
-              <VChart :option="lineChartOption" autoresize />
+              <TrendChart
+                :series="tempSeries"
+                :times="tempTimes"
+                :height="240"
+                area
+                empty-text="温度历史采样中…"
+              />
             </div>
           </section>
         </div>
@@ -761,16 +657,15 @@ const lineChartOption = computed(() => {
 
   h2 {
     margin: 0;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--ink);
   }
 
   p {
     margin: 4px 0 0;
-    font-size: 10px;
+    font-size: 11px;
     color: var(--weak);
     letter-spacing: 0;
     text-transform: none;

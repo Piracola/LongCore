@@ -2,6 +2,20 @@
  * SVG 迷你曲线 (sparkline) 生成工具: 历史数值数组 → 折线/面积 path 字符串.
  * 用于 GPU/RyzenSmu 等页面的实时监控小图表, 取代各组件重复的曲线构造逻辑.
  */
+/** 统一趋势图（components/common/TrendChart.vue）的序列定义。 */
+export interface TrendSeries {
+  key: string
+  label: string
+  color: string
+  unit: string
+  /** 数值轴，缺省 left；RPM 与 °C 混排时第二单位放 right（各自归一化） */
+  axis?: 'left' | 'right'
+  /** 该轴量程上限；缺省按本轴数据向上取整到 1/1.5/2/2.5/3/4/5/6/8×10^n */
+  axisMax?: number
+  /** 与 times 一一对应；null = 该时刻通道不可用，断线显示，禁止补 0 */
+  data: Array<number | null>
+}
+
 export interface SparklineOptions {
   /** 视口宽度 (px), 默认 160 */
   width?: number

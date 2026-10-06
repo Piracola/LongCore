@@ -16,6 +16,13 @@ namespace JiaoLongControl.Server
         private static readonly log4net.ILog Logger =
             log4net.LogManager.GetLogger(typeof(MainWindow));
 
+        // 虚拟主机名必须避开 *.local: Chromium 把 .local 当 mDNS 域(RFC 6762), 每次导航都要等
+        // mDNS 解析超时 —— 实测固定 +2.0s, 与缓存/代理/协议/是否首次无关(app.local 导航到 DOM 就绪
+        // 2144ms, app.localhost 只要 204ms)。.localhost 是 RFC 6761 保留域, Chromium 直接判为回环,
+        // 完全不查网络。这两处必须同名, 所以只留一个来源。
+        private const string VirtualHost = "app.localhost";
+        private const string AppHostUrl = "https://" + VirtualHost + "/index.html";
+
         private Hardcodet.Wpf.TaskbarNotification.TaskbarIcon _taskbarIcon = null!;
         private string _webRoot = string.Empty;
         private WebView2? _webView;
@@ -31,10 +38,15 @@ namespace JiaoLongControl.Server
         private int _processFailCount;
         // 连续重建计数：自动重建超过上限则停止，避免进程反复崩溃时无限重建
         private int _recreateCount;
-        private Grid? _loadingOverlay;
         private Grid? _errorOverlay;
         // 当前是否浅色主题: 由配置(App.Theme)解析, 前端切换主题时经 theme-changed 消息同步
         private bool _isLight;
+        // 离屏预热: 自启隐藏启动时把窗口显示到屏幕外, 界面加载完后 Hide + Suspend 收回托盘;
+        // 用户点托盘只需"恢复位置 + Show + Resume"。坐标取远小于任何虚拟桌面范围的负值。
+        private const int OffScreenCoordinate = -32000;
+        private bool _offScreenPrewarm; // 预热中/尚未被用户打开
+        private bool _prewarmed;        // 已完成 Hide + Suspend 收尾
+        private long _resumeAt;         // Resume 时刻, 用于测量"点击托盘 → 前端恢复渲染"
         // ProcessFailed 处理器引用：ConfigureWebView 订阅、DestroyWebView 注销，保证重建后旧回调不再触发
         private EventHandler<CoreWebView2ProcessFailedEventArgs>? _processFailedHandler;
 
@@ -73,7 +85,7 @@ namespace JiaoLongControl.Server
             }
         }
 
-        public MainWindow()
+        public MainWindow(bool startHidden = false)
         {
             InitializeComponent();
             // 配置已在 App.OnStartup 初始化完成, 此处解析主题并先于 WebView 创建着色, 避免启动闪色
@@ -81,8 +93,15 @@ namespace JiaoLongControl.Server
             ApplyThemeColors();
             InitializePaths();
             InitializeTray();
-            CreateWebView();
-            Logger.Info($"启动计时: 主窗口构造完成(WebView 已创建) {App.StartupClock.ElapsedMilliseconds}ms");
+
+            // 自启隐藏(--boot)时窗口不会 Show, 构造期不建 WebView: 隐藏窗口里 HwndHost 还没有 HWND,
+            // 此时发起 WebView2 初始化只会超时重试(3 次 × 15s)并留下一块错误遮罩, 用户点托盘图标时
+            // 还得先销毁重建 —— "先白屏再加载"有一半来自这里。改为窗口首次显示(Loaded)时创建。
+            Loaded += (_, _) => EnsureWebViewCreated();
+            if (!startHidden)
+                CreateWebView();
+
+            Logger.Info($"启动计时: 主窗口构造完成 {App.StartupClock.ElapsedMilliseconds}ms");
 
             // 启动后立刻在后台恢复开机策略，不依赖窗口显示。
             // 注意：--boot 隐藏启动时 App.OnStartup 不会 Show 本窗口，Loaded 事件永远不触发，
@@ -166,18 +185,37 @@ namespace JiaoLongControl.Server
             int generation = ++_webViewGeneration;
             _processFailCount = 0;
 
+            // 【坑】WebView2 是 HwndHost(独立子窗口), 绝不能在构造期把它设成 Hidden 再改回 Visible:
+            // 隐藏期间 WPF 不会建(或会销毁)那个子窗口, 之后再切 Visible 内容永远画不出来 ——
+            // 整窗只剩底色, 只有最小化+还原强制重建子窗口才恢复。空白期改用"同色遮": 窗口底色、
+            // DefaultBackgroundColor、页面首帧底色三者都是主题色, 所以看不到白。
             _webView = new WebView2
             {
                 DefaultBackgroundColor = DrawingColorFrom(UiTheme.Background(_isLight))
             };
             WebViewHost.Children.Clear();
             WebViewHost.Children.Add(_webView);
-            ShowLoadingOverlay();
 
             _webViewDestroyed = false;
 
+            Logger.Info($"启动计时: WebView 已创建 {App.StartupClock.ElapsedMilliseconds}ms");
+
             // fire-and-forget：内部已做异常处理与重试，绝不让启动阶段崩溃/白屏
             _ = InitializeWebViewAsync(_webView, generation);
+        }
+
+        /// <summary>窗口首次显示时创建 WebView（--boot 隐藏启动构造期不建, 见构造函数）。</summary>
+        private void EnsureWebViewCreated()
+        {
+            try
+            {
+                if (_webViewDestroyed)
+                    CreateWebView();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("创建 WebView 失败", ex);
+            }
         }
 
         /// <summary>
@@ -307,7 +345,7 @@ namespace JiaoLongControl.Server
             try
             {
                 view.Source = Directory.Exists(_webRoot)
-                    ? new Uri("https://app.local/index.html")
+                    ? new Uri(AppHostUrl)
                     : new Uri("http://localhost:5173");
 
                 var finished = await Task.WhenAny(tcs.Task, Task.Delay(timeout)) == tcs.Task;
@@ -333,7 +371,7 @@ namespace JiaoLongControl.Server
             }
         }
 
-        /// <summary>页面导航失败重试（最多 3 次），成功后移除加载层；供初始化与 Resume 恢复共用</summary>
+        /// <summary>页面导航失败重试（最多 3 次）；供初始化与 Resume 恢复共用</summary>
         private async Task RetryNavigationAsync(WebView2 view, int generation)
         {
             for (int attempt = 1; attempt <= 3; attempt++)
@@ -341,10 +379,7 @@ namespace JiaoLongControl.Server
                 bool ok = await NavigateWithTimeoutAsync(view, generation, TimeSpan.FromSeconds(20));
                 if (ok)
                 {
-                    // 校验代次，避免旧任务的加载层移除误伤新实例的加载层
-                    if (generation == _webViewGeneration && !_webViewDestroyed)
-                        RemoveLoadingOverlay();
-                    Logger.Info($"启动计时: 页面导航完成(界面可见) {App.StartupClock.ElapsedMilliseconds}ms");
+                    Logger.Info($"启动计时: 页面导航完成 {App.StartupClock.ElapsedMilliseconds}ms");
                     return;
                 }
 
@@ -398,6 +433,7 @@ namespace JiaoLongControl.Server
                     _processFailCount = 0;
                     _recreateCount = 0;
                     RemoveErrorOverlay();
+                    _ = FinishPrewarmAsync(); // 预热模式下: 界面已就绪, 收回托盘并挂起
                 }
             };
 
@@ -406,7 +442,7 @@ namespace JiaoLongControl.Server
             if (Directory.Exists(_webRoot))
             {
                 core.SetVirtualHostNameToFolderMapping(
-                    "app.local",
+                    VirtualHost,
                     _webRoot,
                     CoreWebView2HostResourceAccessKind.Allow
                 );
@@ -508,46 +544,6 @@ namespace JiaoLongControl.Server
             }
         }
 
-        private void ShowLoadingOverlay()
-        {
-            try
-            {
-                var overlay = new Grid
-                {
-                    Background = new SolidColorBrush(UiTheme.Background(_isLight)),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch
-                };
-                var text = new TextBlock
-                {
-                    Text = "正在加载界面…",
-                    Foreground = new SolidColorBrush(UiTheme.OverlayText(_isLight)),
-                    FontSize = 14,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                overlay.Children.Add(text);
-                WebViewHost.Children.Add(overlay); // 后添加，位于 WebView 上层
-                _loadingOverlay = overlay;
-            }
-            catch
-            {
-            }
-        }
-
-        private void RemoveLoadingOverlay()
-        {
-            try
-            {
-                if (_loadingOverlay != null && WebViewHost.Children.Contains(_loadingOverlay))
-                    WebViewHost.Children.Remove(_loadingOverlay);
-                _loadingOverlay = null;
-            }
-            catch
-            {
-            }
-        }
-
         private void RemoveErrorOverlay()
         {
             try
@@ -566,7 +562,10 @@ namespace JiaoLongControl.Server
         {
             try
             {
-                RemoveLoadingOverlay();
+                // WebView2 是独立 HWND, WPF 元素盖不住它: 先把 WebView 整个拆掉, 提示和「重新加载」
+                // 按钮才看得见。拆掉而不是隐藏 —— 被隐藏过的 WebView2 再显示出来画不出内容(见 CreateWebView);
+                // 而重试按钮本来就会重建 WebView, 所以拆掉不影响重试。
+                DestroyWebView();
 
                 var overlay = new Grid
                 {
@@ -645,21 +644,39 @@ namespace JiaoLongControl.Server
             show.Click += (_, _) => ShowMainWindow();
 
             var exit = new MenuItem { Header = "退出" };
-            exit.Click += (_, _) =>
-            {
-                // 标记允许真正关闭，否则 OnClosing 会拦截（隐藏到托盘）
-                _allowClose = true;
-                _isShuttingDown = true;
-                DestroyWebView();
-                _taskbarIcon.Dispose();
-                Application.Current.Shutdown();
-            };
+            exit.Click += (_, _) => ExitApplication();
 
             menu.Items.Add(show);
             menu.Items.Add(exit);
 
             _taskbarIcon.ContextMenu = menu;
         }
+
+        /// <summary>
+        /// 唯一退出路径: 托盘「退出」与外部退出请求(安装器 --quit)共用。
+        /// 必须走这里而不是被强杀 —— 强杀不会执行 EcGuard 恢复与驱动卸载,
+        /// 会把内核驱动留在半挂起状态, 让下一次启动卡死在 Bridge 初始化。
+        /// </summary>
+        private void ExitApplication()
+        {
+            if (_isShuttingDown)
+                return;
+            try
+            {
+                _allowClose = true; // 否则 OnClosing 会拦截并隐藏到托盘
+                _isShuttingDown = true;
+                DestroyWebView();
+                _taskbarIcon.Dispose();
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("退出失败", ex);
+            }
+        }
+
+        /// <summary>外部(安装器 --quit)请求退出。</summary>
+        internal void ExitFromOutside() => ExitApplication();
 
         #endregion
 
@@ -690,7 +707,6 @@ namespace JiaoLongControl.Server
 
             WebViewHost.Children.Clear();
             _webView = null;
-            _loadingOverlay = null;
             _errorOverlay = null;
             _webViewDestroyed = true;
         }
@@ -702,16 +718,17 @@ namespace JiaoLongControl.Server
         }
 
         /// <summary>
-        /// 确保 WebView 就绪：已可用则直接返回 true；否则销毁未初始化成功的旧实例并触发重建，返回 false
-        /// （重建是异步的，调用方在本轮不应再假设 CoreWebView2 可用）。
+        /// 确保 WebView 就绪：已可用则直接返回 true；窗口可见但还没有实例时创建一个，返回 false
+        /// （创建与加载都是异步的，调用方在本轮不应再假设 CoreWebView2 可用）。
         /// </summary>
         private bool EnsureWebViewReady()
         {
             if (IsWebViewReady())
                 return true;
-            if (!_webViewDestroyed)
-                DestroyWebView();
-            CreateWebView();
+            // 有实例但 core 未就绪 = 初始化仍在途（Loaded 与托盘显示两条路径都会走到这里），
+            // 此时销毁重建只会把刚发起的加载打断, 让它自己跑完即可。
+            if (_webViewDestroyed)
+                CreateWebView();
             return false;
         }
 
@@ -740,6 +757,16 @@ namespace JiaoLongControl.Server
                 {
                     Close();
                 }
+                else if (message == "frontend-visible")
+                {
+                    // 前端从挂起恢复渲染的确认(见 App.vue visibilitychange)。这是"点击托盘 → 界面回来"
+                    // 唯一可测的真实信号, 也是判断离屏预热是否生效的依据。
+                    if (_resumeAt > 0)
+                    {
+                        Logger.Info($"界面显示: 点击托盘 → 前端确认恢复渲染 {App.StartupClock.ElapsedMilliseconds - _resumeAt}ms");
+                        _resumeAt = 0;
+                    }
+                }
                 else if (message.StartsWith("theme-changed:", StringComparison.Ordinal))
                 {
                     // 前端切换主题后同步窗口/WebView 底色
@@ -764,10 +791,6 @@ namespace JiaoLongControl.Server
             if (_webView != null)
             {
                 _webView.DefaultBackgroundColor = DrawingColorFrom(UiTheme.Background(_isLight));
-            }
-            if (_loadingOverlay != null)
-            {
-                _loadingOverlay.Background = new SolidColorBrush(UiTheme.Background(_isLight));
             }
             if (_errorOverlay != null)
             {
@@ -829,6 +852,7 @@ namespace JiaoLongControl.Server
                 var core = SafeCore(_webView);
                 if (core != null)
                 {
+                    _resumeAt = App.StartupClock.ElapsedMilliseconds;
                     core.Resume();
                     // 自启最小化场景：Suspend 时导航被挂起、必然超时并留下错误层；
                     // 恢复后主动重新导航，错误层由导航成功自动移除
@@ -849,11 +873,87 @@ namespace JiaoLongControl.Server
 
         #region 窗口控制
 
+        /// <summary>
+        /// 离屏预热: 把窗口显示到任何显示器都够不到的位置, 让 WebView2 与前端在后台真正跑起来。
+        /// 必须真的 Show() —— 窗口没显示时 HwndHost 没有 HWND, WebView2 根本初始化不了(见构造函数注释);
+        /// 同时 ShowInTaskbar=false / ShowActivated=false, 用户看不到也不会被抢焦点。
+        /// </summary>
+        internal void StartOffScreenPrewarm()
+        {
+            try
+            {
+                _offScreenPrewarm = true;
+                ShowInTaskbar = false;
+                ShowActivated = false;
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = OffScreenCoordinate;
+                Top = OffScreenCoordinate;
+                Show();
+                Logger.Info($"启动计时: 离屏预热窗口已显示 {App.StartupClock.ElapsedMilliseconds}ms");
+                _ = PrewarmWatchdogAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("离屏预热失败, 退回普通显示", ex);
+                _offScreenPrewarm = false;
+                ShowMainWindow();
+            }
+        }
+
+        /// <summary>
+        /// 摆回主屏居中。WindowStartupLocation=CenterScreen 只在首次 Show 生效,
+        /// 被离屏预热用过之后必须自己算, 否则窗口会停在 -32000。
+        /// </summary>
+        private void MoveToCenteredPosition()
+        {
+            var wa = SystemParameters.WorkArea;
+            Left = Math.Max(wa.Left, wa.Left + (wa.Width - Width) / 2);
+            Top = Math.Max(wa.Top, wa.Top + (wa.Height - Height) / 2);
+        }
+
+        /// <summary>预热收尾: 界面已就绪, 藏回托盘并挂起(释放 CPU/GPU, 但保留 DOM 与页面状态)。</summary>
+        private async Task FinishPrewarmAsync()
+        {
+            if (!_offScreenPrewarm || _prewarmed || _isShuttingDown)
+                return;
+            _prewarmed = true;
+            try
+            {
+                // 再等一拍: 页面 mount 之后还有一次布局与首次取数, 提前挂起会留下一张半成品
+                await Task.Delay(600);
+                if (!_offScreenPrewarm || _isShuttingDown)
+                    return; // 期间用户已经点开 → 不要藏
+                Hide();
+                await SuspendWebViewAsync();
+                Logger.Info($"启动计时: 离屏预热完成并已挂起 {App.StartupClock.ElapsedMilliseconds}ms");
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"离屏预热收尾失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>预热兜底: 页面始终没加载成功时也要收回托盘, 否则它会一直占着屏幕外的渲染资源。</summary>
+        private async Task PrewarmWatchdogAsync()
+        {
+            await Task.Delay(TimeSpan.FromSeconds(20));
+            if (!_offScreenPrewarm || _prewarmed || _isShuttingDown)
+                return;
+            Logger.Warn("离屏预热超时未完成, 直接收回托盘");
+            await FinishPrewarmAsync();
+        }
+
         private void ShowMainWindow()
         {
             // 必须先显示窗口，再处理 WebView 的恢复/重建。
-            // --boot 隐藏启动时 App.OnStartup 不会 Show 本窗口；若在显示前调用 EnsureWebViewReady 触发重建，
-            // 隐藏状态下 WebView2 初始化会失败并返回 false，随后 Show 出来就是白屏。
+            // 自启隐藏启动时窗口是在屏幕外预热好的, 显示前先把位置挪回主屏居中。
+            if (_offScreenPrewarm)
+            {
+                _offScreenPrewarm = false; // 预热收尾任务看到它变 false 就会放弃隐藏
+                MoveToCenteredPosition();
+                ShowInTaskbar = true;
+            }
+
             Show();
             WindowState = WindowState.Normal;
             ShowInTaskbar = true;

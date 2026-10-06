@@ -63,14 +63,56 @@ const hysteresisHint = computed(() => {
   return '最不易察觉转速变化，但风扇对温度的反应也最迟钝'
 })
 
-function pick(field: 'TempAttackS' | 'TempReleaseS' | 'TempHysteresisC', value: number) {
+function pick(
+  field: 'TempAttackS' | 'TempReleaseS' | 'TempHysteresisC' | 'NoiseTolerance',
+  value: number,
+) {
   if (!configStore.config || configStore.config.Fan[field] === value) return
   configStore.config.Fan[field] = value
   configStore.debouncedSave()
 }
+
+/**
+ * 噪音忍耐度三档。它同时移动三件事: 曲线整体缩放、不灵敏带宽度、安全下限阈值 ——
+ * 只挪其中一个无效(离线重放: 单挪不灵敏带几乎不改变响度, 只改变写入次数)。
+ * 档位优先于上面三个手动旋钮: 选了档位后它们随之联动, 因此这里不重复暴露数值。
+ */
+const noiseOptions: Array<{ value: number; label: string; hint: string }> = [
+  { value: 0, label: '安静', hint: '转速整体更低、变化更少，温度会略高一些' },
+  { value: 1, label: '均衡', hint: '推荐。与出厂行为一致，兼顾噪音与温度' },
+  { value: 2, label: '强冷', hint: '转速更高、反应更快，温度更低但更吵' },
+]
+
+const currentNoise = computed(() => configStore.config?.Fan.NoiseTolerance ?? 1)
+const noiseHint = computed(
+  () => noiseOptions.find((o) => o.value === currentNoise.value)?.hint ?? '',
+)
+
+function pickNoise(value: number) {
+  pick('NoiseTolerance', value)
+}
 </script>
 
 <template>
+  <setting-card-component
+    title="噪音忍耐度"
+    :description="noiseHint + '。这一档会同时调整转速高低、调整频率与高温保护线。'"
+  >
+    <template #extra>
+      <div class="seg-group">
+        <button
+          v-for="opt in noiseOptions"
+          :key="opt.value"
+          class="seg-opt px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer"
+          :class="currentNoise === opt.value ? 'seg-selected' : 'text-muted hover:text-ink'"
+          @click="pickNoise(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
+    </template>
+  </setting-card-component>
+
   <setting-card-component
     title="风扇跟随温度的速度"
     :description="attackHint + '。温度上升时，风扇多快开始加速。'"

@@ -14,6 +14,9 @@ export const POLL_INTERVAL_FAN_SPEED = 2000
 /** 应用内曲线服务（AutoFanControl）运行状态轮询间隔 (ms)：比转速慢一档 */
 export const POLL_INTERVAL_SMART_FAN = 5000
 
+/** 风扇曲线页遥测环形缓冲：2s × 300 = 10 分钟窗口，全局采样切页不停。 */
+export const TELEMETRY_CAP = 300
+
 /** 首页温度历史：全局持续采样，切页不丢。2s × 60 = 120s 窗口 */
 export const TEMP_HISTORY_INTERVAL_MS = 2000
 /** 2 秒采样保留 1 小时，概览页可切换 2 分钟 / 10 分钟 / 1 小时。 */

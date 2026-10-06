@@ -91,28 +91,40 @@
   display: none;
 }
 
-/* Arco Slider: 单一冷青强调, 无渐变无 glow */
+/* Arco Slider: 单一冷青强调, 无渐变无 glow。
+ * 轨道压到 5px 视觉高度, 但圆点必须仍然垂直居中对齐:
+ * Arco 的 .arco-slider-track 高度 12px(可点区), 轨道本体是 ::before(2px);
+ * 圆点 .arco-slider-btn 是 12px 方块 top:0 + translateX(-50%) 定位在圆心线上。
+ * 此前在这里把 track 改成 5px 且类名误写为 .arco-slider-button(Arco 实际是
+ * .arco-slider-btn, 该规则从未生效), 于是 12px 圆点按 5px 轨道定位, 圆心上浮
+ * 3.5px —— 拖动条与圆点错位(用户报告)。现在: track 恢复 12px 命中区, 视觉
+ * 轨道交给 ::before, 圆点保持 Arco 原生几何, 天然对齐。 */
 .arco-slider-bar {
   background: var(--accent) !important;
-  height: 5px !important;
+  height: 4px !important;
   border-radius: 99px;
 }
 
 .arco-slider-track {
-  height: 5px !important;
+  height: 12px !important;
+}
+
+.arco-slider-track::before {
+  height: 4px !important;
   border-radius: 99px;
+  background-color: var(--hair-strong) !important;
 }
 
-html:not([data-theme='light']) .arco-slider-track,
-html[data-theme='dark'] .arco-slider-track {
-  background-color: rgba(255, 255, 255, 0.04) !important;
-}
-
-.arco-slider-button {
-  background-color: #ffffff !important;
-  border: 2.5px solid var(--accent) !important;
+.arco-slider-btn {
   width: 13px !important;
   height: 13px !important;
+}
+
+.arco-slider-btn::after {
+  width: 13px !important;
+  height: 13px !important;
+  background: #ffffff !important;
+  border: 2.5px solid var(--accent) !important;
   box-shadow: none !important;
 }
 
@@ -328,13 +340,4 @@ html[data-theme='dark'] .arco-slider-track {
   border: 1px solid var(--hair-strong) !important;
   background: transparent !important;
   color: var(--muted) !important;
-}
-
-.arco-slider-bar {
-  background: var(--accent) !important;
-}
-
-.arco-slider-button {
-  border-color: var(--accent) !important;
-  box-shadow: none !important;
 }

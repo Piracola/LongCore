@@ -241,6 +241,15 @@ export const useModeStore = defineStore('performanceMode', {
     applyHotkeyMirror(modeByte: number): void {
       const fw = toFirmwareMode(modeByte as SystemPerMode)
       if (!fw) return // 未知档位：热键路径显式拒绝（HotkeyController.cs:145 同款判定）
+
+      // 在途切换期间不采信事件镜像（2026-10-06 修）：
+      // 我们自己的写入也会让固件回抛事件（写命令 8 抛目标档；从自定义切出时，关命令 23
+      // 会先抛一次"退回游戏模式"的中间态）。采信那个中间态，就把用户刚点的档位当场改写成
+      // 游戏模式 —— 紧接着的写后回读看到的正是这个假中间态，于是"首次从自定义切出"必失败。
+      // 真伪由 select() 的写后独立回读收口：在途期间固件若真的换了档，紧随其后的那次
+      // 回读会读到它，不会因为丢弃事件而丢失真相。
+      if (this.syncing) return
+
       this.observedFirmware = fw
       this.customOverride = false
       this.observedState = 'ok'

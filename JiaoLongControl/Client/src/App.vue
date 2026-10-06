@@ -4,12 +4,14 @@ import { useConfigStore } from '@/stores/config'
 import { useModeStore } from '@/stores/mode'
 import { useSystemInfoStore } from '@/stores/systemInfo'
 import { useFanStore } from '@/stores/fan'
+import { useTelemetryStore } from '@/stores/telemetry'
 import { applyTheme } from '@/theme/theme'
 
 const systemInfoStore = useSystemInfoStore()
 const configStore = useConfigStore()
 const modeStore = useModeStore()
 const fanStore = useFanStore()
+const telemetryStore = useTelemetryStore()
 
 /** 冷启动读当前固件档位/自定义覆盖，点亮胶囊。桥未就绪时短重试。 */
 async function hydratePerformanceMode() {
@@ -25,14 +27,26 @@ async function hydratePerformanceMode() {
 
 let stopPolling: () => void
 let stopFanPolling: () => void
+let stopTelemetry: () => void
 
 function hideAppLoader() {
   const loader = document.getElementById('app-loader')
   if (loader) {
     loader.classList.add('fade-out')
+    // 0.16s 淡出(见 index.html)。原来等 0.45s 才移除, 遮罩白占着屏幕多挡一帧
     setTimeout(() => {
       loader.remove()
-    }, 450)
+    }, 200)
+  }
+}
+
+/** 挂起恢复(重新可见)时回报宿主一次: "点击托盘 → 界面恢复渲染"的可测信号。 */
+function onVisibilityChange() {
+  if (document.hidden) return
+  try {
+    window.chrome?.webview?.postMessage('frontend-visible')
+  } catch {
+    /* 浏览器开发环境无 webview */
   }
 }
 
@@ -67,7 +81,10 @@ onMounted(() => {
   stopPolling = systemInfoStore.startPolling()
   // 风扇转速 + 曲线服务状态常驻：与温度历史同理，切页不再让读数假死
   stopFanPolling = fanStore.startMonitoring()
+  // 遥测环形缓冲常驻采样：风扇曲线页的历史图跨页面累积（同温度历史模式）
+  stopTelemetry = telemetryStore.startRecording()
   window.chrome?.webview?.addEventListener('message', onWebViewMessage)
+  document.addEventListener('visibilitychange', onVisibilityChange)
   // 主动拉取一次配置以尽早应用主题(fetchPromise 去重, 不会与页面内请求重复)
   void configStore.fetchConfig()
   void hydratePerformanceMode()
@@ -83,7 +100,11 @@ onUnmounted(() => {
   if (stopFanPolling) {
     stopFanPolling()
   }
+  if (stopTelemetry) {
+    stopTelemetry()
+  }
   window.chrome?.webview?.removeEventListener('message', onWebViewMessage)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 </script>
 

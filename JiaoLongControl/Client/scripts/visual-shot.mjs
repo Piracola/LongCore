@@ -79,7 +79,6 @@ const mockConfig = {
   Log: {
     Level: 'INFO',
     CommandDebug: false,
-    FlushIntervalS: 2,
   },
   Smu: {
     StapmLimit: 54,

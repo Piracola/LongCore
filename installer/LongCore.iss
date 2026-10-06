@@ -70,6 +70,10 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
     Flags: nowait postinstall skipifsilent runascurrentuser
 
 [Code]
+const
+    AppMutexName = 'LongCore_Main_Instance';
+    DriverService = 'JiaoLongDriver64';
+
 // .NET 10 Desktop Runtime 检测: 共享框架版本表里存在 10.x 项即视为已安装
 function DotNet10Installed(): Boolean;
 var
@@ -97,4 +101,153 @@ begin
         RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}') or
         RegKeyExists(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}') or
         RegKeyExists(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}');
+end;
+
+// ============================================================
+// 安装前: 让旧实例优雅退出 + 确保内核驱动已卸载
+// ============================================================
+function RunAndWait(const FileName, Params: String): Integer;
+var
+    rc: Integer;
+begin
+    Result := -1;
+    if Exec(FileName, Params, '', SW_HIDE, ewWaitUntilTerminated, rc) then
+        Result := rc;
+end;
+
+// 用 sc query 的输出判断驱动是否仍在运行, 避免声明一堆服务 API
+function DriverServiceRunning(): Boolean;
+var
+    tmpFile: String;
+    lines: TArrayOfString;
+    i: Integer;
+begin
+    Result := False;
+    tmpFile := ExpandConstant('{tmp}\drv-state.txt');
+    DeleteFile(tmpFile);
+    RunAndWait(ExpandConstant('{cmd}'), '/c sc query ' + DriverService + ' > "' + tmpFile + '" 2>&1');
+    if LoadStringsFromFile(tmpFile, lines) then
+        for i := 0 to GetArrayLength(lines) - 1 do
+            if Pos('RUNNING', Uppercase(lines[i])) > 0 then
+                Result := True;
+end;
+
+// Inno 生命周期: 文件复制之前
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+    i: Integer;
+    quitExe: String;
+begin
+    Result := '';
+
+    // 1) 请正在运行的实例优雅退出(走 EcGuard 恢复 + 驱动卸载), 绝不直接强杀
+    quitExe := ExpandConstant('{app}\{#MyAppExeName}');
+    if FileExists(quitExe) and CheckForMutexes(AppMutexName) then
+    begin
+        Log('LongCore 正在运行, 请求优雅退出(--quit)');
+        RunAndWait(quitExe, '--quit');
+        for i := 1 to 30 do
+        begin
+            if not CheckForMutexes(AppMutexName) then
+                break;
+            Sleep(500);
+        end;
+        if CheckForMutexes(AppMutexName) then
+        begin
+            if MsgBox('旧版本 LongCore 没有响应退出请求(可能已卡死)。' + #13#10 + #13#10 +
+                      '强制结束它并继续安装吗?' + #13#10 +
+                      '(若安装后程序无法启动, 请先重启电脑再重装)',
+                      mbConfirmation, MB_YESNO) = IDYES then
+            begin
+                RunAndWait(ExpandConstant('{cmd}'), '/c taskkill /IM {#MyAppExeName} /F');
+                Sleep(1500);
+            end;
+            if CheckForMutexes(AppMutexName) then
+            begin
+                Result := '旧版本 LongCore 仍在运行, 无法继续安装。' + #13#10 +
+                          '请在任务管理器里结束 LongCore.exe, 或重启电脑后重新运行安装程序。';
+                exit;
+            end;
+        end;
+    end;
+
+    // 2) 内核驱动仍在运行会锁住驱动文件, 也会让新版本卡在驱动初始化: 尝试停掉, 停不掉就要求重启
+    if DriverServiceRunning() then
+    begin
+        Log('驱动服务 ' + DriverService + ' 仍在运行, 尝试停止');
+        RunAndWait(ExpandConstant('{cmd}'), '/c sc stop ' + DriverService);
+        Sleep(2000);
+        if DriverServiceRunning() then
+        begin
+            Result := '内核驱动 ' + DriverService + ' 仍在运行且无法停止。' + #13#10 + #13#10 +
+                      '它通常是被上一次强制结束的 LongCore 留在了半挂起状态, 此时安装会锁住' + #13#10 +
+                      '驱动文件并装出残缺的目录(程序能启动但初始化失败)。' + #13#10 + #13#10 +
+                      '请重启电脑后再运行本安装程序。';
+            exit;
+        end;
+    end;
+end;
+
+// ============================================================
+// 安装后: 关键文件校验, 缺任何一个就回滚, 绝不留下"能启动但初始化失败"的残包
+// ============================================================
+function CriticalFile(Index: Integer): String;
+begin
+    case Index of
+        0: Result := 'LongCore.exe';
+        1: Result := 'LongCore.dll';
+        2: Result := 'Drivers\Blding\JiaoLongDriver64.dll';
+        3: Result := 'Drivers\Blding\JiaoLongDriver64.sys';
+        4: Result := 'WebRoot\index.html';
+        5: Result := 'Microsoft.Web.WebView2.Core.dll';
+    else
+        Result := '';
+    end;
+end;
+
+// 文件存在且非空(不能只用 FileExists: 0 字节的残文件同样会让程序起不来)
+function FileIsNonEmpty(const FileName: String): Boolean;
+var
+    fr: TFindRec;
+begin
+    Result := False;
+    if FindFirst(FileName, fr) then
+    begin
+        Result := (fr.SizeHigh > 0) or (fr.SizeLow > 0);
+        FindClose(fr);
+    end;
+end;
+
+function VerifyCriticalFiles(): String;
+var
+    i: Integer;
+    p: String;
+begin
+    Result := '';
+    for i := 0 to 5 do
+    begin
+        p := ExpandConstant('{app}\') + CriticalFile(i);
+        if (not FileExists(p)) or (not FileIsNonEmpty(p)) then
+            Result := Result + '    ' + CriticalFile(i) + #13#10;
+    end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+    missing: String;
+begin
+    if CurStep = ssPostInstall then
+    begin
+        missing := VerifyCriticalFiles();
+        if missing <> '' then
+        begin
+            MsgBox('安装不完整, 以下关键文件缺失或为空:' + #13#10 + #13#10 + missing + #13#10 +
+                   '安装程序将回滚本次安装。' + #13#10 +
+                   '常见原因: 安装时这些文件被其它进程占用。请重启电脑后重新安装。',
+                   mbCriticalError, MB_OK);
+            RaiseException('关键文件缺失, 回滚安装');
+        end
+        else
+            Log('关键文件校验通过');
+    end;
 end;

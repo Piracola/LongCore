@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using JiaoLongControl.Server.Core.Models;
 using JiaoLongControl.Server.Core.Utils;
 using JiaoLongControl.Server.Interop;
@@ -20,6 +21,12 @@ public class AutoFanControl : IDisposable
 
     /// <summary>上一次控制循环的时间戳(TickCount64), 用于把滤波时间常数换算成实际的采样间隔。</summary>
     private long _lastLoopTickMs;
+
+    /// <summary>
+    /// 上一拍的风扇配置指纹。变化 = 用户在曲线页/设置页改了控制律用到的东西,
+    /// 当拍就要按新配置重算一次(见 ProcessAndApplyFanSpeed 的 configChanged 分支)。
+    /// </summary>
+    private string _lastFanConfigFingerprint = string.Empty;
     private readonly ILog Logger = LogManager.GetLogger(typeof(AutoFanControl));
     private CancellationTokenSource? _cts;
     private Task? _controlTask;
@@ -41,6 +48,62 @@ public class AutoFanControl : IDisposable
     // 真实的温度爬升必须能立刻追上, 安全优先于安静; 单帧野值由跟踪器和不灵敏带负责挡。
     private const int MaxRampDownBytePerSec = 1;
 
+    // ── 噪音忍耐度三档 ────────────────────────────────────────────────
+    // 一个旋钮同时驱动三件事: 曲线缩放、不灵敏带、安全下限阈值。
+    // 只缩放曲线不够 —— 安全下限若不跟着动, 安静档会被下限顶回高转速, 档位形同虚设。
+    // 数值来自 research/tools/fan_replay.py 离线重放(中等负载, 6 seed 平均):
+    //   安静 32.1 dBA / 均衡 32.8 / 强冷 34.1; 90℃ 低档秒数 75 / 0 / 0。
+    // 下限是"绕过不灵敏带的硬地板", 只在高温段生效, 与曲线缩放是叠加关系。
+    private enum NoiseTier { Quiet, Balanced, Performance }
+
+    /// <summary>曲线整体缩放。安静档压低全程转速, 强冷档抬高。</summary>
+    private static float CurveScaleFor(NoiseTier t) => t switch
+    {
+        NoiseTier.Quiet => 0.85f,
+        NoiseTier.Performance => 1.12f,
+        _ => 1.0f,
+    };
+
+    /// <summary>不灵敏带宽度(℃)。安静档带更宽 → 写入次数从 14 降到 9, 转速更少变动。</summary>
+    private static float HysteresisFor(NoiseTier t) => t switch
+    {
+        NoiseTier.Quiet => 8f,
+        NoiseTier.Performance => 3f,
+        _ => 5f,
+    };
+
+    /// <summary>安全下限表(温度℃, 转速格)。绕过不灵敏带, 温度到此转速必不低于此值。</summary>
+    private static readonly (float TempC, int Byte)[] FloorTableQuiet =
+        { (92f, 48), (95f, 56) };
+    private static readonly (float TempC, int Byte)[] FloorTableBalanced =
+        { (88f, 45), (91f, 50), (94f, 56) };
+    private static readonly (float TempC, int Byte)[] FloorTablePerformance =
+        { (86f, 45), (89f, 50), (92f, 56) };
+
+    private static (float TempC, int Byte)[] FloorTableFor(NoiseTier t) => t switch
+    {
+        NoiseTier.Quiet => FloorTableQuiet,
+        NoiseTier.Performance => FloorTablePerformance,
+        _ => FloorTableBalanced,
+    };
+
+    // 退出滞回: 已生效的下限要解除, 需回落到「进入阈值 − 2℃」, 否则温度在阈值附近
+    // 抖动会让下限反复进出, 那正是"转速一直在变"最难忍的形态。
+    private const float FloorReleaseC = 2f;
+
+    // ── 偏离存活期 ────────────────────────────────────────────────────
+    // 转速持续高出当前曲线要求的幅度与时长上限 —— 超过就允许进入降速段, 不再干等
+    // "比锚点低 FallGateC"。来历与口径见 InSustainedExcess 的注释:
+    // 尖峰后温度平住时, 温度域的两个门槛都永远不满足, 高转速会永久停在那里。
+    private const int ExcessReleaseBytes = 8;          // 8 格 = 800 RPM
+    private const int ExcessReleaseSustainMs = 60_000; // 持续 60 秒
+
+    private static NoiseTier CurrentTier()
+    {
+        var v = Bridge.Instance.Config.Fan.NoiseTolerance;
+        return v switch { <= 0 => NoiseTier.Quiet, >= 2 => NoiseTier.Performance, _ => NoiseTier.Balanced };
+    }
+
     // ── 温度跟踪参数 ─────────────────────────────────────────────────
     // 一次控制循环里同时维护两个跟踪器(见 UpdateTrackers), 都是双向一阶低通, 区别只在时间常数:
     //   Attack  —— 时间常数小(默认 5 秒), 用于**升速判定并直接给出升速目标**;
@@ -55,9 +118,11 @@ public class AutoFanControl : IDisposable
     // 方向不对称正是"进入高转速后即使温度下降也保持更久"的直接实现 —— 升速只需
     // 确认 3℃ 的真实升温, 降速却要等温度从上次决策点回落 8℃。一个旋钮仍然只讲一件事
     // ("多大变化才算变化"), 用户不必理解两个数。
-    private float RiseGateC => Math.Max(2f, MathF.Round(HysteresisC * 0.6f, MidpointRounding.AwayFromZero));
-    private float FallGateC => Math.Max(RiseGateC + 1f, MathF.Round(HysteresisC * 1.6f, MidpointRounding.AwayFromZero));
-    private float HysteresisC => Math.Clamp(Bridge.Instance.Config.Fan.TempHysteresisC, 0, 15);
+    // 门槛按当前档位取值: 档位表里的 HysteresisFor 覆盖配置里的 TempHysteresisC,
+    // 因为噪音档位必须同时移动"带宽度"和"下限阈值"才能真的改变噪音, 单独挪一个无效。
+    // 用户若在设置页手动改过 TempHysteresisC, 仍以档位为准 —— 档位是更上层的意图表达。
+    private float RiseGateC => Math.Max(2f, MathF.Round(HysteresisFor(CurrentTier()) * 0.6f, MidpointRounding.AwayFromZero));
+    private float FallGateC => Math.Max(RiseGateC + 1f, MathF.Round(HysteresisFor(CurrentTier()) * 1.6f, MidpointRounding.AwayFromZero));
 
     private class FanState
     {
@@ -78,6 +143,19 @@ public class AutoFanControl : IDisposable
         /// 它不会累积出一个与硬件相反的请求。
         /// </summary>
         public int ReleaseRequestByte { get; set; } = -1;
+
+        /// <summary>
+        /// 是否已进入"降速段"。降速门槛(FallGateC)只负责判定"可以开始降了",
+        /// 一旦进入, 就每秒退一格直到追上曲线 —— 见 ProcessAndApplyFanSpeed。
+        /// 没有这个标志时, 每一格都要重新等一次门槛(锚点随每次写出刷新),
+        /// 实际退化成"每 FallGateC 度才降 100 RPM"。
+        /// </summary>
+        public bool Descending { get; set; }
+
+        /// <summary>
+        /// "转速持续高出曲线"的起算时刻(TickCount64; 0 = 当前没有超限)。见 InSustainedExcess。
+        /// </summary>
+        public long ExcessSinceMs { get; set; }
     }
     
     private readonly Dictionary<FanType, FanState> _states = new()
@@ -191,6 +269,13 @@ public class AutoFanControl : IDisposable
                     _lastLoopTickMs = nowMs;
 
                     var fanCfg = Bridge.Instance.Config.Fan;
+                    // 配置热改(曲线页拖动即存盘)必须当拍生效 —— 见 ProcessAndApplyFanSpeed 的
+                    // configChanged 分支。指纹只覆盖控制律真正用到的项, 改日志级别之类不会触发。
+                    var fingerprint = FanConfigFingerprint();
+                    var configChanged = !string.Equals(
+                        fingerprint, _lastFanConfigFingerprint, StringComparison.Ordinal);
+                    _lastFanConfigFingerprint = fingerprint;
+
                     float rawCpuTemp = Convert.ToSingle(Bridge.Instance.CPU.GetCPUThermometer().Data);
                     var (cpuRelease, cpuAttack) = UpdateTrackers(FanType.CPU, rawCpuTemp, elapsedS);
 
@@ -210,13 +295,13 @@ public class AutoFanControl : IDisposable
                         // 风扇在同一温度锚点上做同一次判断, 不灵敏带不会各走各的。
                         if (cpuRelease >= gpuRelease)
                         {
-                            ProcessAndApplyFanSpeed(FanType.CPU, cpuRelease, cpuAttack);
-                            ProcessAndApplyFanSpeed(FanType.GPU, cpuRelease, cpuAttack);
+                            ProcessAndApplyFanSpeed(FanType.CPU, cpuRelease, cpuAttack, configChanged);
+                            ProcessAndApplyFanSpeed(FanType.GPU, cpuRelease, cpuAttack, configChanged);
                         }
                         else
                         {
-                            ProcessAndApplyFanSpeed(FanType.CPU, gpuRelease, gpuAttack);
-                            ProcessAndApplyFanSpeed(FanType.GPU, gpuRelease, gpuAttack);
+                            ProcessAndApplyFanSpeed(FanType.CPU, gpuRelease, gpuAttack, configChanged);
+                            ProcessAndApplyFanSpeed(FanType.GPU, gpuRelease, gpuAttack, configChanged);
                         }
                     }
                     else
@@ -226,8 +311,8 @@ public class AutoFanControl : IDisposable
                         // 3400 RPM, 而它按自己的曲线只需 1500~1800 RPM。那是纯软件引入、
                         // 零散热收益的噪音源, 两个不同转速叠加出的拍频也正是
                         // "噪音一直在变"里最难忍的那部分。
-                        ProcessAndApplyFanSpeed(FanType.CPU, cpuRelease, cpuAttack);
-                        ProcessAndApplyFanSpeed(FanType.GPU, gpuRelease, gpuAttack);
+                        ProcessAndApplyFanSpeed(FanType.CPU, cpuRelease, cpuAttack, configChanged);
+                        ProcessAndApplyFanSpeed(FanType.GPU, gpuRelease, gpuAttack, configChanged);
                     }
 
                     Task.Delay(IntervalMs, token).Wait(token);
@@ -302,13 +387,15 @@ public class AutoFanControl : IDisposable
     /// 规则(顺序即优先级):
     ///   1) 升速: 快跟踪值比锚点高出 RiseGateC 就写, 目标取快跟踪值对应的曲线点。
     ///      升速不受斜坡限制 —— 真升温必须追得上, 安全优先于安静。
-    ///   2) 降速: 降温跟踪值比锚点低 FallGateC 才写, 且只走"请求值"(每秒最多退一格),
-    ///      并且只在请求值低于硬件实际值时才执行。绝不用原始目标直接写硬件: 挂起期间
-    ///      缓存的目标会与硬件实际值反向, 一恢复调整就会把转速写反(离线重放抓到过)。
-    ///   3) 两个门槛都不满足时不写硬件, 并把请求值收敛到硬件实际值。
+    ///   2) 降速: 降温跟踪值比锚点低 FallGateC 才**进入降速段**; 进入之后每秒最多退一格
+    ///      (ReleaseRequestByte), 一直退到当前温度对应的曲线目标为止。
+    ///      只走请求值、且只在请求值低于硬件实际值时才写 —— 绝不用原始目标直接写硬件:
+    ///      挂起期间缓存的目标会与硬件实际值反向, 一恢复调整就会把转速写反(离线重放抓到过)。
+    ///   3) 两个门槛都不满足且不在降速段时不写硬件, 并把请求值收敛到硬件实际值。
     /// 不灵敏带直接以温度为锚点, 因此与曲线陡峭程度无关(旧实现在转速域设死区, 曲线一改就失效)。
     /// </summary>
-    private void ProcessAndApplyFanSpeed(FanType type, float releaseTemp, float attackTemp)
+    private void ProcessAndApplyFanSpeed(
+        FanType type, float releaseTemp, float attackTemp, bool configChanged)
     {
         FanState state;
         lock (_states) { state = _states[type]; }
@@ -317,39 +404,74 @@ public class AutoFanControl : IDisposable
         if (state.LastAppliedByte < 0)
         {
             var initial = Math.Clamp(CalculateFanSpeed(releaseTemp, type), MIN_FAN_BYTE, MAX_FAN_BYTE);
-            ApplyFanSpeed(type, initial, releaseTemp);
+            ApplyFanSpeed(type, initial, releaseTemp, releaseTemp);
             return;
         }
 
-        // 每秒最多退一格(100 RPM): 降温方向的"慢"由跟踪器负责, 这里只补一道限速,
-        // 保证温度骤降也不会把转速一次砍下去。只在请求值仍高于曲线目标时才退 ——
-        // 请求值永远追赶目标, 不因挂起而与目标脱节。
         var releaseTarget = CalculateFanSpeed(releaseTemp, type);
-        if (state.ReleaseRequestByte > releaseTarget)
-        {
-            state.ReleaseRequestByte = Math.Max(
-                releaseTarget,
-                state.ReleaseRequestByte - MaxRampDownBytePerSec);
-        }
-
-        // 不对称双闩锁, 锚点是"上次写硬件那一刻的降温跟踪值":
-        //   升速 —— 只要快跟踪值比锚点高出一个升速门槛就走, 目标**直接取快跟踪值**。
-        //          这一条是保证"风扇至少不低于曲线要求"的关键: 转速由慢跟踪值主导会让
-        //          风扇长期欠冷(离线重放实测进入负载起初 19 分钟转速比曲线要求低 400~900 RPM)。
-        //   降速 —— 要等降温跟踪值比锚点低一个(更大的)降速门槛, 再经每秒一格的请求值执行。
         var anchor = state.LastDecisionTemp;
         var newByte = state.LastAppliedByte;
+        // 本拍查曲线用的是哪个温度。降速段用慢跟踪值, 升速段用快跟踪值 ——
+        // 两者在升温过程中能差好几度, 日志必须把它写出来, 否则"日志温度 80℃ 却给了 4500 RPM"
+        // 看上去就是"曲线不生效"(实际是快跟踪值已经到 86℃)。
+        var curveTemp = releaseTemp;
 
-        if (attackTemp - anchor >= RiseGateC)
+        if (configChanged)
         {
+            // 配置刚被改过(曲线页拖动即存盘): **当拍**就按新配置重算一次, 不等两个门槛。
+            // 为什么必须这样: 温度平稳时升速门槛要看"升 3℃"、降速门槛要看"降 8℃", 两个都不满足,
+            // 旧实现可以几分钟不写一次硬件 —— 用户在曲线页把点拖下去或拖上来, 看到的是"毫无反应"。
+            // 这是"曲线设定不生效"里最直接的一条(2026-10-06 日志: 20:39:44~20:42:52 三分钟里
+            // 用户正在编辑曲线, 而控制循环一次都没写过硬件)。
+            // 目标取**快**跟踪值对应的曲线点, 与升速分支同一口径 —— 不用滞后的慢跟踪值把转速
+            // 压过头。写不写仍由下面"值真的变了才写"统一判定, 安全下限也照旧叠加。
+            newByte = Math.Clamp(CalculateFanSpeed(attackTemp, type), MIN_FAN_BYTE, MAX_FAN_BYTE);
+            curveTemp = attackTemp;
+            state.Descending = false;
+        }
+        else if (attackTemp - anchor >= RiseGateC)
+        {
+            // 升速: 目标**直接取快跟踪值**。这一条是保证"风扇至少不低于曲线要求"的关键:
+            // 转速由慢跟踪值主导会让风扇长期欠冷(离线重放实测进入负载起初 19 分钟转速比
+            // 曲线要求低 400~900 RPM)。升速一旦发生, 降速段立刻结束。
             newByte = Math.Max(
                 Math.Clamp(CalculateFanSpeed(attackTemp, type), MIN_FAN_BYTE, MAX_FAN_BYTE),
                 state.LastAppliedByte);
+            curveTemp = attackTemp;
+            state.Descending = false;
         }
-        else if (anchor - releaseTemp >= FallGateC && state.ReleaseRequestByte < state.LastAppliedByte)
+        else
         {
-            newByte = Math.Max(state.ReleaseRequestByte, MIN_FAN_BYTE);
+            // 降速段的**入口**有两条判据, 满足其一即可(所以"进入高转速后即使温度下降也保持更久"):
+            //   a) 慢跟踪值比上次决策点低一个门槛 —— 原有的温度域不灵敏带;
+            //   b) **偏离存活期**: 转速持续高出当前曲线要求 ExcessReleaseBytes 以上达
+            //      ExcessReleaseSustainMs —— 见下面注释, 这是 2026-10-06 补的那条。
+            if (anchor - releaseTemp >= FallGateC || InSustainedExcess(state, releaseTarget))
+                state.Descending = true;
+
+            if (state.Descending)
+            {
+                // 降速段的**执行**: 从"不高于硬件实际值"起步, 每秒最多退一格, 且不低于
+                // 当前温度对应的曲线目标。这里不能要求本拍也满足降温门槛 —— 每次写出都会
+                // 刷新锚点(ApplyFanSpeed), 那样每退一格都要再等一个 FallGateC 的温度,
+                // 实测退化成"每 8℃ 才降 100 RPM"(2026-10-06 日志: 86.0℃/5100 → 77.8℃/5000
+                // → 69.8℃/4900 → 61.8℃/4800), 用户看到的就是"曲线设了也不生效"。
+                var from = Math.Min(state.ReleaseRequestByte, state.LastAppliedByte);
+                state.ReleaseRequestByte = Math.Max(
+                    releaseTarget,
+                    Math.Max(from - MaxRampDownBytePerSec, MIN_FAN_BYTE));
+
+                // 只在请求值真的低于硬件实际值时才写: 温度回升时请求值会被曲线目标顶高,
+                // 那就什么都不做, 绝不拿一个已经反向的请求值去写硬件。
+                if (state.ReleaseRequestByte < state.LastAppliedByte)
+                    newByte = state.ReleaseRequestByte;
+            }
         }
+
+        // 安全下限: 绕过不灵敏带的硬地板。上面的闩锁负责"平时不动", 这里负责"到了就必须动"。
+        // 用快跟踪值判断 —— 它追得上升温; 若用慢跟踪值, 下限会比真实温度晚一拍。
+        // 退出要低 2℃: 否则温度在阈值上下抖动时下限反复进出, 转速跟着反复跳。
+        newByte = ApplySafetyFloor(type, attackTemp, newByte);
 
         if (newByte == state.LastAppliedByte)
         {
@@ -359,22 +481,49 @@ public class AutoFanControl : IDisposable
             return;
         }
 
-        ApplyFanSpeed(type, newByte, releaseTemp);
+        ApplyFanSpeed(type, newByte, releaseTemp, curveTemp);
     }
 
-    /// <summary>唯一的硬件写入点。写入成功后刷新决策温度锚点, 不灵敏带因此重新起算。</summary>
-    private void ApplyFanSpeed(FanType type, int speedByte, float decisionTemp)
+    /// <summary>安全下限。温度到阈值就锁住最低转速, 不受不灵敏带与降速限速约束。</summary>
+    private int ApplySafetyFloor(FanType type, float attackTemp, int newByte)
+    {
+        var table = FloorTableFor(CurrentTier());
+        var floor = 0;
+        int applied;
+        lock (_states) { applied = _states[type].LastAppliedByte; }
+
+        // 进入: 取所有已越过阈值里最高的一档
+        foreach (var (tempC, b) in table)
+            if (attackTemp >= tempC && b > floor) floor = b;
+
+        // 保持: 已在生效的下限, 要回落到「阈值 − 2℃」以下才解除, 避免阈值附近反复进出
+        foreach (var (tempC, b) in table)
+            if (b <= applied && attackTemp >= tempC - FloorReleaseC && b > floor) floor = b;
+
+        return floor > newByte ? Math.Min(floor, MAX_FAN_BYTE) : newByte;
+    }
+
+    /// <summary>
+    /// 唯一的硬件写入点。写入成功后刷新决策温度锚点, 不灵敏带因此重新起算。
+    /// </summary>
+    /// <param name="decisionTemp">决策锚点(慢跟踪值) —— 也是日志里的 "Temp" 字段, 回放工具按它读。</param>
+    /// <param name="curveTemp">本拍查曲线实际使用的温度。与锚点不同时(升速段)附在日志尾部,
+    /// 让"日志温度 vs 实际给转"可核对 —— 缺了这一段, 升速段看上去就像曲线没生效。</param>
+    private void ApplyFanSpeed(FanType type, int speedByte, float decisionTemp, float curveTemp)
     {
         var rpm = speedByte * RPM_UNIT_DIVISOR;
+        var curveNote = Math.Abs(curveTemp - decisionTemp) >= 0.5f
+            ? $" | 查表温度: {curveTemp:F1}°C"
+            : "";
         if (type == FanType.CPU)
         {
             Bridge.Instance.Fan.CpuFanSetSpeed((byte)speedByte);
-            Logger.Info($"CPU Temp: {decisionTemp:F1}°C | CPU Fan Applied: {rpm} RPM");
+            Logger.Info($"CPU Temp: {decisionTemp:F1}°C | CPU Fan Applied: {rpm} RPM{curveNote}");
         }
         else
         {
             Bridge.Instance.Fan.GpuFanSetSpeed((byte)speedByte);
-            Logger.Info($"GPU Temp: {decisionTemp:F1}°C | GPU Fan Applied: {rpm} RPM");
+            Logger.Info($"GPU Temp: {decisionTemp:F1}°C | GPU Fan Applied: {rpm} RPM{curveNote}");
         }
 
         lock (_states)
@@ -385,6 +534,27 @@ public class AutoFanControl : IDisposable
             state.ReleaseRequestByte = speedByte;
         }
     }
+    /// <summary>
+    /// 风扇配置指纹 —— 只覆盖控制律真正读到的项(两条曲线 / 噪音档 / 合并开关 / 两个时间常数)。
+    /// 不用求稳定哈希: 它只用于"有没有变"的一次相等比较, 拼字符串最直白、也最难写错。
+    /// 改日志级别、GPU 参数之类的保存不会改动这个指纹, 因此不会引起多余的风扇写入。
+    /// </summary>
+    private static string FanConfigFingerprint()
+    {
+        var fan = Bridge.Instance.Config.Fan;
+        var sb = new StringBuilder();
+        sb.Append(fan.NoiseTolerance).Append('|')
+            .Append(fan.FanCurveMerge ? '1' : '0').Append('|')
+            .Append(fan.TempAttackS).Append('|')
+            .Append(fan.TempReleaseS).Append('|');
+        foreach (var p in fan.CpuFanCurve ?? new List<FanPoint>())
+            sb.Append(p.temp).Append(':').Append(p.speed).Append(',');
+        sb.Append(';');
+        foreach (var p in fan.GpuFanCurve ?? new List<FanPoint>())
+            sb.Append(p.temp).Append(':').Append(p.speed).Append(',');
+        return sb.ToString();
+    }
+
     /// <summary>按温度查曲线换成转速格数。曲线缺失时退回最低转速而不是 25 格(2500)。</summary>
     private static int CalculateFanSpeed(float currentTemp, FanType type)
     {
@@ -413,14 +583,56 @@ public class AutoFanControl : IDisposable
 
                 if (currentTemp >= p1.temp && currentTemp <= p2.temp)
                 {
+                    // 手改 config.yaml 可能造出重复或倒序的温度点: 分母为 0 会算出 NaN, 而
+                    // (int)Math.Round(NaN) 是 ECMA 未定义行为(x64 上落到 int.MinValue → 被 Clamp
+                    // 成最低转速 1500, 风扇会毫无理由地掉下来)。跳过退化段即可。
+                    if (p2.temp <= p1.temp) continue;
                     double ratio = (currentTemp - p1.temp) / (double)(p2.temp - p1.temp);
                     targetRpm = p1.speed + (p2.speed - p1.speed) * ratio;
                     break;
                 }
             }
         }
-        int targetByte = (int)Math.Round(targetRpm / RPM_UNIT_DIVISOR);
+        // 噪音档位在这里生效: 缩放曲线输出。安静档把全程转速压低约 15%, 强冷档抬高 12%。
+        // 放在查表之后再缩放(而不是把温度偏移后查表), 因为曲线是分段线性的, 温度偏移会
+        // 让"膝盖"的位置跟着移动, 反而破坏原本标定过的形状。
+        var scaledRpm = targetRpm * CurveScaleFor(CurrentTier());
+        int targetByte = (int)Math.Round(scaledRpm / RPM_UNIT_DIVISOR);
         return Math.Clamp(targetByte, MIN_FAN_BYTE, MAX_FAN_BYTE);
+    }
+
+    /// <summary>
+    /// 偏离存活期: 转速是否已经"长期高于当前曲线要求"。是则允许进入降速段。
+    ///
+    /// 为什么需要它(2026-10-06): 升速目标取**快**跟踪值, 降速锚点却是**慢**跟踪值。
+    /// 10 秒尖峰能让快跟踪值冲到 93.6℃ → 5600 RPM, 而慢跟踪值只到 ~87℃; 温度回到 86℃ 平住
+    /// 之后 anchor 也停在 86℃, "比锚点低 FallGateC(8℃)"永远不成立 —— 风扇会**永久**高出曲线
+    /// 1200 RPM, 模型里 900 秒一次硬件都不写。那正是用户说的"在设定温度区间给不出对应转速"。
+    /// 先试过的"把当前转速反查成温度再比门槛"方案, 在 95℃ 尖峰下只有 7.6℃ < 8℃, 盖不住这个
+    /// 最常见的尖峰高度, 故改成"偏离幅度 + 持续时间"这一条。
+    ///
+    /// 口径说明(免得被 AGENTS.md 那条"不要在转速域设死区"误伤): 这不是死区, 不做抖动抑制 ——
+    /// 抖动由温度域不灵敏带负责; 这里量的是"风扇比曲线要求吵多少"(以 RPM 计, 因为用户听到的
+    /// 就是 RPM 差), 且要求**持续**超限, 瞬时尖峰不受影响。它只可能让转速更早降下来, 不可能
+    /// 让它升上去, 所以不引入新的过温风险; 过温兜底仍是安全下限表 + 98℃/10s 看门狗。
+    /// 调参口径: 8 格 = 800 RPM、持续 60 秒。想更贴近曲线就调小, 想更"保持"就调大。
+    /// </summary>
+    private static bool InSustainedExcess(FanState state, int releaseTarget)
+    {
+        if (state.LastAppliedByte - releaseTarget < ExcessReleaseBytes)
+        {
+            state.ExcessSinceMs = 0;
+            return false;
+        }
+
+        var nowMs = Environment.TickCount64;
+        if (state.ExcessSinceMs == 0)
+        {
+            state.ExcessSinceMs = nowMs;
+            return false;
+        }
+
+        return nowMs - state.ExcessSinceMs >= ExcessReleaseSustainMs;
     }
 
     public void Dispose()
