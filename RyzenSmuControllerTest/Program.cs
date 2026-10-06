@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using JiaoLongControl.Server.Core.Controllers;
 using JiaoLongControl.Server.Core.Utils;
 
@@ -344,9 +344,18 @@ static void DumpCpuVidFromMsr()
                     var output = new ulong[1];
                     NativeMethods.pawnio_execute(handle, "ioctl_read_msr", input, (UIntPtr)1, output, (UIntPtr)1, out _);
                     ulong raw = output[0];
-                    uint vid = (uint)((raw >> 6) & 0xFF);
-                    double volts = 1.550 - vid * 0.00625;
-                    Log($"      0x{raw:X16}  VID={vid,4} ({vid * 0.00625:F3}V) -> Vcore = {volts:F3} V");
+                    // 通用 MSR dump：只有 0xC0010293 才有 VID 位域 [21:14] 可套换算式，
+                    // 其余 MSR 套上去是伪值（--msr-read 用于排查任意寄存器，不假设它是 VID）。
+                    if (msr == 0xC0010293)
+                    {
+                        uint vid = (uint)((raw >> 14) & 0xFF);
+                        double volts = 1.550 - vid * 0.00625;
+                        Log($"      0x{raw:X16}  CurCpuVid={vid,3} -> Vcore = {volts:F3} V");
+                    }
+                    else
+                    {
+                        Log($"      0x{raw:X16}");
+                    }
                     Thread.Sleep(200);
                 }
             }
@@ -426,9 +435,17 @@ static void DumpVidPerCore()
             ulong raw = ReadMsrViaAmd17(executor, 0xC0010293);
             NativeMethods.SetThreadAffinityMask(NativeMethods.GetCurrentThread(), prev);
 
-            uint vid = (uint)((raw >> 6) & 0xFF);
-            double volts = 1.550 - vid * 0.00625;
-            Log($"    Core {core,2}: VID={vid,3} -> {volts:F3} V   (0x{raw:X12})");
+            // MSRC001_0293 位域：CurCpuFid[7:0] / CurCpuDfsId[13:8] / CurCpuVid[21:14] / CurHwPstate[24:22]
+            // 真实电压在 [21:14]。这里同时打印旧位移(>>6)与修正位移(>>14)，
+            // 便于与 CPU-Z / HWiNFO 的 Vcore 一次跑完对照 —— 只看一个会得出错误结论。
+            uint vidFixed = (uint)((raw >> 14) & 0xFF);
+            uint vidLegacy = (uint)((raw >> 6) & 0xFF);
+            double voltsFixed = 1.550 - vidFixed * 0.00625;
+            double voltsLegacy = 1.550 - vidLegacy * 0.00625;
+            Log(
+                $"    Core {core,2}: VID={vidFixed,3} -> {voltsFixed:F3} V"
+                    + $"   | 旧位移(>>6) VID={vidLegacy,3} -> {voltsLegacy:F3} V   (0x{raw:X12})"
+            );
             Thread.Sleep(50);
         }
     }

@@ -418,6 +418,15 @@ public class RyzenSmuController : PawnIO
     
     private const uint MsrFidvidStatus = 0xC0010293;
 
+    /// <summary>VID 采样核数：从全部逻辑核降为固定小样本，降低每次读取的亲和性切换开销。</summary>
+    private const int VidSampleCores = 4;
+
+    // [修复 B] 语义已从「全核最小值」变为「4 核均匀采样平均值」。
+    // 这是有意的口径变化：VID 是随负载实时变化的瞬时量，不是体质指标；
+    // 而 ProcessorCount 是逻辑核数，16C/32T 上 SMT 兄弟共享同一物理核的 VID，
+    // 取 min 实际约等于「扫描瞬间最闲的那个核」—— 语义站不住，
+    // 且它随负载漂移，UI 上的电压读数形状也跟着抖。
+    // 改为在少数几个核上取平均：既稳定，也不再假装在测"最差核"。
     public double? GetCoreVoltage()
     {
         try
@@ -429,20 +438,46 @@ public class RyzenSmuController : PawnIO
 
             try
             {
-                double? minVolts = null;
+                double voltsSum = 0;
+                int validSamples = 0;
                 int coreCount = Environment.ProcessorCount;
-                for (int i = 0; i < coreCount; i++)
+
+                // 采样核数 = min(固定样本数, 逻辑核数)：
+                // ProcessorCount < VidSampleCores 的小核机器（2 核 / 单核）自动降到
+                // 实际核数，不会重复采样同一个核。
+                int sampleCount = Math.Min(VidSampleCores, coreCount);
+
+                for (int i = 0; i < sampleCount; i++)
                 {
-                    IntPtr prev = Native.Kernel32.SetThreadAffinityMask(thread, new IntPtr(1L << i));
+                    // 算术均匀分布：i * coreCount / sampleCount（C# 整数除法截断），例：
+                    //   32 核 → sample=4 → 0/8/16/24
+                    //   16 核 → sample=4 → 0/4/8/12
+                    //   12 核 → sample=4 → 0/3/6/9
+                    //   6 核  → sample=4 → 0/1/3/4
+                    //   2 核  → sample=2 → 0/1
+                    //   1 核  → sample=1 → 0
+                    // 越界证明：i ≤ sampleCount-1 ≤ coreCount-1，故
+                    // i*coreCount/sampleCount < coreCount，整除后恒 ≤ coreCount-1，
+                    // 亲和性位不会越过逻辑核数（也没有 step=0 的除零写法）。
+                    // ⚠️ 不要改写成 `step = coreCount / sampleCount; i * step`：
+                    // 它**不会越界**，但整除截断会让样本偏向低端并漏掉尾部
+                    // （10 核 → 0/2/4/6，14 核 → 0/3/6/9，尾部 8/9、10~13 采不到），
+                    // 采样就偏向了同一侧。`i * coreCount / sampleCount` 才能铺满整个区间。
+                    int coreIdx = (int)((long)i * coreCount / sampleCount);
+
+                    IntPtr prev = Native.Kernel32.SetThreadAffinityMask(thread, new IntPtr(1L << coreIdx));
                     if (prev == IntPtr.Zero)
                         continue; // 进程亲和性不允许该核心
 
                     double? volts = ReadVidVoltage();
-                    if (volts.HasValue && (minVolts == null || volts.Value < minVolts.Value))
-                        minVolts = volts.Value;
+                    if (volts.HasValue)
+                    {
+                        voltsSum += volts.Value;
+                        validSamples++;
+                    }
                 }
 
-                return minVolts;
+                return validSamples > 0 ? voltsSum / validSamples : null;
             }
             finally
             {
@@ -460,7 +495,22 @@ public class RyzenSmuController : PawnIO
         try
         {
             ulong raw = ReadMsr(MsrFidvidStatus);
-            uint vid = (uint)((raw >> 6) & 0xFF);
+
+            // [修复 A] VID 位移修正：>> 6 改为 >> 14。
+            // MSRC001_0293（MsrFidvidStatus = 0xC0010293，MSR_HARDWARE_PSTATE_STATUS）
+            // 的位域布局为：
+            //     CurCpuFid   [7:0]
+            //     CurCpuDfsId [13:8]
+            //     CurCpuVid   [21:14]   ← 电压标识在这里，所以位移是 14 不是 6
+            //     CurHwPstate [24:22]
+            // 位域出处：LibreHardwareMonitor 上游 Amd17Cpu.cs 的 Core.UpdateSensors()
+            // 读同一个 MSR，取 (eax >> 14) & 0xff，换算式 vidStep = 0.00625、
+            // vcc = 1.550 - vidStep * curCpuVid —— 与下面这两行逐字一致。
+            // 旧实现的 (raw >> 6) & 0xFF 取的是 DfsId[13:8] + Fid[7:6] 的混合字段：
+            // 它随主频档位跳变，与真实电压无关，读到的是伪值。0.4~1.8 的范围校验
+            // 只能挡掉其中超过 184 的那部分（挡住就返回 null，回退 WMI/LHM，
+            // 长期被回退路径掩盖），剩下落在区间内的伪值会静默当成真实电压显示。
+            uint vid = (uint)((raw >> 14) & 0xFF);
             double volts = 1.550 - vid * 0.00625;
             return volts is >= 0.4 and <= 1.8 ? volts : null;
         }
